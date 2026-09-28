@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (PRD §10.5). Only loaded on /crm pages, so nothing here reaches CardFlow. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --surface: 220 23% 97.5%;
+    --foreground: 224 39% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 39% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 39% 11%;
+    --muted: 220 16% 95.5%;
+    --muted-foreground: 220 9% 44%;
+    --accent: 220 16% 95%;
+    --accent-foreground: 224 39% 11%;
+    --border: 220 14% 90%;
+    --input: 220 13% 86%;
+    --ring: 243 75% 59%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 238 100% 97%;
+    --sidebar: 220 23% 98%;
+    --success: 152 62% 34%;
+    --success-soft: 150 60% 95%;
+    --warning: 32 92% 44%;
+    --warning-soft: 42 100% 94%;
+    --danger: 0 72% 50%;
+    --danger-soft: 0 90% 97%;
+    --danger-foreground: 0 0% 100%;
+    color-scheme: light;
+  }
+
+  .dark {
+    --background: 225 18% 7%;
+    --surface: 225 16% 9%;
+    --foreground: 220 15% 93%;
+    --card: 225 15% 11%;
+    --card-foreground: 220 15% 93%;
+    --popover: 225 15% 12%;
+    --popover-foreground: 220 15% 93%;
+    --muted: 225 13% 16%;
+    --muted-foreground: 220 10% 62%;
+    --accent: 225 13% 17%;
+    --accent-foreground: 220 15% 93%;
+    --border: 225 12% 20%;
+    --input: 225 11% 25%;
+    --ring: 239 84% 67%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 242 40% 19%;
+    --sidebar: 225 17% 8.5%;
+    --success: 152 55% 50%;
+    --success-soft: 152 40% 14%;
+    --warning: 38 92% 58%;
+    --warning-soft: 38 50% 14%;
+    --danger: 0 80% 64%;
+    --danger-soft: 0 45% 15%;
+    --danger-foreground: 0 0% 100%;
+    color-scheme: dark;
+  }
+
+  /* CardFlow's index.html locks body/#root scrolling for its native shell; the CRM owns
+     its own full-height scroll container instead (.crm-root). */
+  html.crm-page,
+  html.crm-page body,
+  html.crm-page #root {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  html.crm-page body {
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+    text-rendering: optimizeLegibility;
+  }
+
+  .crm-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .crm-root.density-compact {
+    font-size: 13px;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .crm-scroll::-webkit-scrollbar,
+  .crm-root::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .crm-scroll::-webkit-scrollbar-thumb,
+  .crm-root::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  .crm-scroll::-webkit-scrollbar-thumb:hover,
+  .crm-root::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    background-clip: content-box;
+  }
+
+  /* Decorative backdrop for the sign-in brand panel. */
+  .crm-grid-bg {
+    background-image:
+      linear-gradient(to right, rgb(255 255 255 / 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse at 30% 20%, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at 30% 20%, black 30%, transparent 75%);
+  }
+
+  .crm-skeleton {
+    position: relative;
+    overflow: hidden;
+    background: hsl(var(--muted));
+    border-radius: 6px;
+  }
+  .crm-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--background) / 0.6), transparent);
+    animation: crm-shimmer 1.4s infinite;
+  }
+}
+
+@keyframes crm-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crm-root *,
+  .crm-root *::before,
+  .crm-root *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

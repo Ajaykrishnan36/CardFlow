@@ -1,0 +1,35 @@
+// 'invite' i18n namespace (merged into the crm bundle as invite.*).
+const strings = {
+  docTitle: 'Accept invitation',
+  title: 'Join {{workspace}}',
+  subtitle: "You've been invited as {{role}}.",
+  email: 'Email',
+  goToSignIn: 'Go to sign in',
+  errorTitle: "Couldn't open this invitation",
+  missingTitle: 'This link is incomplete',
+  missingBody: 'Open the invitation link from your email again, or ask your administrator to resend it.',
+  notFoundTitle: 'Invitation not found',
+  notFoundBody: "This invitation link isn't valid. Ask your administrator to send a new one.",
+  expiredTitle: 'This invitation has expired',
+  expiredBody: 'Ask an administrator of {{workspace}} to resend it.',
+  revokedTitle: 'This invitation was withdrawn',
+  revokedBody: 'An administrator of {{workspace}} revoked it. Contact them if you still need access.',
+  acceptedTitle: 'Invitation already accepted',
+  acceptedBody: 'You already joined {{workspace}}. Sign in to continue.',
+  existingTitle: 'You already have an account',
+  existingBody: "Sign in with your current password to accept. Your existing password stays the same.",
+  currentPassword: 'Your password',
+  signInAccept: 'Sign in to accept',
+  displayName: 'Your name',
+  nameRequired: 'Enter your name.',
+  newPassword: 'Create a password',
+  confirmPassword: 'Confirm password',
+  passwordMin: 'Use at least 8 characters.',
+  createAccept: 'Accept & create account',
+  accepting: 'Accepting…',
+  wrongPassword: "That password isn't right.",
+  joined: 'Welcome to {{workspace}}.',
+  expires: 'This invitation expires on {{date}}.'
+};
+
+export default strings;

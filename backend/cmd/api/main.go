@@ -22,6 +22,7 @@ import (
 	"cardflow-backend/internal/card"
 	"cardflow-backend/internal/config"
 	"cardflow-backend/internal/contacts"
+	"cardflow-backend/internal/crm"
 	"cardflow-backend/internal/database"
 	"cardflow-backend/internal/discovery"
 	"cardflow-backend/internal/enquiry"
@@ -33,6 +34,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 //go:embed dist/*
@@ -64,6 +66,13 @@ func main() {
 	} else {
 		slog.Info("PostgreSQL ready for card vault and business persistence")
 	}
+
+	// Ajay's CRM lives in its own module/schema; it can only disable itself, never CardFlow.
+	var crmPool *pgxpool.Pool
+	if dbPool != nil {
+		crmPool = dbPool.Pool
+	}
+	crmModule := crm.New(context.Background(), crmPool, cfg.Env)
 
 	redisClient, err := database.NewRedisClient(ctx, cfg)
 	if err != nil {
@@ -249,6 +258,8 @@ func main() {
 			})
 		})
 	})
+
+	crmModule.Mount(r)
 
 	// 6. Serve Embedded Production Frontend Web Application at Root
 	subFS, err := fs.Sub(embeddedFrontend, "dist")
