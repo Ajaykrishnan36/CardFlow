@@ -77,6 +77,8 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Post("/platform/roles/{id}/reset", h.handleResetRole)
 
 		r.Get("/platform/audit", h.handleAudit)
+		r.Get("/platform/email", h.handleEmailStatus)
+		r.Post("/platform/email/test", h.handleEmailTest)
 	})
 }
 

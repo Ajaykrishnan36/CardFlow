@@ -152,6 +152,8 @@ func (s *Service) Routes(r chi.Router) {
 	r.Post("/auth/login", s.handleLogin)
 	r.Post("/auth/password/forgot", s.handleForgot)
 	r.Post("/auth/password/reset", s.handleReset)
+	r.Post("/auth/otp/request", s.handleOTPRequest)
+	r.Post("/auth/otp/verify", s.handleOTPVerify)
 	r.Get("/invitations/preview", s.handleInvitationPreview)
 	r.Post("/invitations/accept", s.handleInvitationAccept)
 

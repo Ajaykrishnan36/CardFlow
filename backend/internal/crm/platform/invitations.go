@@ -186,8 +186,13 @@ func (h *Handler) DeliverInvitation(ctx context.Context, sent *SentInvitation) *
 	err := h.mailer.Send(sendCtx, mail.Message{
 		To:      sent.Email,
 		Subject: fmt.Sprintf("You're invited to %s on %s", sent.WorkspaceName, h.cfg.AppName),
-		Text: fmt.Sprintf("Hi %s,\n\nYou've been invited to join %s as %s.\n\nAccept the invitation and set up your sign-in here (the link works once and expires in 72 hours):\n\n%s\n",
-			sent.DisplayName, sent.WorkspaceName, sent.RoleName, link),
+		Heading: "You're invited to " + sent.WorkspaceName,
+		Lines: []string{
+			"Hi " + sent.DisplayName + ", you've been invited to join " + sent.WorkspaceName + " on " + h.cfg.AppName + " as " + sent.RoleName + ".",
+			"Accept the invitation to set your password and sign in.",
+		},
+		Button: &mail.Button{Label: "Accept invitation", URL: link},
+		Footer: "This link works once and expires in 72 hours. If you weren't expecting it, you can ignore this email.",
 	})
 	status := "delivered"
 	if err != nil {

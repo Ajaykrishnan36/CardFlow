@@ -2,7 +2,7 @@ package identity
 
 import (
 	"context"
-	"fmt"
+	"strings"
 	"log/slog"
 	"time"
 
@@ -64,9 +64,11 @@ func (s *Service) IssuePasswordReset(ctx context.Context, identityID, actorID uu
 	link := s.cfg.BaseURL + "/crm/reset-password?token=" + token
 	s.sendAsync(mail.Message{
 		To:      email,
-		Subject: "Reset your " + s.cfg.AppName + " password",
-		Text: fmt.Sprintf("Hi %s,\n\nAn administrator sent you a link to set a new password. It works once and expires in 30 minutes:\n\n%s\n",
-			name, link),
+		Subject: "Set a new " + s.cfg.AppName + " password",
+		Heading: "Set a new password",
+		Lines:   []string{"Hi " + name + ", your administrator sent you a link to set a new password for " + s.cfg.AppName + "."},
+		Button:  &mail.Button{Label: "Set my password", URL: link},
+		Footer:  "This link works once and expires in 30 minutes.",
 	})
 	return link, nil
 }
@@ -83,3 +85,33 @@ func (s *Service) sendAsync(m mail.Message) {
 
 // ValidateNewPassword returns a user-facing problem with a new password, or "".
 func ValidateNewPassword(password string) string { return validateNewPassword(password) }
+
+func istLocation() *time.Location {
+	if loc, err := time.LoadLocation("Asia/Kolkata"); err == nil {
+		return loc
+	}
+	return time.UTC
+}
+
+// shortAgent turns a user agent into "Chrome on macOS"-style text for emails.
+func shortAgent(ua string) string {
+	browser := "Browser"
+	switch {
+	case strings.Contains(ua, "Edg/"):
+		browser = "Edge"
+	case strings.Contains(ua, "Chrome/"):
+		browser = "Chrome"
+	case strings.Contains(ua, "Firefox/"):
+		browser = "Firefox"
+	case strings.Contains(ua, "Safari/"):
+		browser = "Safari"
+	case strings.Contains(strings.ToLower(ua), "curl"):
+		browser = "curl"
+	}
+	for _, os := range []struct{ key, name string }{{"iPhone", "iOS"}, {"iPad", "iPadOS"}, {"Android", "Android"}, {"Mac OS X", "macOS"}, {"Windows", "Windows"}, {"Linux", "Linux"}} {
+		if strings.Contains(ua, os.key) {
+			return browser + " on " + os.name
+		}
+	}
+	return browser
+}

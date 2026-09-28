@@ -31,6 +31,7 @@ type Service struct {
 	identLimiter      *limiter // failed logins, per normalised identifier (D-14)
 	resetIPLimiter    *limiter
 	resetIdentLimiter *limiter
+	otpLimiter        *limiter // sign-in code requests, per email
 }
 
 func NewService(st *store.Store, cfg shared.Config, mailer mail.Mailer) *Service {
@@ -42,6 +43,7 @@ func NewService(st *store.Store, cfg shared.Config, mailer mail.Mailer) *Service
 		identLimiter:      newLimiter(lockAfterFailures, lockDuration),
 		resetIPLimiter:    newLimiter(5, 15*time.Minute),
 		resetIdentLimiter: newLimiter(3, time.Hour),
+		otpLimiter:        newLimiter(5, 15*time.Minute),
 	}
 }
 
@@ -166,100 +168,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput, meta RequestMeta) (*
 		return nil, s.failLogin(ctx, identKey, &row.identityID, meta, "bad_password")
 	}
 
-	if row.status != "active" {
-		return nil, shared.Forbidden("account_suspended", "This account is suspended. Contact your administrator.")
-	}
-
-	memberships, err := access.ListActiveMemberships(ctx, s.store.Pool, row.identityID)
-	if err != nil {
-		return nil, err
-	}
-	switch audience {
-	case "owner":
-		if !row.isOwner {
-			return nil, s.failLogin(ctx, identKey, &row.identityID, meta, "not_owner")
-		}
-	case "workspace":
-		if code := strings.ToLower(strings.TrimSpace(in.WorkspaceCode)); code != "" && !row.isOwner {
-			found := false
-			for _, m := range memberships {
-				if m.WorkspaceCode == code {
-					found = true
-				}
-			}
-			if !found {
-				return nil, s.failLogin(ctx, identKey, &row.identityID, meta, "no_membership")
-			}
-		}
-		if !row.isOwner && len(memberships) == 0 {
-			return nil, shared.Forbidden("no_workspace_access", "Your account doesn't have access to a workspace yet. Ask your administrator for an invitation.")
-		}
-	}
-
-	var mfaEnrolled bool
-	if err := s.store.Pool.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM crm.mfa_methods WHERE identity_id = $1 AND confirmed_at IS NOT NULL)`,
-		row.identityID).Scan(&mfaEnrolled); err != nil {
-		return nil, err
-	}
-	privileged := access.IsPrivileged(row.isOwner, memberships)
-	mfaRequired := mfaEnrolled || (privileged && s.cfg.MFAEnforced())
-	sessionAudience := "workspace"
-	if row.isOwner {
-		sessionAudience = "owner"
-	}
-
-	var newDevice bool
-	var out loginOutcome
-	err = s.store.WithTx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `
-			SELECT NOT EXISTS (SELECT 1 FROM crm.sessions WHERE identity_id = $1 AND user_agent = $2)`,
-			row.identityID, truncate(meta.UserAgent, 400)).Scan(&newDevice); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `
-			UPDATE crm.password_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = now()
-			WHERE identity_id = $1`, row.identityID); err != nil {
-			return err
-		}
-		token, expires, err := createSession(ctx, tx, newSession{
-			identityID:  row.identityID,
-			audience:    sessionAudience,
-			privileged:  privileged,
-			mfaRequired: mfaRequired,
-			ip:          meta.IP,
-			userAgent:   meta.UserAgent,
-		})
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE crm.identities SET last_login_at = now() WHERE id = $1`, row.identityID); err != nil {
-			return err
-		}
-		out = loginOutcome{token: token, expires: expires}
-		return shared.WriteAudit(ctx, tx, shared.AuditEvent{
-			ActorID: &row.identityID, Action: "auth.login.succeeded", EntityType: "identity", EntityID: &row.identityID,
-			After: map[string]any{"method": "password", "audience": audience, "mfaRequired": mfaRequired, "userAgent": meta.UserAgent},
-			IP:    meta.IP, RequestID: meta.RequestID,
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-	s.identLimiter.clear(identKey)
-
-	if newDevice {
-		s.sendNewDeviceAlert(row.identityID, row.displayName, meta)
-	}
-
-	enrollRequired := mfaRequired && !mfaEnrolled
-	out.step = AuthStep{
-		MFARequired:           mfaRequired,
-		MFAEnrollmentRequired: enrollRequired,
-		MustChangePassword:    row.mustChange,
-		Next:                  nextPath(row.isOwner, mfaRequired, enrollRequired, row.mustChange),
-	}
-	return &out, nil
+	return s.finishSignIn(ctx, row, audience, in.WorkspaceCode, identKey, "password", meta)
 }
 
 // failLogin records the failure and returns the generic error — or 429 once the
@@ -293,11 +202,18 @@ func (s *Service) sendNewDeviceAlert(identityID uuid.UUID, name string, meta Req
 		if email == "" {
 			return
 		}
+		when := time.Now().In(istLocation()).Format("2 Jan 2006, 3:04 PM MST")
 		err := s.mailer.Send(ctx, mail.Message{
 			To:      email,
 			Subject: "New sign-in to " + s.cfg.AppName,
-			Text: fmt.Sprintf("Hi %s,\n\nYour account was just used to sign in from a new device.\n\nIP address: %s\nDevice: %s\nTime: %s\n\nIf this wasn't you, reset your password immediately: %s/crm/forgot-password\n",
-				name, meta.IP, meta.UserAgent, time.Now().Format(time.RFC1123), s.cfg.BaseURL),
+			Heading: "New sign-in to your account",
+			Lines: []string{
+				"Hi " + name + ", your account was just used to sign in from a device we haven't seen before.",
+				"When: " + when + " · IP address: " + meta.IP + " · Device: " + shortAgent(meta.UserAgent),
+				"If this was you, there's nothing to do. If it wasn't, reset your password now.",
+			},
+			Button: &mail.Button{Label: "Reset my password", URL: s.cfg.BaseURL + "/crm/forgot-password"},
+			Footer: "You get this email every time your account signs in from a new device.",
 		})
 		if err != nil {
 			slog.Warn("crm: new-device alert not sent", "error", err)
@@ -558,8 +474,10 @@ func (s *Service) ForgotPassword(ctx context.Context, identifierRaw string, meta
 		if err := s.mailer.Send(sendCtx, mail.Message{
 			To:      email,
 			Subject: "Reset your " + s.cfg.AppName + " password",
-			Text: fmt.Sprintf("Hi %s,\n\nUse this link to set a new password. It works once and expires in 30 minutes:\n\n%s\n\nIf you didn't ask for this, you can ignore this email.\n",
-				name, link),
+			Heading: "Reset your password",
+			Lines:   []string{"Hi " + name + ", we got a request to reset the password for your " + s.cfg.AppName + " account."},
+			Button:  &mail.Button{Label: "Choose a new password", URL: link},
+			Footer:  "This link works once and expires in 30 minutes. If you didn't ask for it, ignore this email — your password stays the same.",
 		}); err != nil {
 			slog.Warn("crm: password reset email not sent", "error", err)
 		}
@@ -688,4 +606,104 @@ func (s *Service) Logout(ctx context.Context, sess *Session, all bool, meta Requ
 		ActorID: &sess.IdentityID, Action: action, EntityType: "identity", EntityID: &sess.IdentityID,
 		IP: meta.IP, RequestID: meta.RequestID,
 	})
+}
+
+// finishSignIn runs everything after the first factor (password or email code):
+// account status, audience and workspace checks, MFA requirement, session creation,
+// audit and the new-device alert.
+func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience, workspaceCode, identKey, method string, meta RequestMeta) (*loginOutcome, error) {
+	if row.status != "active" {
+		return nil, shared.Forbidden("account_suspended", "This account is suspended. Contact your administrator.")
+	}
+
+	memberships, err := access.ListActiveMemberships(ctx, s.store.Pool, row.identityID)
+	if err != nil {
+		return nil, err
+	}
+	switch audience {
+	case "owner":
+		if !row.isOwner {
+			return nil, s.failLogin(ctx, identKey, &row.identityID, meta, "not_owner")
+		}
+	case "workspace":
+		if code := strings.ToLower(strings.TrimSpace(workspaceCode)); code != "" && !row.isOwner {
+			found := false
+			for _, m := range memberships {
+				if m.WorkspaceCode == code {
+					found = true
+				}
+			}
+			if !found {
+				return nil, s.failLogin(ctx, identKey, &row.identityID, meta, "no_membership")
+			}
+		}
+		if !row.isOwner && len(memberships) == 0 {
+			return nil, shared.Forbidden("no_workspace_access", "Your account doesn't have access to a workspace yet. Ask your administrator for an invitation.")
+		}
+	}
+
+	var mfaEnrolled bool
+	if err := s.store.Pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM crm.mfa_methods WHERE identity_id = $1 AND confirmed_at IS NOT NULL)`,
+		row.identityID).Scan(&mfaEnrolled); err != nil {
+		return nil, err
+	}
+	privileged := access.IsPrivileged(row.isOwner, memberships)
+	mfaRequired := mfaEnrolled || (privileged && s.cfg.MFAEnforced())
+	sessionAudience := "workspace"
+	if row.isOwner {
+		sessionAudience = "owner"
+	}
+
+	var newDevice bool
+	var out loginOutcome
+	err = s.store.WithTx(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `
+			SELECT NOT EXISTS (SELECT 1 FROM crm.sessions WHERE identity_id = $1 AND user_agent = $2)`,
+			row.identityID, truncate(meta.UserAgent, 400)).Scan(&newDevice); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE crm.password_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = now()
+			WHERE identity_id = $1`, row.identityID); err != nil {
+			return err
+		}
+		token, expires, err := createSession(ctx, tx, newSession{
+			identityID:  row.identityID,
+			audience:    sessionAudience,
+			privileged:  privileged,
+			mfaRequired: mfaRequired,
+			ip:          meta.IP,
+			userAgent:   meta.UserAgent,
+		})
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE crm.identities SET last_login_at = now() WHERE id = $1`, row.identityID); err != nil {
+			return err
+		}
+		out = loginOutcome{token: token, expires: expires}
+		return shared.WriteAudit(ctx, tx, shared.AuditEvent{
+			ActorID: &row.identityID, Action: "auth.login.succeeded", EntityType: "identity", EntityID: &row.identityID,
+			After: map[string]any{"method": method, "audience": audience, "mfaRequired": mfaRequired, "userAgent": meta.UserAgent},
+			IP:    meta.IP, RequestID: meta.RequestID,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.identLimiter.clear(identKey)
+
+	if newDevice {
+		s.sendNewDeviceAlert(row.identityID, row.displayName, meta)
+	}
+
+	enrollRequired := mfaRequired && !mfaEnrolled
+	out.step = AuthStep{
+		MFARequired:           mfaRequired,
+		MFAEnrollmentRequired: enrollRequired,
+		MustChangePassword:    row.mustChange,
+		Next:                  nextPath(row.isOwner, mfaRequired, enrollRequired, row.mustChange),
+	}
+	return &out, nil
 }

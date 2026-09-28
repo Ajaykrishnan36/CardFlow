@@ -168,6 +168,15 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   returns per-workspace counts, and tags each row with its workspace; customer-workspace rows open in `/crm/w/{code}` with that
   workspace's layout and fields. Dashboard lead/account totals count all workspaces. The owner's "Support" opens the connected
   app's tickets.
+- **D-40 Email.** SMTP via `CRM_SMTP_*` (Gmail app password works; spaces are stripped). Emails are multipart text + HTML
+  from one table-based, inline-styled template; animation and dark mode are progressive enhancements (Apple Mail/iOS play
+  them; Gmail/Outlook show the static version). Links always use `CRM_BASE_URL` (live default
+  `https://card-flow-kappa.vercel.app`). Owner can check the setup at `GET /platform/email` and `POST /platform/email/test`.
+- **D-41 Email sign-in codes + magic link (AUTH-02).** `POST /auth/otp/request` emails a 6-digit code (10 min, 5 attempts,
+  single use, stored hashed in `crm.otp_challenges`) with a one-click link to `/crm/login?method=code&email=…&code=…`;
+  `POST /auth/otp/verify` then runs the same post-first-factor checks as a password sign-in (`finishSignIn`: status,
+  workspace access, MFA, device alert, audit). Unknown addresses get the same response; the dev code is returned only in
+  local/dev when email goes to the log.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

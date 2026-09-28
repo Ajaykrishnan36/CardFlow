@@ -64,7 +64,22 @@ const en = {
       sessionExpired: 'Your session ended. Sign in again to pick up where you left off.',
       signedOut: "You've been signed out.",
       passwordUpdated: 'Password updated. Sign in with your new password.',
-      identifierInvalid: 'Enter a valid email or phone number.'
+      identifierInvalid: 'Enter a valid email or phone number.',
+      methodPassword: 'Password',
+      methodCode: 'Email code',
+      emailLabel: 'Email',
+      sendCode: 'Email me a code',
+      sendingCode: 'Sending…',
+      codeSentTitle: 'Check your email',
+      codeSentBody: 'If {{email}} has an account, we sent a 6-digit code. It expires in 10 minutes.',
+      codeLabel: 'Sign-in code',
+      verifyCode: 'Sign in',
+      verifyingCode: 'Signing in…',
+      resend: 'Resend code',
+      resendIn: 'Resend in {{seconds}}s',
+      changeEmail: 'Use a different email',
+      devCode: 'Development only — your code is {{code}}',
+      codeLength: 'Enter all 6 digits.'
     },
     owner: {
       title: 'Owner console',

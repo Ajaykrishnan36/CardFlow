@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,6 +14,7 @@ import { Alert } from '@crm/components/ui/card';
 import { useAfterAuth } from '@crm/auth/session';
 import { safeReturnTo } from '@crm/lib/utils';
 import { useFormError } from './use-form-error';
+import { EmailCodeForm } from './email-code-form';
 
 interface Values {
   identifier: string;
@@ -23,6 +24,35 @@ interface Values {
 const isDesktop = () => window.matchMedia?.('(min-width: 1024px)').matches ?? false;
 
 export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
+  const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
+  // Magic link from the sign-in email: ?method=code&email=…&code=… opens the code tab.
+  const [method, setMethod] = useState<'password' | 'code'>(searchParams.get('method') === 'code' ? 'code' : 'password');
+  return (
+    <div className="space-y-5">
+      <div role="tablist" aria-label={t('auth.login.submit')} className="grid grid-cols-2 rounded-lg border bg-muted/60 p-1">
+        {(['password', 'code'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            role="tab"
+            aria-selected={method === m}
+            onClick={() => setMethod(m)}
+            className={
+              'rounded-md py-1.5 text-[13px] font-medium transition-colors ' +
+              (method === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')
+            }
+          >
+            {m === 'password' ? t('auth.login.methodPassword') : t('auth.login.methodCode')}
+          </button>
+        ))}
+      </div>
+      {method === 'password' ? <PasswordLoginForm audience={audience} /> : <EmailCodeForm audience={audience} />}
+    </div>
+  );
+}
+
+function PasswordLoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
   const { t } = useTranslation();
   const [params] = useSearchParams();
   const afterAuth = useAfterAuth();

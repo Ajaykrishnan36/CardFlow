@@ -70,6 +70,11 @@ export interface LoginBody {
 
 export const authApi = {
   login: (body: LoginBody) => api<AuthStep>('/auth/login', { method: 'POST', body }),
+  /** Email a 6-digit sign-in code. Always "sent" (never reveals whether the address has an account). */
+  requestOtp: (body: { identifier: string; audience: 'owner' | 'workspace' }) =>
+    api<{ sent: boolean; expiresIn: number; channel: 'email'; devCode?: string }>('/auth/otp/request', { method: 'POST', body }),
+  verifyOtp: (body: { identifier: string; code: string; audience: 'owner' | 'workspace' }) =>
+    api<AuthStep>('/auth/otp/verify', { method: 'POST', body }),
   logout: () => api<void>('/auth/logout', { method: 'POST' }),
   logoutAll: () => api<void>('/auth/logout-all', { method: 'POST' }),
   verifyMfa: (code: string) => api<NextStep>('/auth/mfa/verify', { method: 'POST', body: { code } }),
