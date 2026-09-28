@@ -237,10 +237,15 @@ func (c *Connector) Extension() records.Extension {
 			r.Get("/support/tickets", c.handleListTickets)
 			r.Get("/support/tickets/{id}", c.handleGetTicket)
 			r.Patch("/support/tickets/{id}", c.handleUpdateTicket)
+			c.appRoutes(r)
 		},
 		Related: func(ctx context.Context, sc *records.Scope, object, recordID string) ([]records.RelatedList, error) {
-			if sc.WS != c.WorkspaceID() || !c.hasTickets || object == "leads" {
+			if sc.WS != c.WorkspaceID() || object == "leads" {
 				return nil, nil
+			}
+			app, err := c.appRelated(ctx, sc, object, recordID)
+			if err != nil || !c.hasTickets {
+				return app, err
 			}
 			col := map[string]string{"accounts": "account_id", "contacts": "contact_id"}[object]
 			rows, err := c.store.Pool.Query(ctx, `
@@ -259,7 +264,7 @@ func (c *Connector) Extension() records.Extension {
 				}
 				list.Rows = append(list.Rows, rr)
 			}
-			return []records.RelatedList{list}, rows.Err()
+			return append(app, list), rows.Err()
 		},
 		KPIs: func(ctx context.Context, sc *records.Scope) ([]records.KPI, error) {
 			if sc.WS != c.WorkspaceID() || !c.hasTickets || (!sc.Owner && !sc.Eff.Can("ticket", "read")) {

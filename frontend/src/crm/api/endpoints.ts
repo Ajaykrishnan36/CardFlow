@@ -1,5 +1,12 @@
 import { api } from './client';
 import type {
+  AppBusiness,
+  AppUser,
+  AppUserCounts,
+  AppUserDetail,
+  AppUserPatch,
+  BusinessCounts,
+  BusinessPatch,
   RecordPage,
   IntegrationInfo,
   SupportTicket,
@@ -257,6 +264,23 @@ export function workspaceSupportApi(code: string) {
     /** Reply and/or change status; the app user sees the reply in the app right away. */
     update: (id: string, body: { status?: TicketStatus; reply?: string }) =>
       api<SupportTicket>(`${base}/${enc(id)}`, { method: 'PATCH', body })
+  };
+}
+
+/** The connected app's own data (Business Card Snap), edited in place. */
+export function workspaceAppApi(code: string) {
+  const base = `/w/${enc(code)}/app`;
+  return {
+    users: (params: { q?: string; filter?: string } = {}) => api<{ data: AppUser[]; counts: AppUserCounts }>(`${base}/users${qs(params)}`),
+    user: (id: string) => api<AppUserDetail>(`${base}/users/${enc(id)}`),
+    updateUser: (id: string, body: AppUserPatch) => api<AppUserDetail>(`${base}/users/${enc(id)}`, { method: 'PATCH', body }),
+    deleteUser: (id: string) => api<void>(`${base}/users/${enc(id)}`, { method: 'DELETE' }),
+    businesses: (params: { q?: string; filter?: string } = {}) =>
+      api<{ data: AppBusiness[]; counts: BusinessCounts }>(`${base}/businesses${qs(params)}`),
+    business: (id: string) => api<AppBusiness>(`${base}/businesses/${enc(id)}`),
+    updateBusiness: (id: string, body: BusinessPatch) => api<AppBusiness>(`${base}/businesses/${enc(id)}`, { method: 'PATCH', body }),
+    deleteBusiness: (id: string) => api<void>(`${base}/businesses/${enc(id)}`, { method: 'DELETE' }),
+    categories: () => api<{ data: Array<{ id: string; name: string }> }>(`${base}/categories`).then((r) => r.data)
   };
 }
 

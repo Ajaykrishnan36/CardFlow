@@ -618,8 +618,24 @@ function RelatedCard({ list, compact, onViewAll }: { list: RelatedList; compact?
   const rows = compact ? list.rows.slice(0, 5) : list.rows;
   const isTimeline = list.object === 'activities';
   // Tickets open the workspace support page; there is none in the owner console.
+  // The connected app's pages (profile, businesses, saved cards) live in the workspace.
+  const appHref = (id: string) => {
+    if (scope.audience !== 'member') return null;
+    if (list.object === 'app-users') return `${scope.routeBase}/app-users/${encodeURIComponent(id)}`;
+    if (list.object === 'app-businesses') return `${scope.routeBase}/businesses/${encodeURIComponent(id)}`;
+    const [userId] = id.split('#');
+    return `${scope.routeBase}/app-users/${encodeURIComponent(userId ?? '')}?tab=cards`;
+  };
   const hrefFor = (id: string) =>
-    list.object === 'tickets' ? (scope.audience === 'member' ? `${scope.routeBase}/support/${encodeURIComponent(id)}` : null) : isTimeline ? null : scopedLookupHref(scope, list.object, id);
+    list.object === 'tickets'
+      ? scope.audience === 'member'
+        ? `${scope.routeBase}/support/${encodeURIComponent(id)}`
+        : null
+      : list.object.startsWith('app-')
+        ? appHref(id)
+        : isTimeline
+          ? null
+          : scopedLookupHref(scope, list.object, id);
   return (
     <Card className="overflow-hidden">
       <CardHeader

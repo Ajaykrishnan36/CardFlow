@@ -89,6 +89,7 @@ var ModuleCatalog = []ModuleInfo{
 	{"submissions", "Submissions", "Form submissions with review and approvals.", "Engagement"},
 	{"tickets", "Support", "Tickets, SLAs and a customer help portal.", "Service"},
 	{"subscriptions", "Subscriptions", "Plans, payments and entitlements for end users.", "Commerce"},
+	{"directory", "Business directory", "Business listings, verification badges and search visibility.", "Service"},
 	{"catalog", "Catalog & quotes", "Sellable items, price books and quotes.", "Commerce"},
 	{"workflows", "Workflows", "Triggers, conditions and automated actions.", "Automation"},
 	{"reports", "Reports", "Dashboards, charts and scheduled exports.", "Insights"},

@@ -26,6 +26,10 @@ const WorkspaceIndexRedirect = lazy(() => import('@crm/features/workspace/worksp
 const WorkspaceAccessPage = lazy(() => import('@crm/features/workspace/admin/access-page').then((m) => ({ default: m.WorkspaceAccessPage })));
 const SupportListPage = lazy(() => import('@crm/features/workspace/support/support-list-page').then((m) => ({ default: m.SupportListPage })));
 const TicketDetailPage = lazy(() => import('@crm/features/workspace/support/ticket-detail-page').then((m) => ({ default: m.TicketDetailPage })));
+const AppUsersPage = lazy(() => import('@crm/features/workspace/app/app-users-page').then((m) => ({ default: m.AppUsersPage })));
+const AppUserDetailPage = lazy(() => import('@crm/features/workspace/app/app-user-detail-page').then((m) => ({ default: m.AppUserDetailPage })));
+const BusinessesPage = lazy(() => import('@crm/features/workspace/app/businesses-page').then((m) => ({ default: m.BusinessesPage })));
+const BusinessDetailPage = lazy(() => import('@crm/features/workspace/app/business-detail-page').then((m) => ({ default: m.BusinessDetailPage })));
 const WorkspaceDashboardPage = lazy(() => import('@crm/features/workspace/dashboard-page').then((m) => ({ default: m.WorkspaceDashboardPage })));
 const ProfilePage = lazy(() => import('@crm/features/me/profile-page').then((m) => ({ default: m.ProfilePage })));
 const AcceptInvitePage = lazy(() => import('@crm/features/auth/accept-invite-page').then((m) => ({ default: m.AcceptInvitePage })));
@@ -121,6 +125,10 @@ function AppRoutes() {
               <Route path="settings/access" element={<WorkspaceAccessPage />} />
               <Route path="support" element={<SupportListPage />} />
               <Route path="support/:id" element={<TicketDetailPage />} />
+              <Route path="app-users" element={<AppUsersPage />} />
+              <Route path="app-users/:id" element={<AppUserDetailPage />} />
+              <Route path="businesses" element={<BusinessesPage />} />
+              <Route path="businesses/:id" element={<BusinessDetailPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [
                 <Route key={`w-${object}`} path={object} element={<RecordListPage key={object} object={object} />} />,
                 <Route key={`w-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,

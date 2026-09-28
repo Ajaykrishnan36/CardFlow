@@ -220,6 +220,13 @@ func (h *Handler) filterRelated(ctx context.Context, sc *Scope, me uuid.UUID, li
 			}
 			continue
 		}
+		// The connected app's data about this person (profile, businesses, saved cards).
+		if perm, ok := map[string]string{"app-users": "app_user", "app-cards": "app_user", "app-businesses": "app_business"}[l.Object]; ok {
+			if sc.Eff.Can(perm, "read") {
+				out = append(out, l)
+			}
+			continue
+		}
 		spec := specs[l.Object]
 		if spec == nil || !sc.Can(l.Object, "read") {
 			continue

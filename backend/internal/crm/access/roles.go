@@ -25,6 +25,9 @@ type CatalogObject struct {
 	Label   string   `json:"label"`
 	Module  string   `json:"module"`
 	Actions []string `json:"actions"`
+	// App objects live in a connected app (Business Card Snap), not in the CRM's own
+	// tables; they appear only in workspaces with that app attached.
+	App bool `json:"app,omitempty"`
 }
 
 type CatalogEntry struct {
@@ -38,6 +41,10 @@ var Objects = []CatalogObject{
 	{Key: "account", Label: "Accounts", Module: "accounts", Actions: []string{"read", "create", "update", "delete", "export"}},
 	{Key: "contact", Label: "Contacts", Module: "contacts", Actions: []string{"read", "create", "update", "delete", "export"}},
 	{Key: "ticket", Label: "Support tickets", Module: "tickets", Actions: []string{"read", "update"}},
+	// update = edit profile, grant or revoke premium access, change app role / status.
+	{Key: "app_user", Label: "App users", Module: "subscriptions", Actions: []string{"read", "update", "delete"}, App: true},
+	// update = edit the listing, its verification badge and search visibility.
+	{Key: "app_business", Label: "Business listings", Module: "directory", Actions: []string{"read", "update", "delete"}, App: true},
 }
 
 var Actions = []CatalogEntry{
@@ -49,6 +56,9 @@ var Actions = []CatalogEntry{
 func actionLabelFor(obj, a string) string {
 	if obj == "ticket" && a == "update" {
 		return "Reply"
+	}
+	if obj == "app_user" && a == "update" {
+		return "Edit & grant access"
 	}
 	return actionLabel(a)
 }
@@ -136,7 +146,12 @@ func only(list []string, keep ...string) []string {
 func SystemRoles() []SystemRole {
 	saObj, saRows := grantAll(func(o CatalogObject) []string { return o.Actions }, "workspace")
 	adObj, adRows := grantAll(func(o CatalogObject) []string { return without(o.Actions, "export") }, "workspace")
-	stObj, stRows := grantAll(func(o CatalogObject) []string { return only(o.Actions, "read", "create", "update", "convert") }, "own")
+	stObj, stRows := grantAll(func(o CatalogObject) []string {
+		if o.App {
+			return only(o.Actions, "read") // staff can look up app data but not change it
+		}
+		return only(o.Actions, "read", "create", "update", "convert")
+	}, "own")
 	return []SystemRole{
 		{Key: "SUPER_ADMIN", Name: "Super Admin", Rank: RankSuperAdmin,
 			Description: "Full access to every record and setting in the workspace.",

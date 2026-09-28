@@ -186,6 +186,16 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   otherwise SMTP, otherwise the console. Startup logs an error when the SMTP server can't be reached, and
   `GET /platform/email` reports `reachable`. Sign-in codes and password resets are sent before responding, so a
   failed send returns 502 `email_failed` instead of a false "sent".
+- **D-44 The connected app's data, edited in place.** Business Card Snap users, business listings and saved cards are
+  read from and written to the app's own tables (no copy): `/w/{code}/app/users|businesses|categories`. Catalog objects
+  `app_user` (read, update = edit profile / grant or revoke premium / app role / status, delete) and `app_business`
+  (read, update = listing, badge, visibility, delete), in modules `subscriptions` and `directory`, shown only in the
+  connected workspace. Grant access writes the same columns as the app's billing (`is_subscribed`,
+  `subscription_plan_id`, `subscription_expires_at`; plans 3m/6m/12m/lifetime), so the app unlocks premium at once.
+  Deletes are soft, like the app's admin console (admins can't be deleted). Account and contact pages list the person's
+  app profile, businesses and saved cards. The app's own admin "Listings Management" is sample data held in memory —
+  the CRM shows the real listings. Startup adds the modules to the product and the objects to the workspace's
+  customized Super Admin role once (`cardflow:app-objects-v1`); Staff get read only.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

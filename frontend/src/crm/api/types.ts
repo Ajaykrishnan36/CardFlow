@@ -491,7 +491,7 @@ export interface RelatedList {
   key: string;
   label: string;
   /** activities = timeline entries (no link); tickets = support tickets (link to the workspace Support page). */
-  object: ObjectKey | 'workspaces' | 'users' | 'activities' | 'tickets';
+  object: ObjectKey | 'workspaces' | 'users' | 'activities' | 'tickets' | 'app-users' | 'app-businesses' | 'app-cards';
   rows: Array<{ id: string; code?: string; title: string; subtitle?: string; status?: string }>;
 }
 
@@ -790,6 +790,136 @@ export interface TicketCounts {
   in_progress: number;
   resolved: number;
 }
+
+// ---- Connected app data (Business Card Snap): /w/{code}/app/* ----
+export type AppPlanId = '3m' | '6m' | '12m' | 'lifetime';
+
+export interface AppUser {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  city: string;
+  state: string;
+  /** user | admin (the app's admin console) */
+  role: 'user' | 'admin';
+  /** pending_profile | active | suspended */
+  status: string;
+  /** Premium right now (subscribed and not expired). */
+  premium: boolean;
+  planId?: AppPlanId | string;
+  planName?: string;
+  /** Absent for lifetime or never granted. */
+  expiresAt?: string;
+  freeScansLeft: number;
+  createdAt: string;
+  lastLoginAt?: string;
+  businesses: number;
+  cards: number;
+  openTickets: number;
+  account?: LookupValue;
+  contact?: LookupValue;
+}
+
+export interface AppUserCounts {
+  all: number;
+  premium: number;
+  free: number;
+  admin: number;
+  suspended: number;
+}
+
+export interface SavedCard {
+  id: string;
+  personName: string;
+  designation: string;
+  company: string;
+  website: string;
+  type: 'business' | 'personal' | string;
+  gstin: string;
+  notes: string;
+  phones: string[];
+  emails: string[];
+  address: string;
+  source: string;
+  createdAt: string;
+  business?: { id: string; name: string };
+}
+
+export interface AppPayment {
+  planId: string;
+  planName: string;
+  amountInr: number;
+  status: string;
+  createdAt: string;
+  paidAt?: string;
+}
+
+export type BusinessStatus = 'draft' | 'pending_verification' | 'live' | 'under_review' | 'suspended' | 'removed';
+export type BusinessVerification = 'pending' | 'gst' | 'pan' | 'tan' | 'manual' | 'failed';
+export type BusinessListing = 'listed' | 'unlisted';
+
+export interface AppBusiness {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  categoryId: string;
+  category: string;
+  website: string;
+  email: string;
+  addressLine1: string;
+  addressLine2: string;
+  locality: string;
+  city: string;
+  district: string;
+  state: string;
+  pincode: string;
+  gstin: string;
+  status: BusinessStatus;
+  verification: BusinessVerification;
+  listing: BusinessListing;
+  phoneVerified: boolean;
+  completeness: number;
+  services: string[];
+  phones: string[];
+  /** How many app users saved this business's card. */
+  savedBy: number;
+  createdAt: string;
+  updatedAt: string;
+  owner: { id: string; name: string; phone: string };
+}
+
+export interface BusinessCounts {
+  all: number;
+  listed: number;
+  hidden: number;
+  verified: number;
+  review: number;
+}
+
+export interface AppUserDetail extends AppUser {
+  businessList: AppBusiness[];
+  cardList: SavedCard[];
+  ticketList: SupportTicket[];
+  payments: AppPayment[];
+}
+
+export interface AppUserPatch {
+  name?: string;
+  email?: string;
+  city?: string;
+  role?: 'user' | 'admin';
+  status?: 'active' | 'suspended';
+  access?: { action: 'grant'; planId: AppPlanId } | { action: 'revoke' };
+}
+
+export type BusinessPatch = Partial<
+  Pick<
+    AppBusiness,
+    'name' | 'description' | 'categoryId' | 'website' | 'email' | 'addressLine1' | 'addressLine2' | 'locality' | 'city' | 'district' | 'state' | 'pincode' | 'gstin' | 'status' | 'verification' | 'listing' | 'services'
+  >
+> & { ownerPhone?: string };
 
 // ---- Integrations (owner) ----
 export interface IntegrationInfo {

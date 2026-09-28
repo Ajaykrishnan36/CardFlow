@@ -189,7 +189,10 @@ func (c *Connector) bootstrap(ctx context.Context) error {
 		if err := ensureFields(ctx, tx, wsID, ownerID); err != nil {
 			return err
 		}
-		return ensureLayouts(ctx, tx, wsID, ownerID)
+		if err := ensureLayouts(ctx, tx, wsID, ownerID); err != nil {
+			return err
+		}
+		return upgradeAppAccess(ctx, tx, wsID, productID)
 	})
 	if err != nil {
 		return err

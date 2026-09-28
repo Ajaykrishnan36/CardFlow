@@ -9,6 +9,7 @@ const en = {
     retry: 'Try again',
     back: 'Back',
     cancel: 'Cancel',
+    save: 'Save',
     continue: 'Continue',
     copy: 'Copy',
     copied: 'Copied',

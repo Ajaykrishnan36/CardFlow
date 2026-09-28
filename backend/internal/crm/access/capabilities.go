@@ -17,7 +17,7 @@ type Capabilities struct {
 
 // OwnerCapabilities is the Platform Owner's action list and sidebar (PRD §10.1).
 func OwnerCapabilities() Capabilities {
-	return Capabilities{
+	c := Capabilities{
 		Audience: "owner",
 		Actions: []string{
 			"platform.dashboard.view", "platform.product.manage", "platform.workspace.manage",
@@ -38,6 +38,21 @@ func OwnerCapabilities() Capabilities {
 			{Key: "settings", Label: "Settings", Path: "/crm/me", Icon: "settings", Group: "Operations", Available: true},
 		},
 	}
+	// The connected app's users and business listings, right below Customer Workspaces.
+	if code := supportWorkspaceCode(); code != "" {
+		base := "/crm/w/" + code
+		app := []NavItem{
+			{Key: "app-users", Label: "App users", Path: base + "/app-users", Icon: "smartphone", Group: "Platform", Available: true},
+			{Key: "businesses", Label: "App businesses", Path: base + "/businesses", Icon: "store", Group: "Platform", Available: true},
+		}
+		for i, n := range c.Navigation {
+			if n.Key == "workspaces" {
+				c.Navigation = append(c.Navigation[:i+1], append(app, c.Navigation[i+1:]...)...)
+				break
+			}
+		}
+	}
+	return c
 }
 
 func supportItem() NavItem {

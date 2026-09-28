@@ -13,6 +13,8 @@ import {
   Plug,
   ScrollText,
   Settings,
+  Smartphone,
+  Store,
   ShieldCheck,
   SquareCheck,
   Target,
@@ -42,7 +44,9 @@ const icons: Record<string, LucideIcon> = {
   briefcase: Briefcase,
   users: Users,
   landmark: Landmark,
-  'id-card': IdCard
+  'id-card': IdCard,
+  smartphone: Smartphone,
+  store: Store
 };
 
 export function navIcon(key: string): LucideIcon {

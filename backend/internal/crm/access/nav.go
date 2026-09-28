@@ -32,6 +32,12 @@ func SupportPath() string {
 	return "/crm/w/" + supportCode + "/support"
 }
 
+func supportWorkspaceCode() string {
+	supportMu.RLock()
+	defer supportMu.RUnlock()
+	return supportCode
+}
+
 func HasSupport(ws uuid.UUID) bool {
 	supportMu.RLock()
 	defer supportMu.RUnlock()
@@ -49,7 +55,7 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	}
 	icons := map[string]string{"lead": "user-plus", "account": "briefcase", "contact": "contact"}
 	for _, o := range Objects {
-		if o.Key == "ticket" {
+		if o.Key == "ticket" || o.App {
 			continue
 		}
 		if e.Can(o.Key, "read") {
@@ -59,6 +65,13 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	// Support tickets come from a connected app; the module is shown only where one is attached.
 	if hasSupport && e.Can("ticket", "read") {
 		nav = append(nav, NavItem{Key: "support", Label: "Support", Path: base + "/support", Icon: "life-buoy", Group: "CRM", Available: true})
+	}
+	// The connected app's own data (Business Card Snap): users with their access, and business listings.
+	if hasSupport && e.Can("app_user", "read") {
+		nav = append(nav, NavItem{Key: "app-users", Label: "App users", Path: base + "/app-users", Icon: "smartphone", Group: "App", Available: true})
+	}
+	if hasSupport && e.Can("app_business", "read") {
+		nav = append(nav, NavItem{Key: "businesses", Label: "Businesses", Path: base + "/businesses", Icon: "store", Group: "App", Available: true})
 	}
 	if e.HasCapability(CapAccessManage) || e.HasCapability(CapMembersManage) {
 		nav = append(nav, NavItem{Key: "admin", Label: "Users & access", Path: base + "/settings/access", Icon: "shield-check", Group: "Settings", Available: true})
