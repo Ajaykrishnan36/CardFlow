@@ -1,7 +1,10 @@
 package support
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"cardflow-backend/pkg/response"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type Ticket struct {
@@ -30,10 +34,42 @@ type Ticket struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+// SupportHandler stores tickets in the support_tickets table (migration 012) so they
+// survive restarts and Ajay's CRM can answer them. Without a database it falls back to
+// the in-memory sample tickets below.
 type SupportHandler struct {
 	db      *database.DB
 	mu      sync.RWMutex
 	tickets []Ticket
+}
+
+func (h *SupportHandler) persistent() bool { return h.db != nil && h.db.Pool != nil }
+
+const ticketColumns = `id, COALESCE(user_id::text, ''), user_name, user_phone, user_role, category, subject, message, status,
+	COALESCE(admin_reply, ''), replied_at, created_at, updated_at`
+
+func scanTicket(row pgx.Row) (Ticket, error) {
+	var t Ticket
+	err := row.Scan(&t.ID, &t.UserID, &t.UserName, &t.UserPhone, &t.UserRole, &t.Category, &t.Subject, &t.Message, &t.Status,
+		&t.AdminReply, &t.RepliedAt, &t.CreatedAt, &t.UpdatedAt)
+	return t, err
+}
+
+func (h *SupportHandler) queryTickets(ctx context.Context, where string, args ...any) ([]Ticket, error) {
+	rows, err := h.db.Pool.Query(ctx, `SELECT `+ticketColumns+` FROM support_tickets `+where+` ORDER BY created_at DESC LIMIT 500`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Ticket{}
+	for rows.Next() {
+		t, err := scanTicket(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 func NewSupportHandler(db *database.DB) *SupportHandler {
@@ -120,9 +156,24 @@ func (h *SupportHandler) CreateTicket(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: time.Now(),
 	}
 
-	h.mu.Lock()
-	h.tickets = append([]Ticket{ticket}, h.tickets...)
-	h.mu.Unlock()
+	if h.persistent() {
+		var uid *uuid.UUID
+		if user != nil {
+			uid = &user.ID
+		}
+		if _, err := h.db.Pool.Exec(r.Context(), `
+			INSERT INTO support_tickets (id, user_id, user_name, user_phone, user_role, category, subject, message, status, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'open', $9, $9)`,
+			ticket.ID, uid, ticket.UserName, ticket.UserPhone, ticket.UserRole, ticket.Category, ticket.Subject, ticket.Message, ticket.CreatedAt); err != nil {
+			slog.Error("support: create ticket failed", "error", err)
+			response.InternalServerError(w, "could not save your ticket, please try again")
+			return
+		}
+	} else {
+		h.mu.Lock()
+		h.tickets = append([]Ticket{ticket}, h.tickets...)
+		h.mu.Unlock()
+	}
 
 	response.JSON(w, http.StatusCreated, map[string]interface{}{
 		"success": true,
@@ -139,6 +190,17 @@ func (h *SupportHandler) GetMyTickets(w http.ResponseWriter, r *http.Request) {
 	if user != nil {
 		userID = user.ID.String()
 		userPhone = user.Phone
+	}
+
+	if h.persistent() {
+		list, err := h.queryTickets(r.Context(), `WHERE ($1 <> '' AND user_id::text = $1) OR ($2 <> '' AND user_phone = $2)`, userID, userPhone)
+		if err != nil {
+			slog.Error("support: list my tickets failed", "error", err)
+			response.InternalServerError(w, "could not load tickets")
+			return
+		}
+		response.JSON(w, http.StatusOK, map[string]interface{}{"tickets": list, "count": len(list)})
+		return
 	}
 
 	h.mu.RLock()
@@ -162,6 +224,16 @@ func (h *SupportHandler) GetMyTickets(w http.ResponseWriter, r *http.Request) {
 
 // Admin lists all tickets
 func (h *SupportHandler) AdminListTickets(w http.ResponseWriter, r *http.Request) {
+	if h.persistent() {
+		list, err := h.queryTickets(r.Context(), ``)
+		if err != nil {
+			slog.Error("support: admin list failed", "error", err)
+			response.InternalServerError(w, "could not load tickets")
+			return
+		}
+		response.JSON(w, http.StatusOK, map[string]interface{}{"tickets": list, "count": len(list)})
+		return
+	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -181,6 +253,33 @@ func (h *SupportHandler) AdminUpdateTicket(w http.ResponseWriter, r *http.Reques
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "invalid request", err.Error())
+		return
+	}
+
+	if h.persistent() {
+		if req.Status != "" && req.Status != "open" && req.Status != "in_progress" && req.Status != "resolved" {
+			response.BadRequest(w, "invalid status", "")
+			return
+		}
+		t, err := scanTicket(h.db.Pool.QueryRow(r.Context(), `
+			UPDATE support_tickets
+			SET status = COALESCE(NULLIF($2, ''), status),
+			    admin_reply = COALESCE(NULLIF($3, ''), admin_reply),
+			    replied_at = CASE WHEN $3 <> '' THEN NOW() ELSE replied_at END,
+			    replied_by = CASE WHEN $3 <> '' THEN 'CardFlow admin' ELSE replied_by END,
+			    updated_at = NOW()
+			WHERE id = $1
+			RETURNING `+ticketColumns, id, req.Status, req.AdminReply))
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.NotFound(w, "ticket not found")
+			return
+		}
+		if err != nil {
+			slog.Error("support: update ticket failed", "error", err)
+			response.InternalServerError(w, "could not update ticket")
+			return
+		}
+		response.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Ticket updated successfully", "ticket": t})
 		return
 	}
 
