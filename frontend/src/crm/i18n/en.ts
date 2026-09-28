@@ -71,12 +71,16 @@ const en = {
       sendCode: 'Email me a code',
       sendingCode: 'Sending…',
       codeSentTitle: 'Check your email',
-      codeSentBody: 'If {{email}} has an account, we sent a 6-digit code. It expires in 10 minutes.',
+      codeSentBody: 'We sent a 6-digit code to {{email}}. Check your inbox (and spam).',
+      codeSentToast: 'Code sent to {{email}}',
+      codeExpiresIn: 'Code expires in {{time}}',
+      codeExpired: 'This code has expired. Send a new one.',
+      signedInToast: 'Signed in',
       codeLabel: 'Sign-in code',
       verifyCode: 'Sign in',
       verifyingCode: 'Signing in…',
       resend: 'Resend code',
-      resendIn: 'Resend in {{seconds}}s',
+      resendIn: 'Resend in {{time}}',
       changeEmail: 'Use a different email',
       devCode: 'Development only — your code is {{code}}',
       codeLength: 'Enter all 6 digits.'
@@ -127,6 +131,7 @@ const en = {
       submit: 'Send reset link',
       submitting: 'Sending…',
       sentTitle: 'Check your inbox',
+      sentToast: 'Reset link sent',
       back: 'Back to sign in'
     },
     reset: {

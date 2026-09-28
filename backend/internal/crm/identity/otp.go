@@ -18,8 +18,8 @@ import (
 )
 
 // Email one-time codes (PRD §4 AUTH-02, OTP sign-in). A 6-digit code valid for 10
-// minutes, 5 attempts, single use; the response never reveals whether the address has
-// an account. The code is a first factor: MFA, lockout and workspace checks still apply.
+// minutes, 5 attempts, single use. Unknown addresses get a clear "no account" error
+// (owner's decision, D-42); rate limits cap how fast addresses can be tried. The code is a first factor: MFA, lockout and workspace checks still apply.
 
 const (
 	otpTTL         = 10 * time.Minute
@@ -65,15 +65,7 @@ func (s *Service) RequestOTP(ctx context.Context, in OTPRequestInput, meta Reque
 	}
 	s.otpLimiter.hit(identKey)
 
-	var identityID uuid.UUID
-	var name string
-	err := s.store.Pool.QueryRow(ctx, `
-		SELECT i.id, i.display_name FROM crm.verified_identifiers vi JOIN crm.identities i ON i.id = vi.identity_id
-		WHERE vi.kind = 'email' AND vi.namespace = 'global' AND vi.value_normalized = $1
-		  AND vi.verified_at IS NOT NULL AND i.status = 'active'`, email).Scan(&identityID, &name)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return res, nil // same answer for unknown addresses (no account enumeration)
-	}
+	identityID, name, err := s.accountFor(ctx, "email", email)
 	if err != nil {
 		return nil, err
 	}

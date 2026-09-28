@@ -175,8 +175,12 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
 - **D-41 Email sign-in codes + magic link (AUTH-02).** `POST /auth/otp/request` emails a 6-digit code (10 min, 5 attempts,
   single use, stored hashed in `crm.otp_challenges`) with a one-click link to `/crm/login?method=code&email=…&code=…`;
   `POST /auth/otp/verify` then runs the same post-first-factor checks as a password sign-in (`finishSignIn`: status,
-  workspace access, MFA, device alert, audit). Unknown addresses get the same response; the dev code is returned only in
-  local/dev when email goes to the log.
+  workspace access, MFA, device alert, audit). The dev code is returned only in local/dev when email goes to the log.
+- **D-42 Explicit "no account found" (owner decision).** Code requests and password resets now say plainly when no active
+  account uses the address (422 `account_not_found` on `identifier`; 403 `account_suspended`), replacing the generic
+  "if an account exists" reply. This trades account-enumeration resistance for clarity; the per-IP and per-address rate
+  limits stay. The UI shows the error under the field with a shake and a toast, a success toast naming the address, a
+  10-minute expiry countdown and a 2-minute resend timer.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

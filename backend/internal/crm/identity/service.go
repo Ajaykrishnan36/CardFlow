@@ -411,44 +411,35 @@ func (s *Service) ConfirmMFA(ctx context.Context, sess *Session, code string, me
 
 // ---- Passwords ----
 
-func (s *Service) ForgotPassword(ctx context.Context, identifierRaw string, meta RequestMeta) error {
+func (s *Service) ForgotPassword(ctx context.Context, identifierRaw string, meta RequestMeta) (string, error) {
 	ipKey := "reset-ip:" + meta.IP
 	if blocked, wait := s.resetIPLimiter.blocked(ipKey); blocked {
-		return shared.TooManyAttempts(int(wait.Seconds()) + 1)
+		return "", shared.TooManyAttempts(int(wait.Seconds()) + 1)
 	}
 	s.resetIPLimiter.hit(ipKey)
 
 	id, ok := normalizeIdentifier(identifierRaw, "")
 	if !ok {
-		return shared.Validation(map[string]string{"identifier": "Enter a valid email or phone number."})
+		return "", shared.Validation(map[string]string{"identifier": "Enter a valid email or phone number."})
 	}
 	identKey := "reset:" + id.kind + ":" + id.value
-	if blocked, _ := s.resetIdentLimiter.blocked(identKey); blocked {
-		return nil // stay generic; the user already has recent links
+	if blocked, wait := s.resetIdentLimiter.blocked(identKey); blocked {
+		return "", shared.TooManyAttempts(int(wait.Seconds()) + 1)
 	}
 	s.resetIdentLimiter.hit(identKey)
 
-	var identityID uuid.UUID
-	var name string
-	err := s.store.Pool.QueryRow(ctx, `
-		SELECT i.id, i.display_name FROM crm.verified_identifiers vi
-		JOIN crm.identities i ON i.id = vi.identity_id
-		WHERE vi.kind = $1 AND vi.namespace = 'global' AND vi.value_normalized = $2
-		  AND vi.verified_at IS NOT NULL AND i.status = 'active'`, id.kind, id.value).Scan(&identityID, &name)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
-	}
+	identityID, name, err := s.accountFor(ctx, id.kind, id.value)
 	if err != nil {
-		return err
+		return "", err
 	}
 	email := s.primaryEmail(ctx, identityID)
 	if email == "" {
-		return nil // SMS reset arrives with the SMS provider (M4)
+		return "", shared.Validation(map[string]string{"identifier": "This account has no email address yet. Ask your administrator to add one."})
 	}
 
 	token, err := shared.RandomToken(32)
 	if err != nil {
-		return err
+		return "", err
 	}
 	err = s.store.WithTx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `UPDATE crm.password_resets SET used_at = now() WHERE identity_id = $1 AND used_at IS NULL`, identityID); err != nil {
@@ -464,7 +455,7 @@ func (s *Service) ForgotPassword(ctx context.Context, identifierRaw string, meta
 		})
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	link := s.cfg.BaseURL + "/crm/reset-password?token=" + token
@@ -482,7 +473,7 @@ func (s *Service) ForgotPassword(ctx context.Context, identifierRaw string, meta
 			slog.Warn("crm: password reset email not sent", "error", err)
 		}
 	}()
-	return nil
+	return email, nil
 }
 
 func (s *Service) ResetPassword(ctx context.Context, token, newPassword string, meta RequestMeta) error {
@@ -706,4 +697,36 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 		Next:                  nextPath(row.isOwner, mfaRequired, enrollRequired, row.mustChange),
 	}
 	return &out, nil
+}
+
+// errAccountNotFound tells the person plainly that no account uses this address (owner's
+// choice over enumeration-safe silence; the IP and per-address rate limits still apply).
+func errAccountNotFound(kind string) error {
+	what := "email"
+	if kind == "phone" {
+		what = "phone number"
+	}
+	return &shared.Error{Status: 422, Code: "account_not_found", Message: "No account found for this " + what + ".",
+		FieldErrors: map[string]string{"identifier": "No account found for this " + what + ". Check it or ask your administrator for an invitation."}}
+}
+
+// accountFor finds an active account by a verified identifier, with clear errors.
+func (s *Service) accountFor(ctx context.Context, kind, value string) (uuid.UUID, string, error) {
+	var identityID uuid.UUID
+	var name, status string
+	err := s.store.Pool.QueryRow(ctx, `
+		SELECT i.id, i.display_name, i.status FROM crm.verified_identifiers vi
+		JOIN crm.identities i ON i.id = vi.identity_id
+		WHERE vi.kind = $1 AND vi.namespace = 'global' AND vi.value_normalized = $2
+		  AND vi.verified_at IS NOT NULL AND i.status <> 'deleted'`, kind, value).Scan(&identityID, &name, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, "", errAccountNotFound(kind)
+	}
+	if err != nil {
+		return uuid.Nil, "", err
+	}
+	if status != "active" {
+		return uuid.Nil, "", shared.Forbidden("account_suspended", "This account is suspended. Contact your administrator.")
+	}
+	return identityID, name, nil
 }

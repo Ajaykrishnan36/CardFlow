@@ -271,12 +271,14 @@ func (s *Service) handleForgot(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	if err := s.ForgotPassword(r.Context(), in.Identifier, Meta(r)); err != nil {
+	email, err := s.ForgotPassword(r.Context(), in.Identifier, Meta(r))
+	if err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]string{
-		"message": "If an account exists for that email, a reset link is on its way. It expires in 30 minutes.",
+		"message": "We emailed a reset link to " + email + ". It expires in 30 minutes — check spam if you don't see it.",
+		"email":   email,
 	})
 }
 

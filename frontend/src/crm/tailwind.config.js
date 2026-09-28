@@ -59,13 +59,17 @@ module.exports = {
         'slide-up': { from: { opacity: '0', transform: 'translateY(6px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         'slide-in-left': { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(0)' } },
         shimmer: { '100%': { transform: 'translateX(100%)' } },
-        float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } }
+        float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } },
+        shake: { '10%,90%': { transform: 'translateX(-1px)' }, '20%,80%': { transform: 'translateX(2px)' }, '30%,50%,70%': { transform: 'translateX(-4px)' }, '40%,60%': { transform: 'translateX(4px)' } },
+        'pop-in': { from: { opacity: '0', transform: 'scale(.96) translateY(6px)' }, to: { opacity: '1', transform: 'none' } }
       },
       animation: {
         'fade-in': 'fade-in 180ms ease-out',
         'slide-up': 'slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)',
         'slide-in-left': 'slide-in-left 220ms cubic-bezier(0.16, 1, 0.3, 1)',
-        float: 'float 6s ease-in-out infinite'
+        float: 'float 6s ease-in-out infinite',
+        shake: 'shake 420ms cubic-bezier(.36,.07,.19,.97) both',
+        'pop-in': 'pop-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both'
       }
     }
   },

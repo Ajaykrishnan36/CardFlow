@@ -16,6 +16,7 @@ import { useAfterAuth, useMe, useSignOut } from '@crm/auth/session';
 import { AuthHeading, AuthLayout } from './auth-layout';
 import { useDocumentTitle } from './login-pages';
 import { useFormError } from './use-form-error';
+import { useShake } from './use-shake';
 
 function BackToSignIn() {
   const { t } = useTranslation();
@@ -35,6 +36,7 @@ export function ForgotPasswordPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('auth.forgot.title'));
   const [sent, setSent] = useState<string | null>(null);
+  const [shakeRef, shake] = useShake();
   const schema = useMemo(() => z.object({ identifier: z.string().trim().min(1, t('common.required')) }), [t]);
   const {
     register,
@@ -49,8 +51,10 @@ export function ForgotPasswordPage() {
     try {
       const res = await authApi.forgotPassword(identifier.trim());
       setSent(res.message);
+      toast.success(t('auth.forgot.sentToast'));
     } catch (e) {
       handle(e);
+      shake();
     }
   });
 
@@ -84,18 +88,20 @@ export function ForgotPasswordPage() {
       />
       <form onSubmit={onSubmit} noValidate className="space-y-5">
         {alert ? <Alert tone="danger">{alert.message}</Alert> : null}
-        <Field label={t('auth.forgot.identifier')} error={errors.identifier?.message}>
-          <Input
-            {...register('identifier')}
-            inputSize="lg"
-            type="email"
-            autoComplete="username"
-            autoCapitalize="none"
-            autoFocus
-            placeholder={t('auth.login.identifierPlaceholder')}
-            leading={<AtSign />}
-          />
-        </Field>
+        <div ref={shakeRef}>
+          <Field label={t('auth.forgot.identifier')} error={errors.identifier?.message}>
+            <Input
+              {...register('identifier')}
+              inputSize="lg"
+              type="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              autoFocus
+              placeholder={t('auth.login.identifierPlaceholder')}
+              leading={<AtSign />}
+            />
+          </Field>
+        </div>
         <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
           {isSubmitting ? t('auth.forgot.submitting') : t('auth.forgot.submit')}
         </Button>
