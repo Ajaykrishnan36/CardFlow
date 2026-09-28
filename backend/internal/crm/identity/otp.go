@@ -90,7 +90,7 @@ func (s *Service) RequestOTP(ctx context.Context, in OTPRequestInput, meta Reque
 		loginPath = "/crm/owner/login"
 	}
 	magic := s.cfg.BaseURL + loginPath + "?" + url.Values{"method": {"code"}, "email": {email}, "code": {code}}.Encode()
-	s.sendAsync(mail.Message{
+	if err := s.sendNow(ctx, mail.Message{
 		To:      email,
 		Subject: code + " is your " + s.cfg.AppName + " sign-in code",
 		Heading: "Your sign-in code",
@@ -98,7 +98,9 @@ func (s *Service) RequestOTP(ctx context.Context, in OTPRequestInput, meta Reque
 		Code:    code,
 		Button:  &mail.Button{Label: "Sign in to " + s.cfg.AppName, URL: magic},
 		Footer:  "The code expires in 10 minutes and works once. If you didn't try to sign in, you can ignore this email — someone may have typed your address by mistake.",
-	})
+	}); err != nil {
+		return nil, err
+	}
 	if s.cfg.IsLocalOrDev() && s.mailer.Mode() == "console" {
 		res.DevCode = code
 	}

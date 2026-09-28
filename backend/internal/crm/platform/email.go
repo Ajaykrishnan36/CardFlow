@@ -15,9 +15,16 @@ import (
 // without inviting anyone).
 
 func (h *Handler) handleEmailStatus(w http.ResponseWriter, r *http.Request) {
-	shared.WriteJSON(w, http.StatusOK, map[string]any{
-		"mode": h.mailer.Mode(), "from": h.mailer.From(), "host": h.cfg.SMTPHost, "port": h.cfg.SMTPPort,
-	})
+	out := map[string]any{"mode": h.mailer.Mode(), "from": h.mailer.From(), "host": h.cfg.SMTPHost, "port": h.cfg.SMTPPort}
+	if h.mailer.Mode() == "smtp" {
+		if err := mail.CheckSMTP(h.cfg); err != nil {
+			out["reachable"] = false
+			out["problem"] = "Can't reach " + h.cfg.SMTPHost + " (" + err.Error() + "). If this runs on Render's free plan, SMTP ports are blocked: set CRM_BREVO_API_KEY."
+		} else {
+			out["reachable"] = true
+		}
+	}
+	shared.WriteJSON(w, http.StatusOK, out)
 }
 
 func (h *Handler) handleEmailTest(w http.ResponseWriter, r *http.Request) {
@@ -41,10 +48,10 @@ func (h *Handler) handleEmailTest(w http.ResponseWriter, r *http.Request) {
 		Heading: "Email is working",
 		Lines:   []string{"This is a test from " + h.cfg.AppName + ". Invitations, password resets, sign-in codes and security alerts will arrive like this."},
 		Button:  &mail.Button{Label: "Open " + h.cfg.AppName, URL: h.cfg.BaseURL + "/crm/owner/dashboard"},
-		Footer:  "Sent with " + h.mailer.From() + " via " + h.cfg.SMTPHost + ".",
+		Footer:  "Sent with " + h.mailer.From() + " via " + h.mailer.Mode() + ".",
 	})
 	if err != nil {
-		// SMTP errors don't contain secrets; show them so the owner can fix the setup.
+		// Provider errors don't contain secrets; show them so the owner can fix the setup.
 		shared.WriteError(w, r, shared.NewError(http.StatusBadGateway, "email_failed", "Couldn't send: "+err.Error()))
 		return
 	}

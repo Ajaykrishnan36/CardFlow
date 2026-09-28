@@ -60,6 +60,15 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	}
 
 	mailer := mail.New(cfg)
+	slog.Info("CRM email", "mode", mailer.Mode(), "from", mailer.From())
+	if mailer.Mode() == "smtp" {
+		go func() {
+			if err := mail.CheckSMTP(cfg); err != nil {
+				slog.Error("CRM email: can't reach the SMTP server, so emails won't arrive. Render's free plan blocks SMTP ports; set CRM_BREVO_API_KEY to send over HTTPS instead",
+					"host", cfg.SMTPHost, "port", cfg.SMTPPort, "error", err)
+			}
+		}()
+	}
 	m.identity = identity.NewService(st, cfg, mailer)
 	m.platform = platform.NewHandler(st, cfg, mailer, m.identity)
 	m.records = records.NewHandler(st, cfg, m.platform)

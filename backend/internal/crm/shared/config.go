@@ -23,6 +23,8 @@ type Config struct {
 	SMTPUser string
 	SMTPPass string
 	SMTPFrom string
+	// BrevoAPIKey sends email over HTTPS instead of SMTP (for hosts that block SMTP ports).
+	BrevoAPIKey string
 
 	OwnerEmail             string
 	OwnerBootstrapPassword string
@@ -95,6 +97,7 @@ func LoadConfig(cardflowEnv string) (cfg Config, problems []string) {
 	cfg.SMTPPort, _ = strconv.Atoi(firstNonEmpty(os.Getenv("CRM_SMTP_PORT"), "587"))
 	cfg.SMTPUser = os.Getenv("CRM_SMTP_USER")
 	cfg.SMTPPass = os.Getenv("CRM_SMTP_PASS")
+	cfg.BrevoAPIKey = strings.TrimSpace(os.Getenv("CRM_BREVO_API_KEY"))
 	cfg.SMTPFrom = firstNonEmpty(os.Getenv("CRM_SMTP_FROM"), cfg.AppName+" <no-reply@localhost>")
 
 	cfg.OwnerEmail = strings.ToLower(strings.TrimSpace(os.Getenv("CRM_OWNER_EMAIL")))

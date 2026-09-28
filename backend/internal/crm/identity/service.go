@@ -459,20 +459,16 @@ func (s *Service) ForgotPassword(ctx context.Context, identifierRaw string, meta
 	}
 
 	link := s.cfg.BaseURL + "/crm/reset-password?token=" + token
-	go func() {
-		sendCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if err := s.mailer.Send(sendCtx, mail.Message{
-			To:      email,
-			Subject: "Reset your " + s.cfg.AppName + " password",
-			Heading: "Reset your password",
-			Lines:   []string{"Hi " + name + ", we got a request to reset the password for your " + s.cfg.AppName + " account."},
-			Button:  &mail.Button{Label: "Choose a new password", URL: link},
-			Footer:  "This link works once and expires in 30 minutes. If you didn't ask for it, ignore this email — your password stays the same.",
-		}); err != nil {
-			slog.Warn("crm: password reset email not sent", "error", err)
-		}
-	}()
+	if err := s.sendNow(ctx, mail.Message{
+		To:      email,
+		Subject: "Reset your " + s.cfg.AppName + " password",
+		Heading: "Reset your password",
+		Lines:   []string{"Hi " + name + ", we got a request to reset the password for your " + s.cfg.AppName + " account."},
+		Button:  &mail.Button{Label: "Choose a new password", URL: link},
+		Footer:  "This link works once and expires in 30 minutes. If you didn't ask for it, ignore this email — your password stays the same.",
+	}); err != nil {
+		return "", err
+	}
 	return email, nil
 }
 

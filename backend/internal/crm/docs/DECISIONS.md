@@ -181,6 +181,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   "if an account exists" reply. This trades account-enumeration resistance for clarity; the per-IP and per-address rate
   limits stay. The UI shows the error under the field with a shake and a toast, a success toast naming the address, a
   10-minute expiry countdown and a 2-minute resend timer.
+- **D-43 Email over HTTPS (Brevo).** Render's free plan blocks outbound SMTP (25/465/587), so Gmail SMTP times out
+  there. `CRM_BREVO_API_KEY` switches the mailer to Brevo's HTTPS API (sender = `CRM_SMTP_FROM`, verified in Brevo);
+  otherwise SMTP, otherwise the console. Startup logs an error when the SMTP server can't be reached, and
+  `GET /platform/email` reports `reachable`. Sign-in codes and password resets are sent before responding, so a
+  failed send returns 502 `email_failed` instead of a false "sent".
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

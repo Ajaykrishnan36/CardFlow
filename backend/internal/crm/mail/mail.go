@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"mime"
 	"mime/quotedprintable"
+	"net"
 	netmail "net/mail"
 	"net/smtp"
 	"strings"
@@ -44,9 +45,13 @@ type Mailer interface {
 	From() string
 }
 
-// New returns the SMTP mailer when CRM_SMTP_HOST is set, otherwise the console
-// mailer, which logs the whole message so reset links are usable in local dev (D-16).
+// New picks the Brevo HTTPS mailer when CRM_BREVO_API_KEY is set, else the SMTP mailer
+// when CRM_SMTP_HOST is set, else the console mailer, which logs the whole message so
+// reset links are usable in local dev (D-16).
 func New(cfg shared.Config) Mailer {
+	if cfg.BrevoAPIKey != "" {
+		return newBrevo(cfg)
+	}
 	if cfg.SMTPHost == "" {
 		return consoleMailer{from: cfg.SMTPFrom}
 	}
@@ -67,7 +72,17 @@ func (consoleMailer) Send(_ context.Context, m Message) error {
 
 type smtpMailer struct{ cfg shared.Config }
 
-func (smtpMailer) Mode() string   { return "smtp" }
+func (smtpMailer) Mode() string { return "smtp" }
+
+// CheckSMTP dials the SMTP server once so a blocked port shows up in the logs at startup
+// instead of as silently missing emails.
+func CheckSMTP(cfg shared.Config) error {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort), 8*time.Second)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
 func (s smtpMailer) From() string { return s.cfg.SMTPFrom }
 
 func (s smtpMailer) Send(ctx context.Context, m Message) error {

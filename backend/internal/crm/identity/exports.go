@@ -2,8 +2,9 @@ package identity
 
 import (
 	"context"
-	"strings"
 	"log/slog"
+	"net/http"
+	"strings"
 	"time"
 
 	"cardflow-backend/internal/crm/mail"
@@ -62,25 +63,29 @@ func (s *Service) IssuePasswordReset(ctx context.Context, identityID, actorID uu
 		return "", err
 	}
 	link := s.cfg.BaseURL + "/crm/reset-password?token=" + token
-	s.sendAsync(mail.Message{
+	if err := s.sendNow(ctx, mail.Message{
 		To:      email,
 		Subject: "Set a new " + s.cfg.AppName + " password",
 		Heading: "Set a new password",
 		Lines:   []string{"Hi " + name + ", your administrator sent you a link to set a new password for " + s.cfg.AppName + "."},
 		Button:  &mail.Button{Label: "Set my password", URL: link},
 		Footer:  "This link works once and expires in 30 minutes.",
-	})
+	}); err != nil {
+		return "", err
+	}
 	return link, nil
 }
 
-func (s *Service) sendAsync(m mail.Message) {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		if err := s.mailer.Send(ctx, m); err != nil {
-			slog.Warn("crm: email not sent", "subject", m.Subject, "error", err)
-		}
-	}()
+// sendNow sends while the request waits, so the person is told when an email couldn't go
+// out instead of waiting for a code that never arrives. The provider error is logged.
+func (s *Service) sendNow(ctx context.Context, m mail.Message) error {
+	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+	defer cancel()
+	if err := s.mailer.Send(sendCtx, m); err != nil {
+		slog.Error("crm: email not sent", "mode", s.mailer.Mode(), "subject", m.Subject, "error", err)
+		return shared.NewError(http.StatusBadGateway, "email_failed", "We couldn't send the email right now. Try again in a minute, or sign in with your password.")
+	}
+	return nil
 }
 
 // ValidateNewPassword returns a user-facing problem with a new password, or "".
