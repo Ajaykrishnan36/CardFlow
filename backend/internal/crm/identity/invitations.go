@@ -213,7 +213,8 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO crm.membership_permission_sets (workspace_id, membership_id, permission_set_id, granted_by)
 			SELECT $1, $2, ps.id, $4 FROM crm.permission_sets ps
-			WHERE ps.workspace_id = $1 AND ps.id = ANY((SELECT permission_set_ids FROM crm.invitations WHERE id = $3))
+			JOIN crm.invitations inv ON inv.id = $3 AND ps.id = ANY(inv.permission_set_ids)
+			WHERE ps.workspace_id = $1
 			ON CONFLICT DO NOTHING`, inv.workspaceID, inv.membershipID, inv.id, grantedBy); err != nil {
 			return err
 		}
