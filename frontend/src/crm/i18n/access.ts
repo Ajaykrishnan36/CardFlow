@@ -1,5 +1,28 @@
 // 'access' i18n namespace (merged into the crm bundle as access.*).
 const strings = {
+  hierarchy: {
+    title: 'Role hierarchy',
+    description: 'Who sees whose records. A manager sees their own records plus everyone’s below them. What people can do comes from their permission sets.',
+    fullAccess: 'Full access',
+    seesBelow_one: 'Sees their own records and those of {{count}} role below.',
+    seesBelow_other: 'Sees their own records and those of {{count}} roles below.',
+    seesOwn: 'Sees their own records.',
+    addBelow: 'Add role below',
+    edit: 'Edit or move',
+    move: 'Move in the hierarchy',
+    newTitle: 'New role',
+    editTitle: 'Edit {{name}}',
+    dialogBody: 'Place the role in the hierarchy. Permissions are given with permission sets.',
+    namePlaceholder: 'e.g. Sales manager',
+    reportsTo: 'Reports to',
+    reportsToHint: 'People in the role above see the records of people in this role.',
+    create: 'Create role',
+    created: '{{name}} added to the hierarchy',
+    saved: '{{name}} saved',
+    deleted: '{{name}} deleted — roles below it now report to the role above',
+    deleteTitle: 'Delete {{name}}?',
+    deleteBody: 'Roles below it move up one level. People must be moved to another role first.'
+  },
   fields: {
     title: 'Field access',
     hint: 'Choose which values people see and edit — in pages and in API responses.',
@@ -79,7 +102,7 @@ const strings = {
   panel: {
     title: 'Roles & permission sets',
     explainer:
-      'Role = baseline (one per user). Permission sets = extra grants. “Manage roles & permission sets” / “Manage users” let someone administer this workspace within their own access.'
+      'Roles form a hierarchy: people see their own records plus those of everyone in roles below theirs. Permission sets decide what they can do — objects, actions and field access. “Manage roles & permission sets” / “Manage users” let someone administer this workspace within their own access.'
   },
   matrix: {
     object: 'Object',

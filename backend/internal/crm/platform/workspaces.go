@@ -296,6 +296,10 @@ func ProvisionTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in ProvisionIn
 			return uuid.Nil, err
 		}
 	}
+	// Roles form a hierarchy; permissions come from the default permission sets (D-48).
+	if err := EnsureRoleTree(ctx, tx, wsID); err != nil {
+		return uuid.Nil, err
+	}
 	seen := map[uuid.UUID]bool{}
 	for _, pid := range in.ProductIDs {
 		if seen[pid] {

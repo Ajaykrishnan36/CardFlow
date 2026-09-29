@@ -44,14 +44,17 @@ func checkWithin(r access.Rules, limit *access.Effective) error {
 // ---- roles ----
 
 type WorkspaceRole struct {
-	ID            uuid.UUID    `json:"id"`
-	WorkspaceID   uuid.UUID    `json:"workspaceId"`
-	Key           string       `json:"key"`
-	Name          string       `json:"name"`
-	Description   string       `json:"description,omitempty"`
-	IsSystem      bool         `json:"isSystem"`
-	Customized    bool         `json:"customized"`
-	Rank          int          `json:"rank"`
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspaceId"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	IsSystem    bool      `json:"isSystem"`
+	Customized  bool      `json:"customized"`
+	Rank        int       `json:"rank"`
+	// ParentRoleID is the role this one reports to (D-48); nil only for Super Admin.
+	ParentRoleID *uuid.UUID `json:"parentRoleId,omitempty"`
+	// Rules: roles grant nothing but Super Admin's full access — permission sets do.
 	Rules         access.Rules `json:"rules"`
 	AssignedCount int          `json:"assignedCount"`
 	CreatedAt     time.Time    `json:"createdAt"`
@@ -60,7 +63,7 @@ type WorkspaceRole struct {
 
 const roleSelect = `
 	SELECT r.id, r.workspace_id, r.key, r.name, COALESCE(r.description, ''), r.is_system, r.customized, r.rank, r.base_rules,
-	       r.created_at, r.updated_at,
+	       r.created_at, r.updated_at, r.parent_role_id,
 	       (SELECT count(*) FROM crm.role_assignments ra JOIN crm.memberships m ON m.id = ra.membership_id
 	         WHERE ra.role_id = r.id AND m.status <> 'revoked')
 	FROM crm.roles r`
@@ -69,22 +72,23 @@ func scanRole(row pgx.Row) (WorkspaceRole, error) {
 	var ro WorkspaceRole
 	var raw []byte
 	err := row.Scan(&ro.ID, &ro.WorkspaceID, &ro.Key, &ro.Name, &ro.Description, &ro.IsSystem, &ro.Customized, &ro.Rank, &raw,
-		&ro.CreatedAt, &ro.UpdatedAt, &ro.AssignedCount)
+		&ro.CreatedAt, &ro.UpdatedAt, &ro.ParentRoleID, &ro.AssignedCount)
 	if err != nil {
 		return ro, err
 	}
-	if sr, ok := access.FindSystemRole(ro.Key); ok && ro.IsSystem {
-		if !ro.Customized {
-			ro.Rules = sr.Rules
-		}
-		if ro.Description == "" {
-			ro.Description = sr.Description
-		}
+	ro.Rules = access.Normalize(access.Rules{})
+	ro.Customized = false
+	if ro.Key == "SUPER_ADMIN" {
+		sr, _ := access.FindSystemRole(ro.Key)
+		ro.Rules = sr.Rules
 	}
-	if !ro.IsSystem || ro.Customized {
-		var rules access.Rules
-		_ = json.Unmarshal(raw, &rules)
-		ro.Rules = access.Normalize(rules)
+	if ro.IsSystem && ro.Description == "" {
+		ro.Description = map[string]string{
+			"SUPER_ADMIN": "Top of the hierarchy: full access to every record, setting, user and role.",
+			"ADMIN":       "Sees the records of everyone below them.",
+			"STAFF":       "Sees their own records and those of anyone below them.",
+			"END_USER":    "Customers and app users; sees only their own records.",
+		}[ro.Key]
 	}
 	return ro, nil
 }
@@ -107,9 +111,35 @@ func (h *Handler) listRoles(ctx context.Context, ws uuid.UUID) ([]WorkspaceRole,
 }
 
 type roleInput struct {
-	Name        *string       `json:"name"`
-	Description *string       `json:"description"`
-	Rules       *access.Rules `json:"rules"`
+	Name         *string       `json:"name"`
+	Description  *string       `json:"description"`
+	ParentRoleID *uuid.UUID    `json:"parentRoleId"`
+	Rules        *access.Rules `json:"rules"` // ignored: roles no longer grant permissions (D-48)
+}
+
+// checkParent validates that parent can sit above role (same workspace, no loop).
+func checkParent(ctx context.Context, tx pgx.Tx, ws, role, parent uuid.UUID) error {
+	var ok bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.roles WHERE id = $1 AND workspace_id = $2)`, parent, ws).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
+		return shared.Validation(map[string]string{"parentRoleId": "Pick a role from this workspace."})
+	}
+	if role == uuid.Nil {
+		return nil
+	}
+	var loop bool
+	if err := tx.QueryRow(ctx, `
+		WITH RECURSIVE up AS (SELECT id, parent_role_id FROM crm.roles WHERE id = $1
+		                      UNION SELECT r.id, r.parent_role_id FROM crm.roles r JOIN up ON r.id = up.parent_role_id)
+		SELECT EXISTS (SELECT 1 FROM up WHERE id = $2)`, parent, role).Scan(&loop); err != nil {
+		return err
+	}
+	if loop {
+		return shared.Validation(map[string]string{"parentRoleId": "A role can't report to itself or to a role below it."})
+	}
+	return nil
 }
 
 func roleKeyFor(name string) string {
@@ -153,17 +183,19 @@ func (h *Handler) createRole(ctx context.Context, r *http.Request, ws uuid.UUID,
 	if len(fe) > 0 {
 		return nil, shared.Validation(fe)
 	}
-	rules := access.Rules{}
-	if in.Rules != nil {
-		rules = *in.Rules
-	}
-	rules = access.Normalize(rules)
-	if err := checkWithin(rules, limit); err != nil {
-		return nil, err
-	}
+	rules := access.Normalize(access.Rules{})
 	raw, _ := json.Marshal(rules)
 	var id uuid.UUID
 	err := h.store.WithTx(ctx, func(tx pgx.Tx) error {
+		parent := uuid.Nil
+		if in.ParentRoleID != nil {
+			parent = *in.ParentRoleID
+		} else if err := tx.QueryRow(ctx, `SELECT id FROM crm.roles WHERE workspace_id = $1 AND key = 'SUPER_ADMIN'`, ws).Scan(&parent); err != nil {
+			return err
+		}
+		if err := checkParent(ctx, tx, ws, uuid.Nil, parent); err != nil {
+			return err
+		}
 		var dup bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.roles WHERE workspace_id = $1 AND lower(name) = lower($2))`, ws, name).Scan(&dup); err != nil {
 			return err
@@ -185,12 +217,12 @@ func (h *Handler) createRole(ctx context.Context, r *http.Request, ws uuid.UUID,
 			key = base + "_" + strconv.Itoa(i)
 		}
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO crm.roles (workspace_id, key, name, description, is_system, rank, base_rules, created_by)
-			VALUES ($1, $2, $3, NULLIF($4, ''), false, $5, $6, $7) RETURNING id`,
-			ws, key, name, desc, access.RankFor(rules), raw, actorID(r)).Scan(&id); err != nil {
+			INSERT INTO crm.roles (workspace_id, key, name, description, is_system, rank, base_rules, created_by, parent_role_id)
+			VALUES ($1, $2, $3, NULLIF($4, ''), false, $5, $6, $7, $8) RETURNING id`,
+			ws, key, name, desc, access.RankFor(rules), raw, actorID(r), parent).Scan(&id); err != nil {
 			return err
 		}
-		return shared.WriteAudit(ctx, tx, auditEvent(r, "role.created", "role", &id, &ws, nil, map[string]any{"key": key, "name": name, "rules": rules}))
+		return shared.WriteAudit(ctx, tx, auditEvent(r, "role.created", "role", &id, &ws, nil, map[string]any{"key": key, "name": name, "parentRoleId": parent}))
 	})
 	if err != nil {
 		return nil, err
@@ -209,9 +241,18 @@ func (h *Handler) updateRole(ctx context.Context, r *http.Request, id, ws uuid.U
 		if err != nil {
 			return err
 		}
-		if cur.Key == "SUPER_ADMIN" && in.Rules != nil {
-			return shared.Forbidden("super_admin_locked", "Super Admin always has full access to the workspace, so its permissions can't be changed. Create a custom role for narrower access.")
+		if in.ParentRoleID != nil {
+			if cur.Key == "SUPER_ADMIN" {
+				return shared.Validation(map[string]string{"parentRoleId": "Super Admin is always at the top of the hierarchy."})
+			}
+			if err := checkParent(ctx, tx, cur.WorkspaceID, id, *in.ParentRoleID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE crm.roles SET parent_role_id = $2, updated_at = now() WHERE id = $1`, id, *in.ParentRoleID); err != nil {
+				return err
+			}
 		}
+		in.Rules = nil // roles don't carry permissions any more (D-48)
 		name, desc, rules := cur.Name, cur.Description, cur.Rules
 		fe := map[string]string{}
 		if in.Name != nil && strings.TrimSpace(*in.Name) != cur.Name {
@@ -301,6 +342,10 @@ func (h *Handler) deleteRole(ctx context.Context, r *http.Request, id, ws uuid.U
 		}
 		if used > 0 || invited > 0 {
 			return shared.NewError(http.StatusConflict, "role_in_use", "People still have this role. Give them another role first.")
+		}
+		// People below this role now report to the role above it.
+		if _, err := tx.Exec(ctx, `UPDATE crm.roles SET parent_role_id = $2 WHERE parent_role_id = $1`, id, cur.ParentRoleID); err != nil {
+			return err
 		}
 		// Old, closed invitations reference the role; drop them with it.
 		if _, err := tx.Exec(ctx, `DELETE FROM crm.invitations WHERE intended_role_id = $1`, id); err != nil {

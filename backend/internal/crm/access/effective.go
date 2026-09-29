@@ -204,15 +204,13 @@ func ForMembership(ctx context.Context, q Querier, membershipID uuid.UUID) (*Eff
 			rows.Close()
 			return nil, err
 		}
-		rules := Rules{}
-		// Untouched built-in roles follow the code defaults; edited and custom roles use their stored rules.
-		// Super Admin is the workspace's owner role: it always has everything (D-45), whatever was stored.
-		if sr, ok := FindSystemRole(key); ok && (system || key == "SUPER_ADMIN") {
-			rules = sr.Rules
-		} else {
-			_ = json.Unmarshal(raw, &rules)
+		// Roles are positions in the hierarchy (D-48): they share records downwards but grant
+		// nothing — permission sets do. Super Admin, the workspace's owner, always has everything.
+		if key == "SUPER_ADMIN" {
+			sr, _ := FindSystemRole(key)
+			sources = append(sources, grantSource{label: "Role: " + name, rules: sr.Rules})
 		}
-		sources = append(sources, grantSource{label: "Role: " + name, rules: rules})
+		_, _ = system, raw
 		for _, p := range pids {
 			productIDs[p] = true
 		}
@@ -329,4 +327,35 @@ func FullAccessIn(ctx context.Context, q Querier, wsID uuid.UUID) (*Effective, e
 	e := Combine([]grantSource{{label: "Platform owner", rules: sa.Rules}}, modules, products)
 	e.WorkspaceID, e.RoleKey, e.RoleName = wsID, "SUPER_ADMIN", "Platform owner"
 	return e, nil
+}
+
+// IdentitiesBelow lists the people whose records a member sees through the role
+// hierarchy (D-48): active members of the same workspace in any role below theirs.
+func IdentitiesBelow(ctx context.Context, q Querier, membershipID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.Query(ctx, `
+		WITH RECURSIVE mine AS (
+			SELECT ra.role_id, m.workspace_id FROM crm.role_assignments ra JOIN crm.memberships m ON m.id = ra.membership_id
+			WHERE ra.membership_id = $1 AND (ra.expires_at IS NULL OR ra.expires_at > now())
+		), below AS (
+			SELECT r.id FROM crm.roles r JOIN mine ON r.parent_role_id = mine.role_id
+			UNION
+			SELECT r.id FROM crm.roles r JOIN below b ON r.parent_role_id = b.id
+		)
+		SELECT DISTINCT m.identity_id FROM crm.memberships m
+		JOIN crm.role_assignments ra ON ra.membership_id = m.id
+		WHERE m.workspace_id = (SELECT workspace_id FROM mine LIMIT 1) AND m.status = 'active' AND m.id <> $1
+		  AND ra.role_id IN (SELECT id FROM below)`, membershipID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }

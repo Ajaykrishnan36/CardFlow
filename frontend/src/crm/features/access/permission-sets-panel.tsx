@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Ellipsis, Info, Layers, Pencil, Plus, Trash2 } from 'lucide-react';
 import { accessApi } from '@crm/api/endpoints';
+import { RoleHierarchy } from './role-hierarchy';
 import { isApiError } from '@crm/api/client';
 import type { PermissionSet } from '@crm/api/types';
 import { Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -15,8 +16,7 @@ import { ConfirmDialog } from '@crm/components/page';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { cn } from '@crm/lib/utils';
 import { PermissionSetDialog } from './permission-set-dialog';
-import { RolesCard } from './roles-card';
-import { summarizeRules, useAccessCatalog, useAccessWorkspaces, useInvalidateAccess, usePermissionSets, workspaceLabel } from './use-access';
+import { summarizeRules, useAccessCatalog, useAccessWorkspaces, useInvalidateAccess, usePermissionSets, useWorkspaceRoles, workspaceLabel } from './use-access';
 
 export interface PermissionSetsPanelProps {
   /** Fixed workspace (workspace detail page): no picker. */
@@ -31,6 +31,27 @@ export interface PermissionSetsPanelProps {
 type DialogState = { mode: 'create' } | { mode: 'edit'; set: PermissionSet } | null;
 
 /** "Roles & permission sets" for one workspace: its roles first, then its permission sets. */
+function OwnerRoleHierarchy({ workspaceId, workspaceName }: { workspaceId: string; workspaceName?: string }) {
+  const roles = useWorkspaceRoles(workspaceId);
+  const invalidate = useInvalidateAccess();
+  return (
+    <RoleHierarchy
+      roles={roles.data}
+      loading={roles.isPending}
+      error={roles.error}
+      onRetry={() => void roles.refetch()}
+      canEdit
+      context={workspaceName}
+      onChanged={invalidate}
+      api={{
+        create: (b) => accessApi.createRole(workspaceId, b),
+        update: (id, b) => accessApi.updateRole(id, b),
+        remove: (id) => accessApi.deleteRole(id)
+      }}
+    />
+  );
+}
+
 export function PermissionSetsPanel({ lockedWorkspaceId, selectedWorkspaceId, onSelectWorkspace, showRoles = true }: PermissionSetsPanelProps) {
   const { t } = useTranslation();
   const workspaces = useAccessWorkspaces();
@@ -173,7 +194,7 @@ export function PermissionSetsPanel({ lockedWorkspaceId, selectedWorkspaceId, on
         {picker}
       </div>
 
-      {showRoles ? <RolesCard workspaceId={wsId} workspaceName={wsName} /> : null}
+      {showRoles && wsId ? <OwnerRoleHierarchy workspaceId={wsId} workspaceName={wsName} /> : null}
 
       <Card className="min-w-0">
         <CardHeader title={t('access.sets.title')} description={t('access.sets.description')} actions={sets.data && sets.data.length > 0 ? newButton : null} />

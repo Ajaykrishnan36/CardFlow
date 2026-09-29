@@ -12,7 +12,9 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { NoAccessPage } from '@crm/features/system/pages';
 import { EffectiveAccessMatrix } from '@crm/features/access/effective-access';
 import { useWorkspace } from '../workspace-context';
-import { canAdminister, useAdminOptions } from './admin-utils';
+import { canAdminister, useAdminOptions, useInvalidateAdmin } from './admin-utils';
+import { workspaceAdminApi } from '@crm/api/endpoints';
+import { RoleHierarchy } from '@crm/features/access/role-hierarchy';
 import { MembersTab } from './members-tab';
 import { RulesTab } from './rules-tabs';
 
@@ -30,6 +32,7 @@ function AccessView() {
   const { code, context } = useWorkspace();
   useDocumentTitle(t('workspaceApp.admin.title'));
   const q = useAdminOptions(code);
+  const invalidate = useInvalidateAdmin(code);
   const [sp, setSp] = useSearchParams();
   const [mineOpen, setMineOpen] = useState(false);
 
@@ -107,7 +110,18 @@ function AccessView() {
             />
           ) : null}
           {tab === 'users' ? <MembersTab code={code} options={options} /> : null}
-          {tab === 'roles' ? <RulesTab key="roles" kind="role" code={code} options={options} /> : null}
+          {tab === 'roles' ? (
+            <RoleHierarchy
+              roles={options.roles}
+              canEdit={options.canManageAccess}
+              onChanged={invalidate}
+              api={{
+                create: (b) => workspaceAdminApi(code).createRole(b),
+                update: (id, b) => workspaceAdminApi(code).updateRole(id, b),
+                remove: (id) => workspaceAdminApi(code).deleteRole(id)
+              }}
+            />
+          ) : null}
           {tab === 'sets' ? <RulesTab key="sets" kind="set" code={code} options={options} /> : null}
         </>
       )}

@@ -79,6 +79,13 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	if err != nil {
 		return m.disable("objects failed to load: " + err.Error())
 	}
+	// Roles form a hierarchy; move what roles used to grant into permission sets (D-48, once).
+	roleCtx, cancelRoles := context.WithTimeout(context.Background(), 120*time.Second)
+	err = platform.MigrateRoles(roleCtx, st.Pool)
+	cancelRoles()
+	if err != nil {
+		return m.disable("role hierarchy migration failed: " + err.Error())
+	}
 	// Connected app: Business Card Snap (CardFlow) users, sign-ins and support tickets (D-36).
 	if os.Getenv("CRM_CARDFLOW_SYNC") != "false" {
 		m.cardflow = cardflow.New(st, cfg, m.platform)

@@ -217,6 +217,15 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   from `/platform/workspaces/{id}/fields` and `/w/{code}/access/fields`. Each product has an API tab listing the
   endpoints and fields of every object its modules switch on. Connected-app pages (app users, businesses, support)
   are no longer in the owner sidebar; they live in that app's workspace, with tiles on its dashboard.
+- **D-48 Roles are a hierarchy; permission sets grant.** Salesforce model: roles have a parent
+  (`roles.parent_role_id`) and only widen record sharing — an "own records" scope covers the member and everyone in
+  roles below theirs (`access.IdentitiesBelow`, applied to lists, records, lookups, related lists, dashboards,
+  updates, deletes and lead conversion). Roles grant no permissions, except Super Admin (top of the tree, always
+  full). Every workspace gets default permission sets "Admin access" and "Staff access" (`system_key`); inviting an
+  Admin/Staff without sets gives them the default one. Start-up migration (once, `roles-to-permission-sets-v1`)
+  moved each role's former permissions into a permission set assigned to the same members and pending invitations,
+  and placed roles in the tree (Super Admin → Admin → Staff → End user; custom roles under Super Admin or Admin).
+  Roles can't loop; deleting one moves its children up.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

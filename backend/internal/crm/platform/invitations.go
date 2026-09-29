@@ -91,6 +91,13 @@ func (h *Handler) InviteTx(ctx context.Context, tx pgx.Tx, actor, workspaceID uu
 	if err != nil {
 		return nil, err
 	}
+	// Roles grant nothing by themselves (D-48): an Admin or Staff invited without permission
+	// sets gets that role's default set, as they did when roles carried the permissions.
+	if len(setIDs) == 0 {
+		if def, ok := DefaultPermissionSetFor(ctx, tx, workspaceID, in.RoleKey); ok {
+			setIDs = []uuid.UUID{def}
+		}
+	}
 
 	// Identity: link by email identifier; otherwise create one whose email is verified on acceptance.
 	var identityID uuid.UUID

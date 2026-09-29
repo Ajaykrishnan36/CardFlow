@@ -120,13 +120,10 @@ func (h *Handler) scope(r *http.Request, need string) (*objectSpec, uuid.UUID, e
 	return spec, sc.WS, nil
 }
 
-// ownerFilter limits queries to the actor's records when their access is "own".
-func ownerFilter(r *http.Request, spec *objectSpec) *uuid.UUID {
-	if scopeFrom(r.Context()).OwnOnly(spec.Key) {
-		me := actor(r)
-		return &me
-	}
-	return nil
+// ownerFilter limits queries to the owners whose records the actor may see when their
+// access is "own": themselves and everyone in roles below theirs (D-48). nil = no limit.
+func ownerFilter(r *http.Request, spec *objectSpec) []uuid.UUID {
+	return scopeFrom(r.Context()).OwnersFor(spec.Key, actor(r))
 }
 
 func actor(r *http.Request) uuid.UUID { return identity.SessionFrom(r.Context()).IdentityID }
@@ -486,7 +483,7 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 	if p.Sort == "" {
 		p.Sort, p.Desc = "createdAt", true
 	}
-	p.Owner = ownerFilter(r, spec)
+	p.Owners = ownerFilter(r, spec)
 	resp := map[string]any{}
 	// The owner console lists every workspace by default (?workspace=all|platform|<code>).
 	if sc := scopeFrom(r.Context()); sc.OwnerConsole {
@@ -686,7 +683,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
 		tag, err := tx.Exec(r.Context(), "UPDATE crm."+spec.Table+" SET deleted_at = now(), updated_by = $3 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL"+
-			" AND ($4::uuid IS NULL OR owner_id = $4)", id, ws, actor(r), ownerFilter(r, spec))
+			" AND ($4::uuid[] IS NULL OR owner_id = ANY($4))", id, ws, actor(r), ownerFilter(r, spec))
 		if err != nil {
 			return err
 		}
@@ -743,13 +740,9 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 		for i, c := range spec.SearchSQL {
 			parts[i] = c + " ILIKE $1"
 		}
-		var own *uuid.UUID
-		if sc.OwnOnly(target) {
-			me := actor(r)
-			own = &me
-		}
+		own := sc.OwnersFor(target, actor(r))
 		sql = `SELECT t.id::text, ` + spec.TitleSQL + ` || ' · ' || t.code FROM crm.` + spec.Table + ` t
-			WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid IS NULL OR t.owner_id = $3) AND (` + strings.Join(parts, " OR ") + `)
+			WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)) AND (` + strings.Join(parts, " OR ") + `)
 			ORDER BY t.updated_at DESC LIMIT 20`
 		args = append(args, ws, own)
 	}

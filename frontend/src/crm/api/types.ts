@@ -745,6 +745,8 @@ export interface WorkspaceRole {
   /** A built-in role whose permissions were changed in this workspace. */
   customized: boolean;
   rank: number;
+  /** The role this one reports to; absent only for Super Admin. */
+  parentRoleId?: string;
   rules: AccessRules;
   assignedCount: number;
   createdAt: string;
@@ -752,9 +754,12 @@ export interface WorkspaceRole {
 }
 
 export interface RoleBody {
-  name: string;
+  name?: string;
   description?: string;
-  rules: AccessRules;
+  /** Roles form a hierarchy (D-48): the role this one reports to. */
+  parentRoleId?: string;
+  /** Ignored by the server: roles no longer grant permissions — permission sets do. */
+  rules?: AccessRules;
 }
 
 /** What a delegated admin (a member with access.manage / members.manage) may do in their workspace. */

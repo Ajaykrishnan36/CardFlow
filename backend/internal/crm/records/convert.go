@@ -137,7 +137,7 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 		_ = json.Unmarshal(customRaw, &l.custom)
 		if own := ownerFilter(r, &leadSpec); own != nil {
 			var mine bool
-			if err := tx.QueryRow(ctx, `SELECT owner_id = $2 FROM crm.leads WHERE id = $1`, leadID, *own).Scan(&mine); err != nil || !mine {
+			if err := tx.QueryRow(ctx, `SELECT COALESCE(owner_id = ANY($2::uuid[]), false) FROM crm.leads WHERE id = $1`, leadID, own).Scan(&mine); err != nil || !mine {
 				return shared.NotFound("record_not_found")
 			}
 		}

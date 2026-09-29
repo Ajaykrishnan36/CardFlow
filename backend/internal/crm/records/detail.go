@@ -180,11 +180,7 @@ func (h *Handler) conversion(ctx context.Context, ws uuid.UUID, row *Row) (*Conv
 
 func (h *Handler) detail(ctx context.Context, sc *Scope, me uuid.UUID, spec *objectSpec, id uuid.UUID) (*Detail, error) {
 	ws := sc.WS
-	var own *uuid.UUID
-	if sc.OwnOnly(spec.Key) {
-		own = &me
-	}
-	row, _, err := h.getRow(ctx, h.store.Pool, ws, spec, id, own)
+	row, _, err := h.getRow(ctx, h.store.Pool, ws, spec, id, sc.OwnersFor(spec.Key, me))
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +242,7 @@ func (h *Handler) filterRelated(ctx context.Context, sc *Scope, me uuid.UUID, li
 			for i, r := range l.Rows {
 				ids[i] = r.ID
 			}
-			rows, err := h.store.Pool.Query(ctx, `SELECT id::text FROM crm.`+spec.Table+` WHERE id = ANY($1::uuid[]) AND owner_id = $2`, ids, me)
+			rows, err := h.store.Pool.Query(ctx, `SELECT id::text FROM crm.`+spec.Table+` WHERE id = ANY($1::uuid[]) AND owner_id = ANY($2::uuid[])`, ids, sc.OwnersFor(l.Object, me))
 			if err != nil {
 				return nil, err
 			}

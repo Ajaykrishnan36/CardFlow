@@ -159,7 +159,7 @@ func (h *Handler) resolveLookups(ctx context.Context, wsID uuid.UUID, rows []Row
 
 type listParams struct {
 	Workspaces []uuid.UUID // owner console: several workspaces at once (nil = the scope's workspace)
-	Owner      *uuid.UUID  // own-scope members only see their records
+	Owners     []uuid.UUID // own-scope members: records of these owners only (themselves + roles below)
 	Q          string
 	Status     string
 	Sort       string
@@ -195,9 +195,9 @@ func (h *Handler) list(ctx context.Context, wsID uuid.UUID, spec *objectSpec, p 
 		}
 		where += " AND (" + strings.Join(parts, " OR ") + ")"
 	}
-	if p.Owner != nil {
-		args = append(args, *p.Owner)
-		where += " AND t.owner_id = $" + strconv.Itoa(len(args))
+	if p.Owners != nil {
+		args = append(args, p.Owners)
+		where += " AND t.owner_id = ANY($" + strconv.Itoa(len(args)) + "::uuid[])"
 	}
 	if p.Status != "" && spec.StatusField != "" {
 		f, _ := spec.field(spec.StatusField)
@@ -302,13 +302,13 @@ func findField(fields []Field, key string) (Field, bool) {
 	return Field{}, false
 }
 
-func (h *Handler) getRow(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSpec, id uuid.UUID, owner *uuid.UUID) (*Row, []Field, error) {
+func (h *Handler) getRow(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSpec, id uuid.UUID, owners []uuid.UUID) (*Row, []Field, error) {
 	fields, err := allFields(ctx, q, wsID, spec)
 	if err != nil {
 		return nil, nil, err
 	}
 	var raw []byte
-	err = q.QueryRow(ctx, "SELECT to_jsonb(r) FROM ("+selectSQL(spec)+" WHERE t.id = $1 AND t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid IS NULL OR t.owner_id = $3)) r", id, wsID, owner).Scan(&raw)
+	err = q.QueryRow(ctx, "SELECT to_jsonb(r) FROM ("+selectSQL(spec)+" WHERE t.id = $1 AND t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3))) r", id, wsID, owners).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, shared.NotFound("record_not_found")
 	}

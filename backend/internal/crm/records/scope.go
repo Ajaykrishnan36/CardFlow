@@ -26,6 +26,17 @@ type Scope struct {
 	MembershipID uuid.UUID
 	// OwnerConsole: the owner's /platform routes, where lists span every workspace.
 	OwnerConsole bool
+	// Below: identities in roles under this member's role (record sharing, D-48).
+	Below []uuid.UUID
+}
+
+// OwnersFor is whose records an "own" scope covers: the member and everyone in roles
+// below theirs. nil when the member sees every record of the object.
+func (s *Scope) OwnersFor(object string, me uuid.UUID) []uuid.UUID {
+	if !s.OwnOnly(object) {
+		return nil
+	}
+	return append([]uuid.UUID{me}, s.Below...)
 }
 
 type scopeKeyT struct{}
@@ -134,6 +145,10 @@ func (h *Handler) memberScope(next http.Handler) http.Handler {
 		}
 		sc.MembershipID = membershipID
 		if sc.Eff, err = access.ForMembership(r.Context(), h.store.Pool, membershipID); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+		if sc.Below, err = access.IdentitiesBelow(r.Context(), h.store.Pool, membershipID); err != nil {
 			shared.WriteError(w, r, err)
 			return
 		}
@@ -255,8 +270,8 @@ func (h *Handler) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		where := " WHERE t.workspace_id = $1 AND t.deleted_at IS NULL"
 		args := []any{sc.WS}
 		if sc.OwnOnly(key) {
-			where += " AND t.owner_id = $2"
-			args = append(args, me)
+			where += " AND t.owner_id = ANY($2::uuid[])"
+			args = append(args, sc.OwnersFor(key, me))
 		}
 		var total, recent int
 		if err := h.store.Pool.QueryRow(r.Context(), `SELECT count(*), count(*) FILTER (WHERE t.created_at > now() - interval '7 days') FROM crm.`+
