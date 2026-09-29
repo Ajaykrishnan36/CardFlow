@@ -16,7 +16,7 @@ import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { FieldValue } from './field-value';
 import { NewRecordDialog } from './new-record-dialog';
-import { fieldIndex, objectIcons, recordKeys, statusOption, useObjectMeta } from './use-object-meta';
+import { fieldIndex, objectIcon, recordKeys, statusOption, useObjectMeta } from './use-object-meta';
 import { layoutHref, recordHref, useRecordScope, type RecordScope } from './record-scope';
 import { isForbidden, RecordNoAccess } from './record-states';
 
@@ -166,7 +166,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
     );
   }
 
-  const Icon = objectIcons[object];
+  const Icon = objectIcon(object, meta?.icon);
   const total = listQ.data?.total ?? 0;
   const rows = listQ.data?.data;
   const filtered = Boolean(q) || status !== 'all';

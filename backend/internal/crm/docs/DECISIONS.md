@@ -196,6 +196,18 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   app profile, businesses and saved cards. The app's own admin "Listings Management" is sample data held in memory —
   the CRM shows the real listings. Startup adds the modules to the product and the objects to the workspace's
   customized Super Admin role once (`cardflow:app-objects-v1`); Staff get read only.
+- **D-45 Objects as data; the workspace owner has everything.** Beyond leads/accounts/contacts, every object is a
+  definition in `crm.object_definitions` (standard ones seeded behind modules: opportunities, tasks, calendar events,
+  notes, communications, subscriptions, catalog, support cases; plus the owner's custom objects). Records live in
+  `crm.object_records`; each object gets a view `crm.obj_<key>`, so the record engine (list/detail/create/edit, page
+  layouts, workspace custom fields, lookups, related lists, REST API `/w/{code}/crm/{key}`) serves them unchanged.
+  Definition fields are stored in `custom` jsonb; lookups create related lists on the target record. Owner API:
+  `/platform/objects` (create, edit fields/statuses/labels/icon, archive, restore); custom objects are modules of
+  their own in Setup → Modules & data. Modules without objects yet (files, forms, submissions, workflows, reports) are
+  shown as planned. Super Admin always has every object and capability (users, roles, customize) — its permissions
+  can't be edited, and it covers every product of the workspace, including later ones. The owner inside a workspace
+  sees that workspace's modules. Publishing a product version upgrades every workspace on it (opt out with
+  `upgradeWorkspaces: false`). A product can be created from a workspace and is assigned to it on first publish.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

@@ -1,5 +1,8 @@
 import { api } from './client';
 import type {
+  ObjectDefinition,
+  ObjectDefinitionBody,
+  ObjectsResponse,
   AppBusiness,
   AppUser,
   AppUserCounts,
@@ -266,6 +269,16 @@ export function workspaceSupportApi(code: string) {
       api<SupportTicket>(`${base}/${enc(id)}`, { method: 'PATCH', body })
   };
 }
+
+/** Objects defined as data: standard objects behind modules and the owner's custom objects. */
+export const objectsApi = {
+  list: () => api<ObjectsResponse>('/platform/objects'),
+  get: (key: string) => api<ObjectDefinition>(`/platform/objects/${enc(key)}`),
+  create: (body: ObjectDefinitionBody) => api<ObjectDefinition>('/platform/objects', { method: 'POST', body }),
+  update: (key: string, body: ObjectDefinitionBody) => api<ObjectDefinition>(`/platform/objects/${enc(key)}`, { method: 'PATCH', body }),
+  archive: (key: string) => api<ObjectDefinition>(`/platform/objects/${enc(key)}/archive`, { method: 'POST', body: {} }),
+  restore: (key: string) => api<ObjectDefinition>(`/platform/objects/${enc(key)}/restore`, { method: 'POST', body: {} })
+};
 
 /** The connected app's own data (Business Card Snap), edited in place. */
 export function workspaceAppApi(code: string) {

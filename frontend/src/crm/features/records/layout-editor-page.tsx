@@ -45,7 +45,7 @@ import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { NoAccessPage } from '@crm/features/system/pages';
 import { FieldDialog, type FieldDialogState } from './field-dialog';
-import { fieldIndex, newId, objectIcons, recordKeys, useObjectMeta } from './use-object-meta';
+import { fieldIndex, newId, objectIcon, recordKeys, useObjectMeta } from './use-object-meta';
 import { listHref, useRecordScope } from './record-scope';
 import { isForbidden, RecordNoAccess } from './record-states';
 
@@ -332,7 +332,7 @@ function LayoutEditorView({ object }: { object: ObjectKey }) {
 
   if (!meta || !draft) return <EditorSkeleton />;
 
-  const Icon = objectIcons[object];
+  const Icon = objectIcon(object, meta.icon);
   const placed = new Set(draft.sections.flatMap((s) => s.fields));
   const sectionOptions = draft.sections.map((s) => ({ id: s.id, title: s.title || t('records.layout.untitledSection') }));
   const persistedSectionIds = new Set((baseline?.sections ?? []).map((s) => s.id));
@@ -1056,7 +1056,7 @@ function FieldPalette({
 function LayoutPreview({ meta, layout, device }: { meta: ObjectMeta; layout: Layout; device: 'desktop' | 'mobile' }) {
   const { t } = useTranslation();
   const byKey = fieldIndex(meta);
-  const Icon = objectIcons[meta.object];
+  const Icon = objectIcon(meta.object, meta.icon);
   const mobile = device === 'mobile';
   const empty = <span className="text-muted-foreground/60">—</span>;
   return (

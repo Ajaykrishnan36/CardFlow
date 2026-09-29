@@ -1027,7 +1027,7 @@ func nullIfEmpty(s string) any {
 // upgradeAppAccess (idempotent, every start): the product gets the app modules, and the
 // workspace's customized Super Admin role gets the app objects once (D-44).
 func upgradeAppAccess(ctx context.Context, tx pgx.Tx, wsID, productID uuid.UUID) error {
-	mods := []string{"subscriptions", "directory"}
+	mods := []string{"app_users", "directory"}
 	if _, err := tx.Exec(ctx, `
 		UPDATE crm.product_versions SET config = jsonb_set(config, '{modules}',
 		       COALESCE(config->'modules', '[]'::jsonb) || to_jsonb(ARRAY(SELECT m FROM unnest($2::text[]) m WHERE NOT COALESCE(config->'modules', '[]'::jsonb) ? m)))
@@ -1058,7 +1058,7 @@ func upgradeAppAccess(ctx context.Context, tx pgx.Tx, wsID, productID uuid.UUID)
 		if rules.Rows == nil {
 			rules.Rows = map[string]map[string]string{}
 		}
-		for _, o := range access.Objects {
+		for _, o := range access.CatalogObjects() {
 			if !o.App {
 				continue
 			}

@@ -70,7 +70,7 @@ const OBJECTS: readonly ObjectKey[] = ['leads', 'accounts', 'contacts'];
 export function readableObjects(ctx: WorkspaceContext): ObjectKey[] {
   if (ctx.viewerIsOwner) return [...OBJECTS];
   return OBJECTS.filter((o) => {
-    const a = ctx.effective.objects[permissionObject[o]];
+    const a = ctx.effective.objects[permissionObject(o)];
     return Boolean(a && a.moduleEnabled && a.actions.includes('read'));
   });
 }

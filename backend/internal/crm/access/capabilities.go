@@ -29,6 +29,7 @@ func OwnerCapabilities() Capabilities {
 			{Key: "accounts", Label: "Accounts", Path: "/crm/owner/accounts", Icon: "briefcase", Group: "Platform CRM", Available: true},
 			{Key: "contacts", Label: "Contacts", Path: "/crm/owner/contacts", Icon: "contact", Group: "Platform CRM", Available: true},
 			{Key: "products", Label: "Products", Path: "/crm/owner/products", Icon: "boxes", Group: "Platform", Available: true},
+			{Key: "objects", Label: "Objects", Path: "/crm/owner/objects", Icon: "box", Group: "Platform", Available: true},
 			{Key: "workspaces", Label: "Customer Workspaces", Path: "/crm/owner/workspaces", Icon: "building-2", Group: "Platform", Available: true},
 			{Key: "users", Label: "Users & Access", Path: "/crm/owner/users", Icon: "shield-check", Group: "Platform", Available: true},
 			{Key: "billing", Label: "Plans & Billing", Path: "/crm/owner/plans", Icon: "credit-card", Group: "Operations"},

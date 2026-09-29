@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"cardflow-backend/internal/crm/shared"
@@ -71,28 +73,74 @@ type ModuleInfo struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
 	Group       string `json:"group"`
+	// Available: the module works today (its objects exist). Objects lists the record
+	// objects it switches on; Custom marks the owner's own objects (D-45). Hidden
+	// modules belong to a connected app and aren't offered to other products.
+	Available bool     `json:"available"`
+	Objects   []string `json:"objects,omitempty"`
+	Custom    bool     `json:"custom,omitempty"`
+	Hidden    bool     `json:"hidden,omitempty"`
 }
 
 // ModuleCatalog lists the shared modules a product can switch on. Products are
 // metadata over these modules — never product-specific code (PRD §14.3, §17.1).
 var ModuleCatalog = []ModuleInfo{
-	{"leads", "Leads", "Capture, qualify, score and convert prospects.", "Sales"},
-	{"accounts", "Accounts", "Organisations and individuals you do business with.", "Sales"},
-	{"contacts", "Contacts", "People linked to one or more accounts.", "Sales"},
-	{"opportunities", "Opportunities", "Pipelines, stages, amounts and forecasts.", "Sales"},
-	{"tasks", "Tasks", "Assignable to-dos with due dates and reminders.", "Productivity"},
-	{"calendar", "Calendar", "Meetings and events linked to records.", "Productivity"},
-	{"notes", "Notes", "Rich-text notes with mentions on any record.", "Productivity"},
-	{"files", "Files", "Virus-scanned attachments with signed links.", "Productivity"},
-	{"communications", "Communications", "Email, SMS and WhatsApp logs and templates.", "Engagement"},
-	{"forms", "Forms", "Multi-step public and internal forms.", "Engagement"},
-	{"submissions", "Submissions", "Form submissions with review and approvals.", "Engagement"},
-	{"tickets", "Support", "Tickets, SLAs and a customer help portal.", "Service"},
-	{"subscriptions", "Subscriptions", "Plans, payments and entitlements for end users.", "Commerce"},
-	{"directory", "Business directory", "Business listings, verification badges and search visibility.", "Service"},
-	{"catalog", "Catalog & quotes", "Sellable items, price books and quotes.", "Commerce"},
-	{"workflows", "Workflows", "Triggers, conditions and automated actions.", "Automation"},
-	{"reports", "Reports", "Dashboards, charts and scheduled exports.", "Insights"},
+	{Key: "leads", Label: "Leads", Description: "Capture, qualify, score and convert prospects.", Group: "Sales", Available: true, Objects: []string{"leads"}},
+	{Key: "accounts", Label: "Accounts", Description: "Organisations and individuals you do business with.", Group: "Sales", Available: true, Objects: []string{"accounts"}},
+	{Key: "contacts", Label: "Contacts", Description: "People linked to one or more accounts.", Group: "Sales", Available: true, Objects: []string{"contacts"}},
+	{Key: "opportunities", Label: "Opportunities", Description: "Pipelines, stages, amounts and forecasts.", Group: "Sales"},
+	{Key: "tasks", Label: "Tasks", Description: "Assignable to-dos with due dates and priorities.", Group: "Productivity"},
+	{Key: "calendar", Label: "Calendar", Description: "Meetings and events linked to records.", Group: "Productivity"},
+	{Key: "notes", Label: "Notes", Description: "Notes on any account, contact, lead or opportunity.", Group: "Productivity"},
+	{Key: "files", Label: "Files", Description: "Attachments on records.", Group: "Productivity"},
+	{Key: "communications", Label: "Communications", Description: "A log of emails, SMS, WhatsApp messages and calls.", Group: "Engagement"},
+	{Key: "forms", Label: "Forms", Description: "Multi-step public and internal forms.", Group: "Engagement"},
+	{Key: "submissions", Label: "Submissions", Description: "Form submissions with review and approvals.", Group: "Engagement"},
+	{Key: "tickets", Label: "Support", Description: "Support cases from first contact to resolution.", Group: "Service"},
+	{Key: "subscriptions", Label: "Subscriptions", Description: "Plans, amounts, billing periods and renewals.", Group: "Commerce"},
+	{Key: "catalog", Label: "Catalog", Description: "The products and services you sell, with prices.", Group: "Commerce"},
+	{Key: "workflows", Label: "Workflows", Description: "Triggers, conditions and automated actions.", Group: "Automation"},
+	{Key: "reports", Label: "Reports", Description: "Dashboards, charts and scheduled exports.", Group: "Insights"},
+	{Key: "directory", Label: "Business directory", Description: "The connected app's business listings.", Group: "Connected app", Available: true, Hidden: true},
+	{Key: "app_users", Label: "App users", Description: "The connected app's users and their access.", Group: "Connected app", Available: true, Hidden: true},
+}
+
+var (
+	objModulesMu  sync.RWMutex
+	objModules    = map[string][]string{} // standard module → its objects (active)
+	customModules []ModuleInfo
+)
+
+// SetObjectModules is called by the record engine whenever object definitions change.
+func SetObjectModules(standard map[string][]string, custom []ModuleInfo) {
+	objModulesMu.Lock()
+	objModules, customModules = standard, custom
+	objModulesMu.Unlock()
+}
+
+// AllModules is the module catalog as it stands: built-in modules (available when their
+// objects exist) followed by the owner's custom objects.
+func AllModules() []ModuleInfo {
+	objModulesMu.RLock()
+	defer objModulesMu.RUnlock()
+	out := make([]ModuleInfo, 0, len(ModuleCatalog)+len(customModules))
+	for _, m := range ModuleCatalog {
+		if objs, ok := objModules[m.Key]; ok {
+			m.Available, m.Objects = true, append(append([]string{}, m.Objects...), objs...)
+		}
+		out = append(out, m)
+	}
+	return append(out, customModules...)
+}
+
+// IsModuleKey reports whether a key is taken by a module.
+func IsModuleKey(key string) bool {
+	for _, m := range AllModules() {
+		if m.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 var systemRoleKeys = []string{"SUPER_ADMIN", "ADMIN", "STAFF", "END_USER"}
@@ -184,7 +232,7 @@ var (
 func (c ProductConfig) Validate() map[string]string {
 	f := map[string]string{}
 	known := map[string]bool{}
-	for _, m := range ModuleCatalog {
+	for _, m := range AllModules() {
 		known[m.Key] = true
 	}
 	if len(c.Modules) == 0 {
@@ -351,7 +399,7 @@ func (h *Handler) getProduct(ctx context.Context, id uuid.UUID) (*ProductDetail,
 	if err != nil {
 		return nil, err
 	}
-	d := &ProductDetail{ProductSummary: sum, Versions: []ProductVersion{}, AssignedWorkspaces: []AssignedWorkspace{}, ModuleCatalog: ModuleCatalog}
+	d := &ProductDetail{ProductSummary: sum, Versions: []ProductVersion{}, AssignedWorkspaces: []AssignedWorkspace{}, ModuleCatalog: AllModules()}
 
 	var draft, published []byte
 	if err := h.store.Pool.QueryRow(ctx, `
@@ -569,6 +617,15 @@ func (h *Handler) handlePublishProduct(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
+	// By default a new version reaches every workspace on this product at once (D-45);
+	// {"upgradeWorkspaces": false} keeps them on their current version.
+	var opts struct {
+		UpgradeWorkspaces *bool `json:"upgradeWorkspaces"`
+	}
+	if r.ContentLength != 0 {
+		_ = json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&opts)
+	}
+	upgrade := opts.UpgradeWorkspaces == nil || *opts.UpgradeWorkspaces
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
 		var name, status string
 		var current *int
@@ -619,7 +676,21 @@ func (h *Handler) handlePublishProduct(w http.ResponseWriter, r *http.Request) {
 			id, next, normalized); err != nil {
 			return err
 		}
-		return shared.WriteAudit(r.Context(), tx, auditEvent(r, "product.published", "product", &id, nil, nil, map[string]any{"version": next}))
+		upgraded := int64(0)
+		if upgrade {
+			tag, err := tx.Exec(r.Context(), `UPDATE crm.workspace_products SET config_version = $2 WHERE product_id = $1 AND config_version < $2`, id, next)
+			if err != nil {
+				return err
+			}
+			upgraded = tag.RowsAffected()
+			// Access is recomputed from the new modules on the next request; bump sessions so clients refresh.
+			if _, err := tx.Exec(r.Context(), `
+				UPDATE crm.memberships SET auth_version = auth_version + 1
+				WHERE workspace_id IN (SELECT workspace_id FROM crm.workspace_products WHERE product_id = $1)`, id); err != nil {
+				return err
+			}
+		}
+		return shared.WriteAudit(r.Context(), tx, auditEvent(r, "product.published", "product", &id, nil, nil, map[string]any{"version": next, "workspacesUpgraded": upgraded}))
 	})
 	if err != nil {
 		shared.WriteError(w, r, err)
@@ -672,5 +743,9 @@ func (h *Handler) setProductStatus(w http.ResponseWriter, r *http.Request, archi
 	writeResult(w, r, http.StatusOK, d, err)
 }
 
-func (h *Handler) handleArchiveProduct(w http.ResponseWriter, r *http.Request) { h.setProductStatus(w, r, true) }
-func (h *Handler) handleRestoreProduct(w http.ResponseWriter, r *http.Request) { h.setProductStatus(w, r, false) }
+func (h *Handler) handleArchiveProduct(w http.ResponseWriter, r *http.Request) {
+	h.setProductStatus(w, r, true)
+}
+func (h *Handler) handleRestoreProduct(w http.ResponseWriter, r *http.Request) {
+	h.setProductStatus(w, r, false)
+}

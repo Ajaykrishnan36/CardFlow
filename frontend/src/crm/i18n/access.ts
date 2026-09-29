@@ -27,6 +27,7 @@ const strings = {
     emptyTitle: 'No roles yet',
     new: 'New role',
     edit: 'Edit',
+    superAdminLocked: 'Always full access',
     editPermissions: 'Edit permissions',
     reset: 'Reset to default',
     delete: 'Delete',

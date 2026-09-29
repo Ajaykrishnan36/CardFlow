@@ -72,6 +72,13 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	m.identity = identity.NewService(st, cfg, mailer)
 	m.platform = platform.NewHandler(st, cfg, mailer, m.identity)
 	m.records = records.NewHandler(st, cfg, m.platform)
+	// Standard and custom objects (D-45): seed, create their views, load the catalog.
+	objCtx, cancelObj := context.WithTimeout(context.Background(), 60*time.Second)
+	err := m.records.LoadObjects(objCtx)
+	cancelObj()
+	if err != nil {
+		return m.disable("objects failed to load: " + err.Error())
+	}
 	// Connected app: Business Card Snap (CardFlow) users, sign-ins and support tickets (D-36).
 	if os.Getenv("CRM_CARDFLOW_SYNC") != "false" {
 		m.cardflow = cardflow.New(st, cfg, m.platform)

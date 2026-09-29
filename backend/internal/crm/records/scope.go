@@ -37,13 +37,35 @@ func scopeFrom(ctx context.Context) *Scope {
 
 var singular = map[string]string{"leads": "lead", "accounts": "account", "contacts": "contact"}
 
+// permKey is an object's key in the permission catalog (objects defined as data use their own key).
+func permKey(object string) string {
+	if k, ok := singular[object]; ok {
+		return k
+	}
+	return object
+}
+
 func (s *Scope) Can(object, action string) bool {
-	return s.Owner || s.Eff.Can(singular[object], action)
+	if s.Owner {
+		return s.Enabled(object)
+	}
+	return s.Eff.Can(permKey(object), action)
+}
+
+// Enabled reports whether an object is switched on in this workspace by its products.
+// Built-in objects are always addressable by the owner; objects defined as data only
+// where a product includes their module.
+func (s *Scope) Enabled(object string) bool {
+	spec := specFor(object)
+	if spec == nil || !spec.Custom || s.OwnerConsole || s.Eff == nil {
+		return spec != nil || object == "users" || object == "workspaces"
+	}
+	return s.Eff.Objects[permKey(object)].ModuleEnabled
 }
 
 // OwnOnly reports whether the member only sees records they own.
 func (s *Scope) OwnOnly(object string) bool {
-	return !s.Owner && s.Eff.OwnOnly(singular[object])
+	return !s.Owner && s.Eff.OwnOnly(permKey(object))
 }
 
 func (s *Scope) CanCustomize() bool {
@@ -84,7 +106,11 @@ func (h *Handler) memberScope(next http.Handler) http.Handler {
 				shared.WriteError(w, r, err)
 				return
 			}
-			sc.Owner, sc.Eff = true, access.FullAccess()
+			sc.Owner = true
+			if sc.Eff, err = access.FullAccessIn(r.Context(), h.store.Pool, sc.WS); err != nil {
+				shared.WriteError(w, r, err)
+				return
+			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), scopeKeyT{}, sc)))
 			return
 		}
@@ -213,10 +239,17 @@ func (h *Handler) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		KPIs   []dashboardKPI `json:"kpis"`
 		Recent []recentList   `json:"recent"`
 	}{KPIs: []dashboardKPI{}, Recent: []recentList{}}
-	for _, key := range []string{"leads", "accounts", "contacts"} {
-		spec := specs[key]
-		if !sc.Can(key, "read") {
+	keys := []string{"leads", "accounts", "contacts"}
+	for _, d := range dynamicSpecs() {
+		keys = append(keys, d.Key)
+	}
+	for _, key := range keys {
+		spec := specFor(key)
+		if spec == nil || !sc.Can(key, "read") {
 			continue
+		}
+		if spec.Custom && len(out.KPIs) >= 8 {
+			continue // keep the dashboard readable; every object is one click away in the sidebar
 		}
 		where := " WHERE t.workspace_id = $1 AND t.deleted_at IS NULL"
 		args := []any{sc.WS}

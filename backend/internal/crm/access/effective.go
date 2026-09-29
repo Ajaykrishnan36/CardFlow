@@ -93,7 +93,7 @@ func Combine(sources []grantSource, modules map[string]bool, products []ProductR
 	sort.Strings(e.Modules)
 
 	caps := map[string][]string{}
-	for _, o := range Objects {
+	for _, o := range CatalogObjects() {
 		eo := EffectiveObject{Actions: []string{}, Scope: "own", Sources: []string{}, ModuleEnabled: modules[o.Module]}
 		set := map[string]bool{}
 		for _, s := range sources {
@@ -165,7 +165,8 @@ func ForMembership(ctx context.Context, q Querier, membershipID uuid.UUID) (*Eff
 		}
 		rules := Rules{}
 		// Untouched built-in roles follow the code defaults; edited and custom roles use their stored rules.
-		if sr, ok := FindSystemRole(key); ok && system {
+		// Super Admin is the workspace's owner role: it always has everything (D-45), whatever was stored.
+		if sr, ok := FindSystemRole(key); ok && (system || key == "SUPER_ADMIN") {
 			rules = sr.Rules
 		} else {
 			_ = json.Unmarshal(raw, &rules)
@@ -201,44 +202,13 @@ func ForMembership(ctx context.Context, q Querier, membershipID uuid.UUID) (*Eff
 	}
 	rows.Close()
 
-	modules := map[string]bool{}
-	products := []ProductRef{}
-	if isPlatform {
-		// The owner's own workspace has no products; its members work the Platform CRM.
-		for _, o := range Objects {
-			modules[o.Module] = true
-		}
-	} else {
-		rows, err = q.Query(ctx, `
-			SELECT p.id, p.key, p.name, v.config
-			FROM crm.workspace_products wp
-			JOIN crm.products p ON p.id = wp.product_id AND p.status <> 'archived'
-			JOIN crm.product_versions v ON v.product_id = wp.product_id AND v.version = wp.config_version
-			WHERE wp.workspace_id = $1 AND wp.status = 'active'
-			ORDER BY p.name`, wsID)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var p ProductRef
-			var raw []byte
-			if err := rows.Scan(&p.ID, &p.Key, &p.Name, &raw); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			if !productIDs[p.ID] {
-				continue
-			}
-			products = append(products, p)
-			var cfg struct {
-				Modules []string `json:"modules"`
-			}
-			_ = json.Unmarshal(raw, &cfg)
-			for _, m := range cfg.Modules {
-				modules[m] = true
-			}
-		}
-		rows.Close()
+	only := productIDs
+	if roleKey == "SUPER_ADMIN" {
+		only = nil // the workspace owner gets every product, including ones added later
+	}
+	modules, products, err := workspaceModules(ctx, q, wsID, isPlatform, only)
+	if err != nil {
+		return nil, err
 	}
 
 	if !active {
@@ -246,5 +216,76 @@ func ForMembership(ctx context.Context, q Querier, membershipID uuid.UUID) (*Eff
 	}
 	e := Combine(sources, modules, products)
 	e.WorkspaceID, e.MembershipID, e.RoleKey, e.RoleName = wsID, membershipID, roleKey, roleName
+	return e, nil
+}
+
+// workspaceModules is what a workspace's products switch on. only limits it to some of
+// the products (a member's assignment); nil means every product of the workspace.
+func workspaceModules(ctx context.Context, q Querier, wsID uuid.UUID, isPlatform bool, only map[uuid.UUID]bool) (map[string]bool, []ProductRef, error) {
+	modules := map[string]bool{}
+	products := []ProductRef{}
+	if isPlatform {
+		// The owner's own workspace has no products; its members work the Platform CRM.
+		for _, o := range CatalogObjects() {
+			modules[o.Module] = true
+		}
+		return modules, products, nil
+	}
+	rows, err := q.Query(ctx, `
+		SELECT p.id, p.key, p.name, v.config
+		FROM crm.workspace_products wp
+		JOIN crm.products p ON p.id = wp.product_id AND p.status <> 'archived'
+		JOIN crm.product_versions v ON v.product_id = wp.product_id AND v.version = wp.config_version
+		WHERE wp.workspace_id = $1 AND wp.status = 'active'
+		ORDER BY p.name`, wsID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p ProductRef
+		var raw []byte
+		if err := rows.Scan(&p.ID, &p.Key, &p.Name, &raw); err != nil {
+			return nil, nil, err
+		}
+		if only != nil && !only[p.ID] {
+			continue
+		}
+		products = append(products, p)
+		var cfg struct {
+			Modules []string `json:"modules"`
+		}
+		_ = json.Unmarshal(raw, &cfg)
+		for _, m := range cfg.Modules {
+			modules[m] = true
+		}
+	}
+	return modules, products, rows.Err()
+}
+
+// WorkspaceModules is the set of modules switched on in a workspace (every product).
+func WorkspaceModules(ctx context.Context, q Querier, wsID uuid.UUID) (map[string]bool, error) {
+	var isPlatform bool
+	if err := q.QueryRow(ctx, `SELECT is_platform FROM crm.workspaces WHERE id = $1`, wsID).Scan(&isPlatform); err != nil {
+		return nil, err
+	}
+	m, _, err := workspaceModules(ctx, q, wsID, isPlatform, nil)
+	return m, err
+}
+
+// FullAccessIn is the platform owner's access inside one workspace: everything, for the
+// modules that workspace's products switch on (so the owner sees what its users see).
+func FullAccessIn(ctx context.Context, q Querier, wsID uuid.UUID) (*Effective, error) {
+	var isPlatform bool
+	if err := q.QueryRow(ctx, `SELECT is_platform FROM crm.workspaces WHERE id = $1`, wsID).Scan(&isPlatform); err != nil {
+		return nil, err
+	}
+	modules, products, err := workspaceModules(ctx, q, wsID, isPlatform, nil)
+	if err != nil {
+		return nil, err
+	}
+	sa, _ := FindSystemRole("SUPER_ADMIN")
+	e := Combine([]grantSource{{label: "Platform owner", rules: sa.Rules}}, modules, products)
+	e.WorkspaceID, e.RoleKey, e.RoleName = wsID, "SUPER_ADMIN", "Platform owner"
 	return e, nil
 }

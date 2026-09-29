@@ -25,6 +25,8 @@ type Meta struct {
 	ListColumns   []string       `json:"listColumns"`
 	StatusField   string         `json:"statusField,omitempty"`
 	Statuses      []StatusOption `json:"statuses,omitempty"`
+	Icon          string         `json:"icon,omitempty"`
+	Custom        bool           `json:"custom,omitempty"`
 }
 
 var customTypes = map[string]bool{
@@ -152,7 +154,7 @@ func (h *Handler) meta(ctx context.Context, wsID uuid.UUID, spec *objectSpec) (*
 	return &Meta{
 		Object: spec.Key, LabelSingular: spec.Singular, LabelPlural: spec.Plural, CodePrefix: spec.Prefix,
 		Fields: fields, Layout: layout, DefaultLayout: sanitizeLayout(cloneLayout(spec.Layout), fields),
-		ListColumns: spec.ListColumns, StatusField: spec.StatusField, Statuses: spec.Statuses,
+		ListColumns: spec.ListColumns, StatusField: spec.StatusField, Statuses: spec.Statuses, Icon: spec.Icon, Custom: spec.Custom,
 	}, nil
 }
 
@@ -293,7 +295,7 @@ func validateOptions(typ string, options []Option) ([]Option, string) {
 // DefaultLayout returns a copy of an object's default page layout (for connectors that
 // add their own section).
 func DefaultLayout(object string) Layout {
-	if spec := specs[object]; spec != nil {
+	if spec := specFor(object); spec != nil {
 		return cloneLayout(spec.Layout)
 	}
 	return Layout{Highlights: []string{}, Sections: []Section{}}

@@ -1,5 +1,7 @@
 package access
 
+import "sync"
+
 // Rules is the permission JSON stored in roles.base_rules and permission_sets.rules
 // (PRD §7). Objects are singular keys (lead, account, contact); a row scope is "own"
 // or "workspace". Grants are additive: a user's access is the union of their role and
@@ -28,6 +30,11 @@ type CatalogObject struct {
 	// App objects live in a connected app (Business Card Snap), not in the CRM's own
 	// tables; they appear only in workspaces with that app attached.
 	App bool `json:"app,omitempty"`
+	// Custom marks objects defined as data (standard objects behind modules and the
+	// owner's own objects, D-45); Route is their URL segment and Icon their nav icon.
+	Custom bool   `json:"custom,omitempty"`
+	Route  string `json:"route,omitempty"`
+	Icon   string `json:"icon,omitempty"`
 }
 
 type CatalogEntry struct {
@@ -36,15 +43,35 @@ type CatalogEntry struct {
 	Description string `json:"description,omitempty"`
 }
 
-var Objects = []CatalogObject{
+var builtinObjects = []CatalogObject{
 	{Key: "lead", Label: "Leads", Module: "leads", Actions: []string{"read", "create", "update", "delete", "convert", "export"}},
 	{Key: "account", Label: "Accounts", Module: "accounts", Actions: []string{"read", "create", "update", "delete", "export"}},
 	{Key: "contact", Label: "Contacts", Module: "contacts", Actions: []string{"read", "create", "update", "delete", "export"}},
 	{Key: "ticket", Label: "Support tickets", Module: "tickets", Actions: []string{"read", "update"}},
 	// update = edit profile, grant or revoke premium access, change app role / status.
-	{Key: "app_user", Label: "App users", Module: "subscriptions", Actions: []string{"read", "update", "delete"}, App: true},
+	{Key: "app_user", Label: "App users", Module: "app_users", Actions: []string{"read", "update", "delete"}, App: true},
 	// update = edit the listing, its verification badge and search visibility.
 	{Key: "app_business", Label: "Business listings", Module: "directory", Actions: []string{"read", "update", "delete"}, App: true},
+}
+
+var (
+	customMu      sync.RWMutex
+	customObjects []CatalogObject
+)
+
+// SetCustomObjects replaces the objects defined as data (the record engine calls it
+// whenever object definitions change).
+func SetCustomObjects(list []CatalogObject) {
+	customMu.Lock()
+	customObjects = append([]CatalogObject{}, list...)
+	customMu.Unlock()
+}
+
+// CatalogObjects is every permission object: built-in, connected-app and custom.
+func CatalogObjects() []CatalogObject {
+	customMu.RLock()
+	defer customMu.RUnlock()
+	return append(append([]CatalogObject{}, builtinObjects...), customObjects...)
 }
 
 var Actions = []CatalogEntry{
@@ -91,7 +118,7 @@ func RankFor(r Rules) int {
 }
 
 func objectAllowed(obj string) (CatalogObject, bool) {
-	for _, o := range Objects {
+	for _, o := range CatalogObjects() {
 		if o.Key == obj {
 			return o, true
 		}
@@ -102,7 +129,7 @@ func objectAllowed(obj string) (CatalogObject, bool) {
 func grantAll(actions func(o CatalogObject) []string, scope string) (map[string][]string, map[string]map[string]string) {
 	objs := map[string][]string{}
 	rows := map[string]map[string]string{}
-	for _, o := range Objects {
+	for _, o := range CatalogObjects() {
 		a := actions(o)
 		if len(a) == 0 {
 			continue
@@ -154,8 +181,8 @@ func SystemRoles() []SystemRole {
 	}, "own")
 	return []SystemRole{
 		{Key: "SUPER_ADMIN", Name: "Super Admin", Rank: RankSuperAdmin,
-			Description: "Full access to every record and setting in the workspace.",
-			Rules:       Rules{Objects: saObj, Rows: saRows, Capabilities: []string{CapDashboard, CapMetadata}}},
+			Description: "Full access to every record, setting, user and role in the workspace — always.",
+			Rules:       Rules{Objects: saObj, Rows: saRows, Capabilities: []string{CapDashboard, CapMetadata, CapAccessManage, CapMembersManage}}},
 		{Key: "ADMIN", Name: "Admin", Rank: RankAdmin,
 			Description: "Works every record in the workspace; can't export or customize.",
 			Rules:       Rules{Objects: adObj, Rows: adRows, Capabilities: []string{CapDashboard}}},
@@ -268,7 +295,7 @@ func Exceeds(r Rules, limit *Effective) []string {
 	}
 	r = Normalize(r)
 	var out []string
-	for _, o := range Objects {
+	for _, o := range CatalogObjects() {
 		acts := r.Objects[o.Key]
 		for _, a := range acts {
 			if !limit.Can(o.Key, a) {
@@ -293,7 +320,7 @@ func FullAccess() *Effective {
 	rules := sa.Rules
 	rules.Capabilities = []string{CapDashboard, CapMetadata, CapAccessManage, CapMembersManage}
 	modules := map[string]bool{}
-	for _, o := range Objects {
+	for _, o := range CatalogObjects() {
 		modules[o.Module] = true
 	}
 	e := Combine([]grantSource{{label: "Platform owner", rules: rules}}, modules, nil)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRight, Check, CircleCheck, Save } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { ProductConfig, ProductDetail } from '@crm/api/types';
@@ -50,6 +51,7 @@ function stepComplete(step: SetupStep, d: ProductDraft): boolean {
 export function ProductSetupWizard(props: WizardProps) {
   const { product, draft, setDraft, updateConfig, dirty, step, onStepChange, onSave, saving, publishErrors, publishable, publishing, onPublish } = props;
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const index = SETUP_STEPS.indexOf(step);
   const [saveError, setSaveError] = useState<{ message: string; fields: Record<string, string> } | null>(null);
   const [nameError, setNameError] = useState<string | undefined>();
@@ -158,7 +160,17 @@ export function ProductSetupWizard(props: WizardProps) {
           ) : null}
 
           {step === 'general' ? <GeneralStep draft={draft} setDraft={setDraft} nameError={nameError} /> : null}
-          {step === 'modules' ? <ModulesStep catalog={product.moduleCatalog} modules={draft.config.modules} updateConfig={updateConfig} /> : null}
+          {step === 'modules' ? (
+            <ModulesStep
+              catalog={product.moduleCatalog}
+              modules={draft.config.modules}
+              updateConfig={updateConfig}
+              onObjectCreated={(key) => {
+                void qc.invalidateQueries({ queryKey: ['product', product.id] });
+                if (!draft.config.modules.includes(key)) updateConfig({ modules: [...draft.config.modules, key] });
+              }}
+            />
+          ) : null}
           {step === 'roles' ? <RolesStep config={draft.config} updateConfig={updateConfig} /> : null}
           {step === 'pipeline' ? <PipelineStep config={draft.config} updateConfig={updateConfig} /> : null}
           {step === 'login' ? <LoginStep config={draft.config} updateConfig={updateConfig} /> : null}

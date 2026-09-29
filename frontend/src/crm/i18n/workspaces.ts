@@ -156,7 +156,8 @@ const strings = {
   products: {
     title: 'Assigned products',
     description: 'Each product stays on its version until you upgrade it.',
-    assign: 'Assign product',
+    createNew: 'New product',
+      assign: 'Assign product',
     assignOne: 'Assign',
     assigned: 'Product assigned.',
     assignTitle: 'Assign a product',

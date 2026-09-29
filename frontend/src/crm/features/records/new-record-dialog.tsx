@@ -10,7 +10,7 @@ import { Alert } from '@crm/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/components/ui/menu';
 import { cn } from '@crm/lib/utils';
 import { FieldEditor } from './field-input';
-import { fieldIndex, isEmptyValue, objectIcons, recordKeys } from './use-object-meta';
+import { fieldIndex, isEmptyValue, objectIcon, recordKeys } from './use-object-meta';
 import { recordHref, useRecordScope } from './record-scope';
 
 interface FormSection {
@@ -51,7 +51,7 @@ export function NewRecordDialog({
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const Icon = objectIcons[object];
+  const Icon = objectIcon(object, meta?.icon);
 
   useEffect(() => {
     if (!open) return;

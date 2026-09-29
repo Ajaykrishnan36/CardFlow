@@ -1,5 +1,11 @@
 // 'products' i18n namespace (merged into the crm bundle as products.*).
 const strings = {
+  assignTo: {
+    banner: 'You’re creating this product for {{workspace}}. Set it up, then publish — it’s added to the workspace automatically.',
+    thisWorkspace: 'this workspace',
+    back: 'Back to the workspace',
+    done: 'Added to {{workspace}} — its users have it now'
+  },
   list: {
     title: 'Products',
     description: 'Configurable CRM products you publish and assign to customer workspaces.',
@@ -146,7 +152,14 @@ const strings = {
     },
     modules: {
       noneHint: 'Select at least one module. A product needs one to be published.',
-      catalogEmpty: 'No modules are available yet.'
+      catalogEmpty: 'No modules are available yet.',
+      objectsIntro: 'Every module is a set of objects with their own pages, fields, permissions and API. Need something else? Create your own object — it appears here as a module.',
+      manageObjects: 'Manage objects',
+      newObject: 'New object',
+      editObject: 'Edit fields & statuses →',
+      customBadge: 'Custom',
+      plannedBadge: 'Planned',
+      plannedHint: '{{list}} can’t be used yet — they stay switched on for later but don’t appear in workspaces.'
     },
     roles: {
       rolesTitle: 'System roles',

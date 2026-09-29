@@ -41,6 +41,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Use(identity.RequireOwner, h.ownerScope)
 		h.mountRecords(r, "/platform")
 		r.Post("/platform/crm/{object}/{id}/login", h.handleGiveLogin)
+		h.objectRoutes(r)
 	})
 	r.Route("/w/{code}", func(r chi.Router) {
 		r.Use(identity.RequireReady, h.memberScope)
@@ -95,11 +96,14 @@ func (h *Handler) workspace(ctx context.Context) (uuid.UUID, error) {
 // needed: a record action (read/create/update/delete), "meta" (read or customize) or
 // "customize" (page layouts and custom fields).
 func (h *Handler) scope(r *http.Request, need string) (*objectSpec, uuid.UUID, error) {
-	spec := specs[chi.URLParam(r, "object")]
+	spec := specFor(chi.URLParam(r, "object"))
 	if spec == nil {
 		return nil, uuid.Nil, shared.NotFound("object_not_found")
 	}
 	sc := scopeFrom(r.Context())
+	if !sc.Enabled(spec.Key) {
+		return nil, uuid.Nil, shared.NotFound("object_not_found")
+	}
 	ok := false
 	switch need {
 	case "customize":
@@ -701,7 +705,7 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 	if !sc.Owner {
 		switch {
 		case target == "users":
-		case specs[target] != nil && sc.Can(target, "read"):
+		case specFor(target) != nil && sc.Can(target, "read"):
 		default:
 			shared.WriteError(w, r, errForbidden)
 			return
@@ -724,7 +728,7 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 	case "workspaces":
 		sql = `SELECT id::text, name FROM crm.workspaces WHERE NOT is_platform AND (name ILIKE $1 OR code ILIKE $1) ORDER BY name LIMIT 20`
 	default:
-		spec := specs[target]
+		spec := specFor(target)
 		if spec == nil {
 			shared.WriteError(w, r, shared.NotFound("object_not_found"))
 			return

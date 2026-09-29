@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Building2, Contact, Target, type LucideIcon } from 'lucide-react';
 import type { FieldDef, Layout, LookupTarget, ObjectKey, ObjectMeta, RecordListParams, StatusOption } from '@crm/api/types';
+import { navIcon } from '@crm/features/shell/nav-icons';
 import { ownerScope, scopedLookupHref, useRecordScope } from './record-scope';
 
 // Shared plumbing for the metadata-driven record pages (leads / accounts / contacts).
@@ -20,7 +21,17 @@ export function useObjectMeta(object: ObjectKey) {
   return useQuery({ queryKey: recordKeys.meta(scope.prefix, object), queryFn: () => scope.api.meta(object), staleTime: 5 * 60_000 });
 }
 
-export const objectIcons: Record<ObjectKey, LucideIcon> = { leads: Target, accounts: Building2, contacts: Contact };
+const builtinIcons: Record<string, LucideIcon> = { leads: Target, accounts: Building2, contacts: Contact };
+
+/** Icon of an object: built-ins have their own; objects defined as data carry an icon key in their meta. */
+export function objectIcon(object: ObjectKey, iconKey?: string): LucideIcon {
+  return builtinIcons[object] ?? navIcon(iconKey ?? 'box');
+}
+
+export function useObjectIcon(object: ObjectKey): LucideIcon {
+  const q = useObjectMeta(object);
+  return objectIcon(object, q.data?.icon);
+}
 
 export const RECORD_OBJECTS: readonly ObjectKey[] = ['leads', 'accounts', 'contacts'];
 

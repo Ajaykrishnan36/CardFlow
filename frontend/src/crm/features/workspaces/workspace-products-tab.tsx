@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowUpRight, Boxes, Plus } from 'lucide-react';
+import { ArrowUpRight, Boxes, Plus, Sparkles } from 'lucide-react';
 import { productsApi, workspacesApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { WorkspaceDetail, WorkspaceProduct } from '@crm/api/types';
@@ -16,6 +16,7 @@ import { EmptyState, ErrorState } from '@crm/components/states';
 import { ConfirmDialog } from '@crm/components/page';
 import { relativeTime } from '@crm/lib/utils';
 import { ProductIcon } from '@crm/features/products/product-icon';
+import { CreateProductDialog } from '@crm/features/products/create-product-dialog';
 
 type Pending = { kind: 'upgrade'; product: WorkspaceProduct } | { kind: 'suspend'; product: WorkspaceProduct } | null;
 
@@ -23,6 +24,7 @@ export function WorkspaceProductsTab({ workspace }: { workspace: WorkspaceDetail
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [assignOpen, setAssignOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
 
   const apply = (w: WorkspaceDetail) => {
@@ -53,9 +55,14 @@ export function WorkspaceProductsTab({ workspace }: { workspace: WorkspaceDetail
         title={t('workspaces.products.title')}
         description={t('workspaces.products.description')}
         actions={
-          <Button size="sm" onClick={() => setAssignOpen(true)}>
-            <Plus /> {t('workspaces.products.assign')}
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
+              <Sparkles /> {t('workspaces.products.createNew')}
+            </Button>
+            <Button size="sm" onClick={() => setAssignOpen(true)}>
+              <Plus /> {t('workspaces.products.assign')}
+            </Button>
+          </div>
         }
       />
       {rows.length === 0 ? (
@@ -138,6 +145,7 @@ export function WorkspaceProductsTab({ workspace }: { workspace: WorkspaceDetail
         onConfirm={() => pending && update.mutate({ productId: pending.product.productId, body: { status: 'suspended' } })}
       />
       <AssignProductDialog open={assignOpen} onOpenChange={setAssignOpen} workspace={workspace} onAssigned={apply} />
+    <CreateProductDialog open={createOpen} onOpenChange={setCreateOpen} assignTo={workspace.id} />
     </Card>
   );
 }

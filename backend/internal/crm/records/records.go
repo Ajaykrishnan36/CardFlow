@@ -49,7 +49,9 @@ type Row struct {
 func selectSQL(spec *objectSpec) string {
 	cols := []string{"t.id", "t.version", "t.custom", "t.workspace_id AS \"_ws\"", spec.TitleSQL + ` AS "_title"`}
 	for _, f := range spec.Fields {
-		cols = append(cols, "t."+f.column+` AS "`+f.Key+`"`)
+		if f.inColumn() {
+			cols = append(cols, "t."+f.column+` AS "`+f.Key+`"`)
+		}
 	}
 	return "SELECT " + strings.Join(cols, ", ") + " FROM crm." + spec.Table + " t"
 }
@@ -68,7 +70,7 @@ func decodeRow(raw []byte, spec *objectSpec, fields []Field) (Row, error) {
 	}
 	custom, _ := m["custom"].(map[string]any)
 	for _, f := range fields {
-		if f.Standard {
+		if f.inColumn() {
 			r.Values[f.Key] = m[f.Key]
 		} else {
 			r.Values[f.Key] = custom[f.Key]
@@ -111,7 +113,7 @@ func (h *Handler) resolveLookups(ctx context.Context, wsID uuid.UUID, rows []Row
 		case "workspaces":
 			sql = `SELECT id::text, name FROM crm.workspaces WHERE id = ANY($1::uuid[])`
 		default:
-			s := specs[target]
+			s := specFor(target)
 			if s == nil {
 				continue
 			}
@@ -206,7 +208,7 @@ func (h *Handler) list(ctx context.Context, wsID uuid.UUID, spec *objectSpec, p 
 	if p.Sort == "title" {
 		order = spec.TitleSQL
 	} else if f, ok := findField(fields, p.Sort); ok {
-		if f.Standard {
+		if f.inColumn() {
 			order = "t." + f.column
 		} else if f.Type == "number" || f.Type == "currency" || f.Type == "percent" {
 			order = "(t.custom->>'" + f.Key + "')::numeric"
@@ -332,7 +334,7 @@ var istLocation = func() *time.Location {
 // types for standard columns, JSON-friendly values for custom fields) or a message.
 func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any, string) {
 	if v == nil {
-		if f.Type == "multiselect" && f.Standard {
+		if f.Type == "multiselect" && f.inColumn() {
 			return []string{}, ""
 		}
 		return nil, ""
@@ -452,7 +454,7 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 		if err != nil {
 			return nil, "Enter a valid date."
 		}
-		if f.Standard {
+		if f.inColumn() {
 			return t, ""
 		}
 		return s, ""
@@ -476,7 +478,7 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 		if err != nil {
 			return nil, "Enter a valid date and time."
 		}
-		if f.Standard {
+		if f.inColumn() {
 			return t, ""
 		}
 		return t.UTC().Format(time.RFC3339), ""
@@ -519,7 +521,7 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 		if len(out) > 50 {
 			return nil, "Use at most 50 values."
 		}
-		if len(out) == 0 && !f.Standard {
+		if len(out) == 0 && !f.inColumn() {
 			return nil, ""
 		}
 		return out, ""
@@ -544,7 +546,10 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 		case "workspaces":
 			sql = `SELECT EXISTS (SELECT 1 FROM crm.workspaces WHERE id = $1 AND NOT is_platform)`
 		default:
-			s := specs[f.Lookup]
+			s := specFor(f.Lookup)
+			if s == nil {
+				return nil, "That record doesn't exist."
+			}
 			sql = `SELECT EXISTS (SELECT 1 FROM crm.` + s.Table + ` WHERE id = $1 AND workspace_id = '` + wsID.String() + `' AND deleted_at IS NULL)`
 		}
 		var exists bool
@@ -601,7 +606,7 @@ func buildChanges(ctx context.Context, q querier, wsID uuid.UUID, fields []Field
 			fe[key] = f.Label + " is required."
 			continue
 		}
-		if f.Standard {
+		if f.inColumn() {
 			cs.columns[f.column] = v
 		} else {
 			cs.custom[f.Key] = v

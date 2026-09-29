@@ -209,6 +209,9 @@ func (h *Handler) updateRole(ctx context.Context, r *http.Request, id, ws uuid.U
 		if err != nil {
 			return err
 		}
+		if cur.Key == "SUPER_ADMIN" && in.Rules != nil {
+			return shared.Forbidden("super_admin_locked", "Super Admin always has full access to the workspace, so its permissions can't be changed. Create a custom role for narrower access.")
+		}
 		name, desc, rules := cur.Name, cur.Description, cur.Rules
 		fe := map[string]string{}
 		if in.Name != nil && strings.TrimSpace(*in.Name) != cur.Name {
@@ -584,7 +587,7 @@ func (h *Handler) adminOptions(w http.ResponseWriter, r *http.Request, sc *Admin
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
 		"canManageAccess": canAccess, "canManageMembers": canMembers,
 		"grantable": sc.Limit.AsRules(),
-		"catalog":   accessCatalog{Objects: access.Objects, Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles()},
+		"catalog":   accessCatalog{Objects: access.CatalogObjects(), Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles()},
 		"roles":     roles, "permissionSets": sets, "products": sc.Limit.Products, "isPlatform": sc.IsPlatform,
 	})
 }

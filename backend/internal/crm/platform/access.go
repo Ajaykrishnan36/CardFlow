@@ -29,7 +29,7 @@ type accessCatalog struct {
 
 func (h *Handler) handleAccessCatalog(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, accessCatalog{
-		Objects: access.Objects, Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles(),
+		Objects: access.CatalogObjects(), Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles(),
 	})
 }
 

@@ -110,8 +110,18 @@ func (h *Handler) related(ctx context.Context, ws uuid.UUID, spec *objectSpec, r
 		}
 		out = append(out, l)
 	}
-	// Activity timeline (sign-ups, app sign-ins, tickets…) for every object.
+	// Records of other objects that point at this one (an account's opportunities, tasks, notes…).
+	sc := scopeFrom(ctx)
+	linked, err := h.relatedObjects(ctx, ws.String(), spec.Key, id, func(o *objectSpec) bool { return sc == nil || sc.Can(o.Key, "read") })
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, linked...)
+	// Activity timeline (sign-ups, app sign-ins, tickets…) for the built-in objects.
 	col := map[string]string{"leads": "lead_id", "accounts": "account_id", "contacts": "contact_id"}[spec.Key]
+	if col == "" {
+		return out, nil
+	}
 	act, err := h.relatedList(ctx, "activity", "Activity", "activities", `
 		SELECT id::text, '', title, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), kind
 		FROM crm.activities WHERE `+col+` = $1 AND workspace_id = $2 ORDER BY occurred_at DESC LIMIT 50`, id, ws)
@@ -227,7 +237,7 @@ func (h *Handler) filterRelated(ctx context.Context, sc *Scope, me uuid.UUID, li
 			}
 			continue
 		}
-		spec := specs[l.Object]
+		spec := specFor(l.Object)
 		if spec == nil || !sc.Can(l.Object, "read") {
 			continue
 		}

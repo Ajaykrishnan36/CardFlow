@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronRight, Ellipsis, Pencil, Plus, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
+import { ChevronRight, Ellipsis, Pencil, Plus, RotateCcw, ShieldCheck, Trash2, Lock } from 'lucide-react';
 import { accessApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { WorkspaceRole } from '@crm/api/types';
@@ -108,11 +108,17 @@ export function RolesCard({ workspaceId, workspaceName }: { workspaceId: string 
                     </Button>
                   </MenuTrigger>
                   <MenuContent align="end" className="min-w-[12rem]">
-                    <MenuItem onSelect={() => setEditing(role)}>
-                      <Pencil /> {role.isSystem ? t('access.roles.editPermissions') : t('access.roles.edit')}
-                    </MenuItem>
+                    {role.key === 'SUPER_ADMIN' ? (
+                      <MenuItem disabled>
+                        <Lock /> {t('access.roles.superAdminLocked')}
+                      </MenuItem>
+                    ) : (
+                      <MenuItem onSelect={() => setEditing(role)}>
+                        <Pencil /> {role.isSystem ? t('access.roles.editPermissions') : t('access.roles.edit')}
+                      </MenuItem>
+                    )}
                     {role.isSystem ? (
-                      <MenuItem disabled={!role.customized} onSelect={() => setConfirm({ kind: 'reset', role })}>
+                      <MenuItem disabled={!role.customized || role.key === 'SUPER_ADMIN'} onSelect={() => setConfirm({ kind: 'reset', role })}>
                         <RotateCcw /> {t('access.roles.reset')}
                       </MenuItem>
                     ) : (

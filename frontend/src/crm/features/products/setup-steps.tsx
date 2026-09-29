@@ -1,5 +1,9 @@
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { objectsApi } from '@crm/api/endpoints';
+import { NewObjectDialog } from '@crm/features/objects/object-utils';
 import { ArrowDown, ArrowUp, Check, Lock, Plus, Rocket, Trash2 } from 'lucide-react';
 import type { ModuleInfo, ProductConfig, ProductDetail, SystemRoleKey } from '@crm/api/types';
 import { Alert, Badge } from '@crm/components/ui/card';
@@ -133,52 +137,106 @@ function titleCase(s: string) {
   return s.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function ModulesStep({ catalog, modules, updateConfig }: { catalog: ModuleInfo[]; modules: string[]; updateConfig: UpdateConfig }) {
+export function ModulesStep({
+  catalog,
+  modules,
+  updateConfig,
+  onObjectCreated
+}: {
+  catalog: ModuleInfo[];
+  modules: string[];
+  updateConfig: UpdateConfig;
+  /** A new custom object was created from here: switch its module on. */
+  onObjectCreated?: (moduleKey: string) => void;
+}) {
   const { t } = useTranslation();
+  const [creating, setCreating] = useState(false);
+  const icons = useQuery({ queryKey: ['platform', 'objects'], queryFn: objectsApi.list, enabled: creating });
+  // Connected-app modules only show on the product that already uses them.
+  const visible = catalog.filter((m) => !m.hidden || modules.includes(m.key));
   const groups = new Map<string, ModuleInfo[]>();
-  for (const m of catalog) groups.set(m.group, [...(groups.get(m.group) ?? []), m]);
+  for (const m of visible) groups.set(m.group, [...(groups.get(m.group) ?? []), m]);
   const toggle = (key: string) => updateConfig({ modules: modules.includes(key) ? modules.filter((k) => k !== key) : [...modules, key] });
+  const planned = visible.filter((m) => !m.available && modules.includes(m.key));
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-col gap-3 rounded-lg border border-dashed p-3 sm:flex-row sm:items-center">
+        <p className="flex-1 text-[13px] text-muted-foreground">{t('products.setup.modules.objectsIntro')}</p>
+        <div className="flex shrink-0 gap-2">
+          <Button type="button" variant="outline" size="sm" asChild>
+            <Link to="/crm/owner/objects">{t('products.setup.modules.manageObjects')}</Link>
+          </Button>
+          <Button type="button" size="sm" onClick={() => setCreating(true)}>
+            <Plus /> {t('products.setup.modules.newObject')}
+          </Button>
+        </div>
+      </div>
       {modules.length === 0 ? <Alert tone="warning">{t('products.setup.modules.noneHint')}</Alert> : null}
+      {planned.length ? <Alert tone="info">{t('products.setup.modules.plannedHint', { list: planned.map((m) => m.label).join(', ') })}</Alert> : null}
       {catalog.length === 0 ? <p className="text-[13px] text-muted-foreground">{t('products.setup.modules.catalogEmpty')}</p> : null}
       {[...groups.entries()].map(([group, items]) => (
         <StepSection key={group} title={t(`products.moduleGroups.${group}`, { defaultValue: titleCase(group) })}>
           <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((m) => {
               const on = modules.includes(m.key);
+              const editable = m.objects?.find((o) => !['leads', 'accounts', 'contacts'].includes(o));
+              const disabled = !m.available && !on;
               return (
-                <button
+                <div
                   key={m.key}
-                  type="button"
-                  role="switch"
-                  aria-checked={on}
-                  onClick={() => toggle(m.key)}
                   className={cn(
-                    'flex items-start gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                    on ? 'border-primary/50 bg-primary-soft/60' : 'hover:bg-muted/60'
+                    'relative flex flex-col rounded-lg border transition-colors',
+                    on ? 'border-primary/50 bg-primary-soft/60' : disabled ? 'opacity-60' : 'hover:bg-muted/60'
                   )}
                 >
-                  <span
-                    className={cn(
-                      'mt-0.5 grid size-4 shrink-0 place-items-center rounded border transition-colors',
-                      on ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background'
-                    )}
-                    aria-hidden
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    disabled={disabled}
+                    onClick={() => toggle(m.key)}
+                    className="flex flex-1 items-start gap-3 rounded-lg p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
                   >
-                    {on ? <Check className="size-3" strokeWidth={3} /> : null}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-medium text-foreground">{m.label}</span>
-                    <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">{m.description}</span>
-                  </span>
-                </button>
+                    <span
+                      className={cn(
+                        'mt-0.5 grid size-4 shrink-0 place-items-center rounded border transition-colors',
+                        on ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background'
+                      )}
+                      aria-hidden
+                    >
+                      {on ? <Check className="size-3" strokeWidth={3} /> : null}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-1.5 text-[13px] font-medium text-foreground">
+                        {m.label}
+                        {m.custom ? <Badge tone="primary">{t('products.setup.modules.customBadge')}</Badge> : null}
+                        {!m.available ? <Badge tone="neutral">{t('products.setup.modules.plannedBadge')}</Badge> : null}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">{m.description}</span>
+                    </span>
+                  </button>
+                  {editable ? (
+                    <Link
+                      to={`/crm/owner/objects/${encodeURIComponent(editable)}`}
+                      className="border-t px-3 py-1.5 text-xs font-medium text-primary hover:underline"
+                    >
+                      {t('products.setup.modules.editObject')}
+                    </Link>
+                  ) : null}
+                </div>
               );
             })}
           </div>
         </StepSection>
       ))}
+      <NewObjectDialog
+        open={creating}
+        onOpenChange={setCreating}
+        icons={icons.data?.icons ?? ['box']}
+        navigateOnCreate={false}
+        onCreated={(d) => onObjectCreated?.(d.module)}
+      />
     </div>
   );
 }

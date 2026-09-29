@@ -226,7 +226,7 @@ function LinkedRecordsCard({ user }: { user: UserDetail }) {
                 to={`/crm/owner/${r.object}/${r.id}`}
                 className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
               >
-                <Badge tone={objectTone[r.object] ?? 'neutral'} className="w-16 justify-center">
+                <Badge tone={(objectTone as Record<string, 'primary' | 'success' | 'warning'>)[r.object] ?? 'neutral'} className="w-16 justify-center">
                   {t(`users.objects.${r.object}`, { defaultValue: r.object })}
                 </Badge>
                 <span className="min-w-0 flex-1">

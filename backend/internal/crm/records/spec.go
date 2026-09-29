@@ -26,7 +26,7 @@ type Field struct {
 	Lookup   string   `json:"lookup,omitempty"`
 	HelpText string   `json:"helpText,omitempty"`
 
-	column string // standard fields only
+	column string // standard fields stored in a column; "" = stored in custom jsonb
 	isInt  bool   // int column (numbers are rounded)
 	system bool   // maintained by the engine (never written from input)
 }
@@ -56,6 +56,9 @@ type objectSpec struct {
 	StatusField string
 	Statuses    []StatusOption
 	Layout      Layout
+	Icon        string // objects defined as data (D-45)
+	Custom      bool
+	order       int
 }
 
 func (o *objectSpec) field(key string) (Field, bool) {
@@ -106,7 +109,9 @@ func statusOptions(s []StatusOption) []Option {
 	return out
 }
 
-func text(key, label, column string) Field { return Field{Key: key, Label: label, Type: "text", column: column} }
+func text(key, label, column string) Field {
+	return Field{Key: key, Label: label, Type: "text", column: column}
+}
 
 func typed(key, label, typ, column string) Field {
 	return Field{Key: key, Label: label, Type: typ, column: column}
@@ -306,3 +311,7 @@ var contactSpec = objectSpec{
 }
 
 var specs = map[string]*objectSpec{"leads": &leadSpec, "accounts": &accountSpec, "contacts": &contactSpec}
+
+// inColumn reports whether a field's value lives in its own column (built-in standard
+// fields) rather than the custom jsonb (custom fields and fields of objects defined as data).
+func (f Field) inColumn() bool { return f.Standard && f.column != "" }

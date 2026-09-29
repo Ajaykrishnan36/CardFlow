@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { isApiError, setUnauthorizedHandler } from '@crm/api/client';
 import { homeFor, meKey, RedirectIfSignedIn, RequireOwner, RequireSession, useCapabilities, useMe } from '@crm/auth/session';
@@ -26,6 +26,8 @@ const WorkspaceIndexRedirect = lazy(() => import('@crm/features/workspace/worksp
 const WorkspaceAccessPage = lazy(() => import('@crm/features/workspace/admin/access-page').then((m) => ({ default: m.WorkspaceAccessPage })));
 const SupportListPage = lazy(() => import('@crm/features/workspace/support/support-list-page').then((m) => ({ default: m.SupportListPage })));
 const TicketDetailPage = lazy(() => import('@crm/features/workspace/support/ticket-detail-page').then((m) => ({ default: m.TicketDetailPage })));
+const ObjectsPage = lazy(() => import('@crm/features/objects/objects-page').then((m) => ({ default: m.ObjectsPage })));
+const ObjectDetailPage = lazy(() => import('@crm/features/objects/object-detail-page').then((m) => ({ default: m.ObjectDetailPage })));
 const AppUsersPage = lazy(() => import('@crm/features/workspace/app/app-users-page').then((m) => ({ default: m.AppUsersPage })));
 const AppUserDetailPage = lazy(() => import('@crm/features/workspace/app/app-user-detail-page').then((m) => ({ default: m.AppUserDetailPage })));
 const BusinessesPage = lazy(() => import('@crm/features/workspace/app/businesses-page').then((m) => ({ default: m.BusinessesPage })));
@@ -134,6 +136,10 @@ function AppRoutes() {
                 <Route key={`w-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
                 <Route key={`w-${object}-layout`} path={`setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />
               ])}
+              {/* Objects defined as data (opportunities, tasks, custom objects…): same pages, keyed by the URL. */}
+              <Route path=":object" element={<ObjectRoute page="list" />} />
+              <Route path=":object/:id" element={<ObjectRoute page="detail" />} />
+              <Route path="setup/:object/layout" element={<ObjectRoute page="layout" />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
             <Route element={<RequireOwner />}>
@@ -151,6 +157,8 @@ function AppRoutes() {
                 <Route key={`${object}-detail`} path={`/crm/owner/${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
                 <Route key={`${object}-layout`} path={`/crm/owner/setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />
               ])}
+              <Route path="/crm/owner/objects" element={<ObjectsPage />} />
+              <Route path="/crm/owner/objects/:key" element={<ObjectDetailPage />} />
               <Route path="/crm/owner/audit" element={<AuditPage />} />
               <Route path="/crm/owner/integrations" element={<IntegrationsPage />} />
               <Route path="/crm/owner/*" element={<NavComingSoon backTo="/crm/owner/dashboard" />} />
@@ -162,6 +170,15 @@ function AppRoutes() {
       </Routes>
     </Suspense>
   );
+}
+
+/** Record pages for an object named in the URL (keyed so switching objects resets state). */
+function ObjectRoute({ page }: { page: 'list' | 'detail' | 'layout' }) {
+  const { object = '' } = useParams();
+  if (!/^[a-z][a-z0-9_]{1,40}$/.test(object)) return <NotFoundPage />;
+  if (page === 'list') return <RecordListPage key={object} object={object} />;
+  if (page === 'detail') return <RecordDetailPage key={object} object={object} />;
+  return <LayoutEditorPage key={object} object={object} />;
 }
 
 export function CrmApp() {

@@ -54,11 +54,18 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 		nav = append(nav, NavItem{Key: "home", Label: "Dashboard", Path: base + "/home", Icon: "layout-dashboard", Available: true})
 	}
 	icons := map[string]string{"lead": "user-plus", "account": "briefcase", "contact": "contact"}
-	for _, o := range Objects {
+	for _, o := range CatalogObjects() {
 		if o.Key == "ticket" || o.App {
 			continue
 		}
+		if o.Custom && o.Key == "cases" && hasSupport {
+			continue // the connected app's Support replaces cases there
+		}
 		if e.Can(o.Key, "read") {
+			if o.Custom {
+				nav = append(nav, NavItem{Key: o.Key, Label: o.Label, Path: base + "/" + o.Route, Icon: o.Icon, Group: "CRM", Available: true})
+				continue
+			}
 			nav = append(nav, NavItem{Key: o.Module, Label: o.Label, Path: base + "/" + o.Module, Icon: icons[o.Key], Group: "CRM", Available: true})
 		}
 	}

@@ -18,7 +18,7 @@ import { GiveLoginDialog } from '@crm/features/access/give-login-dialog';
 import { ConvertLeadDialog } from './convert-dialog';
 import { FieldEditor } from './field-input';
 import { FieldLabel, FieldValue } from './field-value';
-import { fieldIndex, guessTone, humanize, normalizeValue, objectIcons, recordKeys, sameValue, statusOption, useObjectMeta } from './use-object-meta';
+import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys, sameValue, statusOption, useObjectMeta } from './use-object-meta';
 import { layoutHref, listHref, scopedLookupHref, useRecordScope } from './record-scope';
 import { isForbidden, RecordNoAccess } from './record-states';
 
@@ -210,7 +210,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
         <Card>
           {notFound ? (
             <EmptyState
-              icon={objectIcons[object]}
+              icon={objectIcon(object, meta?.icon)}
               title={t('records.detail.notFoundTitle')}
               body={t('records.detail.notFoundBody')}
               action={
@@ -237,7 +237,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
   if (!meta || !detail || !record) return <DetailSkeleton />;
 
-  const Icon = objectIcons[object];
+  const Icon = objectIcon(object, meta.icon);
   const status = meta.statusField ? statusOption(meta, record.values[meta.statusField]) : undefined;
   const isLead = object === 'leads';
   const converted = isLead && Boolean(detail.conversion || record.values.convertedAt || record.values.status === 'converted');

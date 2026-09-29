@@ -25,8 +25,11 @@ export interface RecordScope {
   dashboardKey: readonly unknown[];
 }
 
-/** Route/API plural ↔ permission singular. */
-export const permissionObject: Record<ObjectKey, string> = { leads: 'lead', accounts: 'account', contacts: 'contact' };
+/** Route/API plural ↔ permission singular (objects defined as data use their own key). */
+const builtinPermission: Record<string, string> = { leads: 'lead', accounts: 'account', contacts: 'contact' };
+export function permissionObject(object: ObjectKey): string {
+  return builtinPermission[object] ?? object;
+}
 
 export const ownerScope: RecordScope = {
   audience: 'owner',
@@ -46,7 +49,7 @@ export function workspaceDashboardKey(code: string) {
 /** Scope of a workspace member, from GET /w/{code}/context. */
 export function scopeFromContext(ctx: WorkspaceContext, code: string): RecordScope {
   const prefix = `/w/${encodeURIComponent(code)}`;
-  const access = (object: ObjectKey) => ctx.effective.objects[permissionObject[object]];
+  const access = (object: ObjectKey) => ctx.effective.objects[permissionObject(object)];
   // The platform owner opening a workspace from the console has full access (server-audited).
   const full = Boolean(ctx.viewerIsOwner);
   return {
@@ -88,7 +91,7 @@ export function layoutHref(scope: RecordScope, object: ObjectKey): string {
   return `${scope.routeBase}/setup/${object}/layout`;
 }
 
-const RECORD_TARGETS: readonly string[] = ['leads', 'accounts', 'contacts'];
+const NON_RECORD_TARGETS: readonly string[] = ['users', 'workspaces', 'products'];
 
 /**
  * Page of a lookup target in this scope, or null. Members never get owner-console
@@ -96,9 +99,8 @@ const RECORD_TARGETS: readonly string[] = ['leads', 'accounts', 'contacts'];
  */
 export function scopedLookupHref(scope: RecordScope, target: LookupTarget | string | undefined, id: string | undefined): string | null {
   if (!target || !id) return null;
-  if (RECORD_TARGETS.includes(target)) {
-    const object = target as ObjectKey;
-    return scope.can(object, 'read') ? recordHref(scope, object, id) : null;
+  if (!NON_RECORD_TARGETS.includes(target)) {
+    return scope.can(target, 'read') ? recordHref(scope, target, id) : null;
   }
   if (scope.audience !== 'owner') return null;
   if (target === 'users' || target === 'workspaces' || target === 'products') return `/crm/owner/${target}/${encodeURIComponent(id)}`;
@@ -109,6 +111,6 @@ export function scopedLookupHref(scope: RecordScope, target: LookupTarget | stri
 export function canLookup(scope: RecordScope, target: LookupTarget): boolean {
   if (scope.audience === 'owner') return true;
   if (target === 'workspaces' || target === 'products') return false;
-  if (RECORD_TARGETS.includes(target)) return scope.can(target as ObjectKey, 'read');
+  if (!NON_RECORD_TARGETS.includes(target)) return scope.can(target, 'read');
   return true;
 }

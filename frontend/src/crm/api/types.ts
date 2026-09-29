@@ -191,6 +191,14 @@ export interface ModuleInfo {
   label: string;
   description: string;
   group: string;
+  /** Works today (its objects exist). Planned modules can't be switched on yet. */
+  available: boolean;
+  /** Record objects this module switches on. */
+  objects?: string[];
+  /** One of the owner's custom objects. */
+  custom?: boolean;
+  /** Belongs to a connected app. */
+  hidden?: boolean;
 }
 
 export interface ProductVersion {
@@ -396,7 +404,9 @@ export interface UserUpdateBody {
 }
 
 // ---- Records (metadata-driven leads / accounts / contacts) ----
-export type ObjectKey = 'leads' | 'accounts' | 'contacts';
+export type BuiltinObjectKey = 'leads' | 'accounts' | 'contacts';
+/** Built-in objects plus objects defined as data (opportunities, tasks, the owner's custom objects…). */
+export type ObjectKey = BuiltinObjectKey | (string & {});
 
 export type FieldType =
   | 'text'
@@ -458,6 +468,9 @@ export interface ObjectMeta {
   listColumns: string[];
   statusField?: string;
   statuses?: StatusOption[];
+  /** Objects defined as data: their icon key and custom flag. */
+  icon?: string;
+  custom?: boolean;
 }
 
 export interface LookupValue {
@@ -789,6 +802,47 @@ export interface TicketCounts {
   open: number;
   in_progress: number;
   resolved: number;
+}
+
+// ---- Objects defined as data (/platform/objects, D-45) ----
+export interface ObjectFieldDef {
+  key: string;
+  label: string;
+  type: FieldType;
+  required?: boolean;
+  options?: Array<{ value: string; label: string }>;
+  lookup?: string;
+  helpText?: string;
+}
+
+export interface ObjectDefinition {
+  key: string;
+  module: string;
+  singular: string;
+  plural: string;
+  description: string;
+  icon: string;
+  prefix: string;
+  nameLabel: string;
+  statusLabel?: string;
+  statuses: StatusOption[];
+  fields: ObjectFieldDef[];
+  /** Shipped with the CRM (behind a module) rather than created by the owner. */
+  standard: boolean;
+  status: 'active' | 'archived';
+  records: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ObjectDefinitionBody = Partial<
+  Pick<ObjectDefinition, 'key' | 'singular' | 'plural' | 'description' | 'icon' | 'prefix' | 'nameLabel' | 'statusLabel' | 'statuses' | 'fields'>
+>;
+
+export interface ObjectsResponse {
+  data: ObjectDefinition[];
+  icons: string[];
+  lookupTargets: Array<{ key: string; label: string }>;
 }
 
 // ---- Connected app data (Business Card Snap): /w/{code}/app/* ----

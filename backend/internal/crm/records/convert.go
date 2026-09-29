@@ -48,10 +48,10 @@ type ConvertResult struct {
 
 type leadRow struct {
 	status, salutation, firstName, lastName, title, organization, email, phone, mobile, website string
-	industry, source, rating, street, city, state, postalCode, country, description                 string
-	annualRevenue                                                                                    *float64
-	employees                                                                                        *int
-	custom                                                                                           map[string]any
+	industry, source, rating, street, city, state, postalCode, country, description             string
+	annualRevenue                                                                               *float64
+	employees                                                                                   *int
+	custom                                                                                      map[string]any
 }
 
 func (h *Handler) handleConvert(w http.ResponseWriter, r *http.Request) {

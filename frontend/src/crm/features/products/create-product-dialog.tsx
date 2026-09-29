@@ -20,18 +20,19 @@ interface Errors {
   form?: string;
 }
 
-export function CreateProductDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+/** assignTo: create the product for a workspace — it is added to that workspace when first published. */
+export function CreateProductDialog({ open, onOpenChange, assignTo }: { open: boolean; onOpenChange: (open: boolean) => void; assignTo?: string }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg p-0">
         {/* Remount on every open so the form starts clean. */}
-        {open ? <CreateProductForm onDone={() => onOpenChange(false)} /> : null}
+        {open ? <CreateProductForm onDone={() => onOpenChange(false)} assignTo={assignTo} /> : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function CreateProductForm({ onDone }: { onDone: () => void }) {
+function CreateProductForm({ onDone, assignTo }: { onDone: () => void; assignTo?: string }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -48,7 +49,7 @@ function CreateProductForm({ onDone }: { onDone: () => void }) {
       void qc.invalidateQueries({ queryKey: ['products'] });
       toast.success(t('products.create.created'));
       onDone();
-      navigate(`/crm/owner/products/${p.id}?tab=setup`);
+      navigate(`/crm/owner/products/${p.id}?tab=setup${assignTo ? `&assignTo=${encodeURIComponent(assignTo)}` : ''}`);
     },
     onError: (e) => {
       if (isApiError(e) && Object.keys(e.fieldErrors).length > 0) {

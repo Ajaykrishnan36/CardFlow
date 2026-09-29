@@ -4,10 +4,10 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Archive, ArchiveRestore, Boxes, Building2, Ellipsis, GitBranch, KeyRound, LayoutGrid, Rocket, TriangleAlert, UsersRound } from 'lucide-react';
-import { productsApi } from '@crm/api/endpoints';
+import { productsApi, workspacesApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { ProductConfig, ProductDetail } from '@crm/api/types';
-import { Badge, Card, CardHeader } from '@crm/components/ui/card';
+import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
 import { Skeleton } from '@crm/components/ui/spinner';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '@crm/components/ui/menu';
@@ -72,6 +72,9 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
   const step: SetupStep = stepParam && SETUP_STEPS.includes(stepParam) ? stepParam : 'general';
 
   const { draft, setDraft, updateConfig, dirty } = useProductDraft(product);
+  // Created from a workspace (workspace first): add it there as soon as it's published.
+  const assignTo = params.get('assignTo');
+  const assignWs = useQuery({ queryKey: ['workspace', assignTo], queryFn: () => workspacesApi.get(assignTo!), enabled: Boolean(assignTo) });
   const [publishOpen, setPublishOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [publishErrors, setPublishErrors] = useState<Record<string, string> | null>(null);
@@ -117,6 +120,24 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
       setPublishOpen(false);
       void qc.invalidateQueries({ queryKey: ['workspace'] });
       toast.success(t('products.publish.done', { version: p.currentVersion ?? nextVersion(product) }));
+      if (assignTo && !p.assignedWorkspaces.some((w) => w.id === assignTo)) {
+        void workspacesApi
+          .assignProduct(assignTo, p.id)
+          .then(() => {
+            toast.success(t('products.assignTo.done', { workspace: assignWs.data?.name ?? '' }));
+            void qc.invalidateQueries({ queryKey: ['workspace'] });
+            void qc.invalidateQueries({ queryKey: ['product', p.id] });
+            setParams(
+              (prev) => {
+                const sp = new URLSearchParams(prev);
+                sp.delete('assignTo');
+                return sp;
+              },
+              { replace: true }
+            );
+          })
+          .catch((e: unknown) => toast.error(isApiError(e) ? e.message : t('common.genericError')));
+      }
     },
     onError: (e) => {
       setPublishOpen(false);
@@ -210,6 +231,14 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
         </div>
       ) : null}
 
+      {assignTo ? (
+        <Alert tone="info" className="mb-4">
+          {t('products.assignTo.banner', { workspace: assignWs.data?.name ?? t('products.assignTo.thisWorkspace') })}{' '}
+          <Link to={`/crm/owner/workspaces/${encodeURIComponent(assignTo)}?tab=products`} className="font-medium text-primary hover:underline">
+            {t('products.assignTo.back')}
+          </Link>
+        </Alert>
+      ) : null}
       <Tabs<Tab>
         className="mb-6"
         value={tab}

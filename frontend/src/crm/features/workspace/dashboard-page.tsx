@@ -14,7 +14,7 @@ import { timeOfDayGreeting } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { KpiCard, KpiSkeleton } from '@crm/features/owner/dashboard-page';
 import { listHref, recordHref, useRecordScope, workspaceDashboardKey } from '@crm/features/records/record-scope';
-import { guessTone, humanize, objectIcons } from '@crm/features/records/use-object-meta';
+import { guessTone, humanize, useObjectIcon } from '@crm/features/records/use-object-meta';
 import { firstModulePath, hasDashboard, readableObjects, ticketAccess, useWorkspace, workspaceBase } from './workspace-context';
 import { canAdminister } from './admin/admin-utils';
 
@@ -145,7 +145,7 @@ function RecentGrid({ data, readable }: { data?: WorkspaceDashboard; readable: O
 function RecentCard({ object, label, rows }: { object: ObjectKey; label: string; rows: WorkspaceDashboard['recent'][number]['rows'] }) {
   const { t } = useTranslation();
   const scope = useRecordScope();
-  const Icon = objectIcons[object];
+  const Icon = useObjectIcon(object);
   const canCreate = scope.can(object, 'create');
   return (
     <Card className="flex min-w-0 flex-col overflow-hidden">
