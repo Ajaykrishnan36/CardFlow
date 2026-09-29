@@ -48,7 +48,9 @@ func main() {
 	slog.Info("Starting CardFlow Modular Monolith API Server...", "env", cfg.Env, "port", cfg.Port)
 
 	// 2. Initialize Database and Redis connections
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Generous: connecting retries while a sleeping database wakes, and the
+	// migrations run on the same context.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	dbPool, err := database.NewPostgresPool(ctx, cfg)

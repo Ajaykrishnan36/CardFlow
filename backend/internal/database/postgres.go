@@ -60,19 +60,37 @@ func NewPostgresPool(ctx context.Context, cfg *config.Config) (*DB, error) {
 		poolConfig.MaxConnLifetime = 5 * time.Minute
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create postgres pool: %w", err)
-	}
-
-	// Ping with timeout
-	pingCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	if err := pool.Ping(pingCtx); err != nil {
-		slog.Warn("Postgres connection unavailable (falling back to memory state safely)", "error", err)
+	// A serverless database (Neon free tier) sleeps when idle and can take
+	// several seconds to wake — and the free web instance wakes it at the same
+	// moment. Retry for up to ~90s instead of running without a database until
+	// the next restart.
+	var pool *pgxpool.Pool
+	var lastErr error
+	for attempt := 1; attempt <= 7; attempt++ {
+		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create postgres pool: %w", err)
+		}
+		pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		lastErr = pool.Ping(pingCtx)
+		cancel()
+		if lastErr == nil {
+			break
+		}
 		pool.Close()
-		return nil, err
+		pool = nil
+		slog.Warn("Postgres not reachable yet, retrying", "attempt", attempt, "error", lastErr)
+		if ctx.Err() != nil {
+			break
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(3 * time.Second):
+		}
+	}
+	if pool == nil {
+		slog.Warn("Postgres connection unavailable (falling back to memory state safely)", "error", lastErr)
+		return nil, lastErr
 	}
 
 	slog.Info("Connected to PostgreSQL + PostGIS database successfully")
