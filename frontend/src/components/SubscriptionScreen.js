@@ -209,7 +209,11 @@ export function SubscriptionScreen({ onBack }) {
           <Text style={styles.sectionTitle}>Choose a Plan</Text>
           {!configured ? (
             <Card style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Subscriptions aren't available on this build yet.</Text>
+              <Text style={styles.emptyText}>
+                {billingPlatformName === 'web'
+                  ? 'CardFlow Premium is available in the CardFlow app for iPhone and Android. Buy it there and it unlocks here too when you sign in with the same account.'
+                  : "Subscriptions aren't available on this build yet."}
+              </Text>
             </Card>
           ) : packages === null ? (
             <Card style={styles.emptyCard}>
@@ -280,7 +284,7 @@ export function SubscriptionScreen({ onBack }) {
         </View>
       ) : null}
 
-      <Text style={styles.disclaimer}>{STORE_NOTE[billingPlatformName] || STORE_NOTE.web}</Text>
+      {configured ? <Text style={styles.disclaimer}>{STORE_NOTE[billingPlatformName] || STORE_NOTE.web}</Text> : null}
     </ScrollView>
   );
 }
