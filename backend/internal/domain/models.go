@@ -81,50 +81,54 @@ type Category struct {
 }
 
 type Business struct {
-	ID                uuid.UUID  `json:"id"`
-	OwnerUserID       uuid.UUID  `json:"owner_user_id"`
-	Name              string     `json:"name"`
-	Slug              string     `json:"slug"`
-	Description       string     `json:"description"`
-	PrimaryCategoryID uuid.UUID  `json:"primary_category_id"`
-	PrimaryCategory   string     `json:"primary_category,omitempty"`
-	LogoURL           *string    `json:"logo_url,omitempty"`
-	Website           *string    `json:"website,omitempty"`
-	Email             *string    `json:"email,omitempty"`
-	AddressLine1      string     `json:"address_line1"`
-	AddressLine2      *string    `json:"address_line2,omitempty"`
-	Locality          *string    `json:"locality,omitempty"`
-	City              string     `json:"city"`
-	District          *string    `json:"district,omitempty"`
-	State             string     `json:"state"`
-	Pincode           string     `json:"pincode"`
-	Country           string     `json:"country"`
-	Latitude          float64    `json:"latitude"`
-	Longitude         float64    `json:"longitude"`
-	DistanceKm        float64    `json:"distance_km,omitempty"`
-	ServiceAreaKm     int        `json:"service_area_km"`
-	Hours             string     `json:"hours,omitempty"`
-	YearEstablished   *int       `json:"year_established,omitempty"`
-	GSTIN             *string    `json:"gstin,omitempty"`
-	LegalName         *string    `json:"legal_name,omitempty"`
-	TradeName         *string    `json:"trade_name,omitempty"`
-	Status            string     `json:"status"`
-	Verification      string     `json:"verification"` // 'pending', 'gst', 'pan', 'tan', 'manual', 'failed'
-	Listing           string     `json:"listing"`      // 'unlisted', 'listed'
-	PhoneVerified     bool       `json:"phone_verified"`
-	Completeness      int        `json:"completeness"`
-	IsSponsored       bool       `json:"is_sponsored,omitempty"`
-	ViewsCount        int        `json:"views_count,omitempty"`
-	EnquiriesCount    int        `json:"enquiries_count,omitempty"`
-	Services          []string   `json:"services,omitempty"`
-	Phone             *string    `json:"phone,omitempty"`
-	Phones            []string   `json:"phones,omitempty"`
-	WhatsApp          *string    `json:"whatsapp,omitempty"`
-	CardImageURL      string     `json:"card_image_url,omitempty"`
-	CardBackImageURL  string     `json:"card_back_image_url,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	DeletedAt         *time.Time `json:"deleted_at,omitempty"`
+	ID                uuid.UUID `json:"id"`
+	OwnerUserID       uuid.UUID `json:"owner_user_id"`
+	Name              string    `json:"name"`
+	Slug              string    `json:"slug"`
+	Description       string    `json:"description"`
+	PrimaryCategoryID uuid.UUID `json:"primary_category_id"`
+	PrimaryCategory   string    `json:"primary_category,omitempty"`
+	LogoURL           *string   `json:"logo_url,omitempty"`
+	Website           *string   `json:"website,omitempty"`
+	Email             *string   `json:"email,omitempty"`
+	AddressLine1      string    `json:"address_line1"`
+	AddressLine2      *string   `json:"address_line2,omitempty"`
+	Locality          *string   `json:"locality,omitempty"`
+	City              string    `json:"city"`
+	District          *string   `json:"district,omitempty"`
+	State             string    `json:"state"`
+	Pincode           string    `json:"pincode"`
+	Country           string    `json:"country"`
+	Latitude          float64   `json:"latitude"`
+	Longitude         float64   `json:"longitude"`
+	DistanceKm        float64   `json:"distance_km,omitempty"`
+	ServiceAreaKm     int       `json:"service_area_km"`
+	Hours             string    `json:"hours,omitempty"`
+	YearEstablished   *int      `json:"year_established,omitempty"`
+	GSTIN             *string   `json:"gstin,omitempty"`
+	LegalName         *string   `json:"legal_name,omitempty"`
+	TradeName         *string   `json:"trade_name,omitempty"`
+	Status            string    `json:"status"`
+	Verification      string    `json:"verification"` // 'pending', 'gst', 'pan', 'tan', 'manual', 'failed'
+	Listing           string    `json:"listing"`      // 'unlisted', 'listed'
+	PhoneVerified     bool      `json:"phone_verified"`
+	Completeness      int       `json:"completeness"`
+	IsSponsored       bool      `json:"is_sponsored,omitempty"`
+	ViewsCount        int       `json:"views_count,omitempty"`
+	EnquiriesCount    int       `json:"enquiries_count,omitempty"`
+	Services          []string  `json:"services,omitempty"`
+	Phone             *string   `json:"phone,omitempty"`
+	Phones            []string  `json:"phones,omitempty"`
+	WhatsApp          *string   `json:"whatsapp,omitempty"`
+	CardImageURL      string    `json:"card_image_url,omitempty"`
+	CardBackImageURL  string    `json:"card_back_image_url,omitempty"`
+	// SavedCount is how many people have saved this business's card to their vault.
+	SavedCount int `json:"saved_count"`
+	// Source is 'owner' (registered in the app) or 'card' (created from a scanned card, then claimed).
+	Source    string     `json:"source,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
 
 type DigitalCard struct {
@@ -167,8 +171,15 @@ type SavedCard struct {
 	// registered business — the card then shares that business's data/images
 	// instead of storing its own duplicate copy.
 	LinkedBusinessID *uuid.UUID `json:"linked_business_id,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	// Structured address parts (optional; raw_address is still the display form).
+	AddressLine string `json:"address_line,omitempty"`
+	City        string `json:"city,omitempty"`
+	State       string `json:"state,omitempty"`
+	Pincode     string `json:"pincode,omitempty"`
+	// SavedCount is how many people have saved this business's card (linked cards only).
+	SavedCount int       `json:"saved_count,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type CardPhone struct {

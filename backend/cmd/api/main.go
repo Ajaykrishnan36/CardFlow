@@ -99,6 +99,8 @@ func main() {
 	}
 	geminiSvc := extractor.NewGeminiService(cfg)
 	cardSvc := card.NewCardService(dbPool, s3Svc, geminiSvc)
+	// Link cards saved before one-business-per-GSTIN existed (idempotent).
+	go cardSvc.BackfillCardBusinesses(context.Background())
 
 	// 4. Initialize Handlers & Middlewares
 	appMiddleware := middleware.NewMiddleware(jwtSvc, dbPool)

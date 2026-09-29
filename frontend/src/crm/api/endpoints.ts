@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, API_BASE } from './client';
 import type {
   DashboardDetail,
   DashboardSummary,
@@ -12,6 +12,7 @@ import type {
   ObjectDefinitionBody,
   ObjectsResponse,
   AppBusiness,
+  BusinessSaver,
   AppUser,
   AppUserCounts,
   AppUserDetail,
@@ -330,6 +331,12 @@ export function workspaceAppApi(code: string) {
     business: (id: string) => api<AppBusiness>(`${base}/businesses/${enc(id)}`),
     updateBusiness: (id: string, body: BusinessPatch) => api<AppBusiness>(`${base}/businesses/${enc(id)}`, { method: 'PATCH', body }),
     deleteBusiness: (id: string) => api<void>(`${base}/businesses/${enc(id)}`, { method: 'DELETE' }),
+    savers: (id: string) => api<{ data: BusinessSaver[] }>(`${base}/businesses/${enc(id)}/savers`).then((r) => r.data),
+    /** URL for an <img>; `v` busts the cache after an upload. */
+    cardImageUrl: (id: string, side: 'front' | 'back', v?: string) =>
+      `${API_BASE}${base}/businesses/${enc(id)}/card-image?side=${side}${v ? `&v=${encodeURIComponent(v)}` : ''}`,
+    uploadCardImage: (id: string, side: 'front' | 'back', imageData: string) =>
+      api<AppBusiness>(`${base}/businesses/${enc(id)}/card-image`, { method: 'PUT', body: { side, imageData } }),
     categories: () => api<{ data: Array<{ id: string; name: string }> }>(`${base}/categories`).then((r) => r.data)
   };
 }

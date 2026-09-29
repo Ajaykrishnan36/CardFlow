@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { BadgeCheck, Bookmark, Eye, EyeOff, Globe, Mail, MapPin, Pencil, Phone, Store, Trash2, User } from 'lucide-react';
+import { BadgeCheck, Bookmark, ExternalLink, Eye, EyeOff, Globe, ImageOff, Mail, MapPin, Pencil, Phone, Store, Trash2, Upload, User, Users } from 'lucide-react';
 import { workspaceAppApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { AppBusiness, BusinessListing, BusinessPatch, BusinessStatus, BusinessVerification } from '@crm/api/types';
@@ -21,6 +21,7 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { RecordNoAccess } from '@crm/features/records/record-states';
 import { useWorkspace, workspaceBase } from '../workspace-context';
 import { appAccess, appKeys, appUserPath, BusinessStatusBadge, formatDate, formatPhone, ListingBadge, verified, VerificationBadge } from './app-utils';
+import { LeadStatusBadge, SaversDialog } from './business-savers';
 
 const STATUSES: BusinessStatus[] = ['live', 'draft', 'pending_verification', 'under_review', 'suspended', 'removed'];
 const VERIFICATIONS: BusinessVerification[] = ['gst', 'pan', 'tan', 'manual', 'pending', 'failed'];
@@ -45,6 +46,7 @@ function BusinessDetailView({ id }: { id: string }) {
   useDocumentTitle(b ? b.name : t('workspaceApp.app.bizTitle'));
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saversOpen, setSaversOpen] = useState(false);
 
   const update = useMutation({
     mutationFn: (body: BusinessPatch) => workspaceAppApi(code).updateBusiness(id, body),
@@ -106,6 +108,7 @@ function BusinessDetailView({ id }: { id: string }) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-xl font-semibold tracking-tight">{b.name}</h1>
+              <LeadStatusBadge biz={b} />
               <VerificationBadge value={b.verification} />
               <ListingBadge value={b.listing} />
               <BusinessStatusBadge value={b.status} />
@@ -113,18 +116,30 @@ function BusinessDetailView({ id }: { id: string }) {
             <p className="mt-1 text-[13px] uppercase tracking-wide text-muted-foreground">
               {[b.category, b.city && `${b.city} (${b.pincode})`].filter(Boolean).join(' · ')}
             </p>
-            <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-muted-foreground">
-              <User className="size-3.5" aria-hidden />
-              {t('workspaceApp.app.owner')}:{' '}
-              {canUsers ? (
-                <Link to={appUserPath(code, b.owner.id)} className="font-medium text-primary hover:underline">
-                  {b.owner.name || formatPhone(b.owner.phone)}
-                </Link>
-              ) : (
-                <span className="font-medium text-foreground">{b.owner.name}</span>
-              )}
-              <span className="tabular-nums">({formatPhone(b.owner.phone)})</span>
-            </p>
+            {b.owner.id ? (
+              <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-muted-foreground">
+                <User className="size-3.5" aria-hidden />
+                {t('workspaceApp.app.owner')}:{' '}
+                {canUsers ? (
+                  <Link to={appUserPath(code, b.owner.id)} className="font-medium text-primary hover:underline">
+                    {b.owner.name || formatPhone(b.owner.phone)}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-foreground">{b.owner.name}</span>
+                )}
+                <span className="tabular-nums">({formatPhone(b.owner.phone)})</span>
+              </p>
+            ) : (
+              <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
+                <User className="size-3.5" aria-hidden />
+                {t('workspaceApp.app.notOnApp')} — {t('workspaceApp.app.leadStatusHint.lead', { phone: formatPhone(b.contactPhone) || '—' })}
+              </p>
+            )}
+            {b.leadId ? (
+              <Link to={`${workspaceBase(code)}/leads/${b.leadId}`} className="mt-1.5 inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:underline">
+                <ExternalLink className="size-3.5" aria-hidden /> {t('workspaceApp.app.openLead')}
+              </Link>
+            ) : null}
           </div>
           {can.update || can.delete ? (
             <div className="flex shrink-0 flex-wrap gap-2">
@@ -148,6 +163,8 @@ function BusinessDetailView({ id }: { id: string }) {
         </div>
       </Card>
 
+      <CardImagesCard biz={b} code={code} canUpdate={can.update} />
+
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title={t('workspaceApp.app.listingDetails')} />
@@ -162,6 +179,16 @@ function BusinessDetailView({ id }: { id: string }) {
               ) : null}
             </DetailItem>
             <DetailItem label={t('workspaceApp.app.gstin')}>{b.gstin ? <span className="font-mono">{b.gstin}</span> : null}</DetailItem>
+            {b.source === 'card' ? (
+              <DetailItem label={t('workspaceApp.app.cardContact')}>
+                {b.contactName || b.contactPhone ? (
+                  <span>
+                    {[b.contactName, b.contactDesignation].filter(Boolean).join(' · ')}
+                    {b.contactPhone ? <span className="block tabular-nums text-muted-foreground">{formatPhone(b.contactPhone)}</span> : null}
+                  </span>
+                ) : null}
+              </DetailItem>
+            ) : null}
             <DetailItem label={t('workspaceApp.app.phones')}>
               {b.phones.length ? (
                 <span className="space-y-0.5">
@@ -234,9 +261,19 @@ function BusinessDetailView({ id }: { id: string }) {
               <ListingBadge value={b.listing} />
             </DetailItem>
             <DetailItem label={t('workspaceApp.app.savedByLabel')}>
-              <span className="inline-flex items-center gap-1.5">
-                <Bookmark className="size-3.5 text-muted-foreground" aria-hidden /> {t('workspaceApp.app.savedBy', { count: b.savedBy })}
-              </span>
+              {b.savedBy ? (
+                <button
+                  type="button"
+                  onClick={() => setSaversOpen(true)}
+                  className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Users className="size-3.5" aria-hidden /> {t('workspaceApp.app.savedBy', { count: b.savedBy })}
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5">
+                  <Bookmark className="size-3.5 text-muted-foreground" aria-hidden /> {t('workspaceApp.app.savedBy', { count: 0 })}
+                </span>
+              )}
             </DetailItem>
             <DetailItem label={t('workspaceApp.app.completeness')}>
               <span className="flex items-center gap-2">
@@ -250,6 +287,8 @@ function BusinessDetailView({ id }: { id: string }) {
           </dl>
         </Card>
       </div>
+
+      <SaversDialog biz={b} code={code} canUsers={canUsers} open={saversOpen} onOpenChange={setSaversOpen} />
 
       {can.update ? (
         <EditBusinessDialog
@@ -447,5 +486,83 @@ function EditBusinessDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/** Front/back of the original business card, with upload / replace. */
+function CardImagesCard({ biz, code, canUpdate }: { biz: AppBusiness; code: string; canUpdate: boolean }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const side = useRef<'front' | 'back'>('front');
+  const upload = useMutation({
+    mutationFn: ({ s, data }: { s: 'front' | 'back'; data: string }) => workspaceAppApi(code).uploadCardImage(biz.id, s, data),
+    onSuccess: (next, vars) => {
+      qc.setQueryData<AppBusiness>(appKeys.business(code, biz.id), next);
+      void qc.invalidateQueries({ queryKey: appKeys.all(code) });
+      toast.success(t('workspaceApp.app.imageUploaded', { side: t(vars.s === 'back' ? 'workspaceApp.app.cardBack' : 'workspaceApp.app.cardFront') }));
+    },
+    onError: (e) => toast.error(isApiError(e) ? (Object.values(e.fieldErrors)[0] ?? e.message) : t('common.genericError'))
+  });
+  const pick = (s: 'front' | 'back') => {
+    side.current = s;
+    if (input.current) {
+      input.current.value = '';
+      input.current.click();
+    }
+  };
+  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/') || file.size > MAX_IMAGE_BYTES) {
+      toast.error(t('workspaceApp.app.imageTooBig'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => upload.mutate({ s: side.current, data: String(reader.result) });
+    reader.readAsDataURL(file);
+  };
+  const version = biz.updatedAt;
+  return (
+    <Card className="mt-4">
+      <CardHeader title={t('workspaceApp.app.cardImages')} />
+      <input ref={input} type="file" accept="image/*" className="hidden" onChange={onFile} />
+      <div className="grid gap-4 px-4 pb-4 sm:grid-cols-2">
+        {(['front', 'back'] as const).map((s) => {
+          const has = s === 'front' ? biz.hasFrontImage : biz.hasBackImage;
+          const label = t(s === 'front' ? 'workspaceApp.app.cardFront' : 'workspaceApp.app.cardBack');
+          return (
+            <figure key={s} className="min-w-0">
+              <figcaption className="mb-1.5 flex items-center justify-between text-xs font-medium text-muted-foreground">
+                {label}
+                {canUpdate ? (
+                  <Button size="sm" variant="outline" onClick={() => pick(s)} loading={upload.isPending && upload.variables?.s === s}>
+                    <Upload /> {has ? t('workspaceApp.app.replaceImage') : t('workspaceApp.app.uploadImage')}
+                  </Button>
+                ) : null}
+              </figcaption>
+              {has ? (
+                <a href={workspaceAppApi(code).cardImageUrl(biz.id, s, version)} target="_blank" rel="noreferrer" className="block">
+                  <img
+                    src={workspaceAppApi(code).cardImageUrl(biz.id, s, version)}
+                    alt={`${biz.name} — ${label}`}
+                    className="aspect-[1.75] w-full rounded-lg border bg-muted object-contain"
+                  />
+                </a>
+              ) : (
+                <div className="grid aspect-[1.75] w-full place-items-center rounded-lg border border-dashed bg-muted/40 text-xs text-muted-foreground">
+                  <span className="flex flex-col items-center gap-1.5">
+                    <ImageOff className="size-5" aria-hidden />
+                    {t('workspaceApp.app.noCardImage')}
+                  </span>
+                </div>
+              )}
+            </figure>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

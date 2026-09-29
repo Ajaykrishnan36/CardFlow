@@ -118,7 +118,42 @@ func (s *AuthService) VerifyOTP(ctx context.Context, rawPhone, otpCode, deviceID
 		return nil, err
 	}
 	tokenPair.IsNewUser = isNewUser
+	tokenPair.ClaimedBusinesses = s.claimCardBusinesses(ctx, user.ID, phone)
+	if isNewUser {
+		for _, b := range tokenPair.ClaimedBusinesses {
+			if b.ContactName != "" {
+				tokenPair.SuggestedName = b.ContactName
+				break
+			}
+		}
+	}
 	return tokenPair, nil
+}
+
+// claimCardBusinesses gives this user the businesses that were created from
+// scanned cards carrying their (OTP-verified) phone and that nobody owns yet.
+// They then appear under My Business, and the CRM converts the lead.
+func (s *AuthService) claimCardBusinesses(ctx context.Context, userID uuid.UUID, phone string) []ClaimedBusiness {
+	if s.db == nil || s.db.Pool == nil {
+		return nil
+	}
+	rows, err := s.db.Pool.Query(ctx, `
+		UPDATE businesses SET owner_user_id = $1, claimed_at = now(), updated_at = now()
+		WHERE owner_user_id IS NULL AND deleted_at IS NULL AND contact_phone = $2
+		RETURNING id::text, name, COALESCE(contact_name, '')`, userID, phone)
+	if err != nil {
+		// Column missing on a database that hasn't run migration 014 yet.
+		return nil
+	}
+	defer rows.Close()
+	var out []ClaimedBusiness
+	for rows.Next() {
+		var b ClaimedBusiness
+		if rows.Scan(&b.ID, &b.Name, &b.ContactName) == nil {
+			out = append(out, b)
+		}
+	}
+	return out
 }
 
 // validateOTP checks a one-time code for phone against the in-memory store

@@ -208,7 +208,9 @@ func (s *BusinessService) GetOwnerBusinesses(ctx context.Context, ownerUserID uu
 		       COALESCE(c.name, ''), b.address_line1, b.city, b.state, b.pincode,
 		       b.website, b.email, b.gstin,
 		       `+s.businessCoordSelectSQL(ctx)+`,
-		       b.status::text, b.verification::text, b.listing::text, b.completeness, b.created_at, b.updated_at
+		       b.status::text, b.verification::text, b.listing::text, b.completeness, b.created_at, b.updated_at,
+		       (SELECT count(DISTINCT sc.user_id) FROM saved_cards sc WHERE sc.linked_business_id = b.id AND sc.deleted_at IS NULL),
+		       COALESCE(b.source, 'owner')
 		FROM businesses b
 		LEFT JOIN categories c ON c.id = b.primary_category_id
 		WHERE b.owner_user_id = $1 AND b.status != 'removed'
@@ -230,6 +232,7 @@ func (s *BusinessService) GetOwnerBusinesses(ctx context.Context, ownerUserID uu
 			&website, &email, &gstin,
 			&b.Latitude, &b.Longitude,
 			&status, &verif, &list, &b.Completeness, &b.CreatedAt, &b.UpdatedAt,
+			&b.SavedCount, &b.Source,
 		)
 		if err == nil {
 			b.PrimaryCategory = catName
@@ -253,6 +256,19 @@ func (s *BusinessService) GetOwnerBusinesses(ctx context.Context, ownerUserID uu
 }
 
 func (s *BusinessService) CreateBusiness(ctx context.Context, ownerUserID uuid.UUID, in CreateBusinessInput) (*domain.Business, error) {
+	// A business created earlier from someone's scanned card (same GSTIN, no
+	// owner yet) becomes this owner's instead of a second record for it.
+	if gst := strings.ToUpper(strings.TrimSpace(in.GSTIN)); gst != "" && s.db != nil && s.db.Pool != nil {
+		var existing uuid.UUID
+		err := s.db.Pool.QueryRow(ctx, `
+			UPDATE businesses SET owner_user_id = $2, claimed_at = now(), status = 'live', listing = 'listed',
+			       primary_category_id = $3, updated_at = now()
+			WHERE upper(gstin) = $1 AND owner_user_id IS NULL AND deleted_at IS NULL
+			RETURNING id`, gst, ownerUserID, s.resolveCategoryID(ctx, in.CategoryID)).Scan(&existing)
+		if err == nil {
+			return s.UpdateBusiness(ctx, ownerUserID, existing, in)
+		}
+	}
 	slug := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(in.Name), " ", "-")) + "-" + uuid.New().String()[:4]
 	newID := uuid.New()
 

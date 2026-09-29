@@ -14,6 +14,9 @@ import {
   RotateCw,
   VideoOff,
   SwitchCamera,
+  PencilLine,
+  X,
+  Users,
 } from 'lucide-react';
 import { colors, radii, spacing, typography } from '../../theme';
 import { Button } from '../../components/Button';
@@ -27,6 +30,9 @@ import { UpgradeModal } from '../../components/UpgradeModal';
 import { CardCornerAdjuster } from '../../components/CardCornerAdjuster';
 
 const FREE_SAVED_CARD_LIMIT = 5;
+// Same shape the server checks (2-digit state code, PAN, entity, Z, checksum).
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const cleanGstin = (v) => (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 function applyExtractionToForm(data, setters) {
   if (!data) return;
@@ -89,6 +95,10 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
   const [stateName, setStateName] = useState('');
   const [pincode, setPincode] = useState('');
   const [gstin, setGstin] = useState('');
+  // Manual entry: no scan — name, phone and GSTIN are required, card photos optional.
+  const [manual, setManual] = useState(false);
+  const manualFileRef = useRef(null);
+  const manualSideRef = useRef('front');
 
   const currentPreview = captureSide === 'front' ? frontImage : backImage;
 
@@ -300,14 +310,47 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
     startCamera();
   };
 
-  const handleSaveToDatabase = async () => {
-    if (!company && !personName && !phone) {
-      alert('Please enter at least a name, company, or phone number.');
-      return;
+  const startManualEntry = () => {
+    stopCameraStream();
+    setManual(true);
+    setPhase('review');
+  };
+
+  const pickManualImage = (side) => {
+    manualSideRef.current = side;
+    if (manualFileRef.current) {
+      manualFileRef.current.value = '';
+      manualFileRef.current.click();
     }
-    if (!frontImage) {
-      alert('Front side image is required.');
-      return;
+  };
+
+  const handleManualFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (manualSideRef.current === 'back') setBackImage(event.target.result);
+      else setFrontImage(event.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveToDatabase = async () => {
+    const gst = cleanGstin(gstin);
+    if (manual) {
+      if (!personName.trim()) { alert('Please enter the name.'); return; }
+      if (!phone.trim()) { alert('Please enter the phone number.'); return; }
+      if (!gst) { alert('Please enter the GSTIN.'); return; }
+      if (!GSTIN_RE.test(gst)) { alert('GSTIN should be 15 characters, like 33ABCDE1234F1Z5.'); return; }
+    } else {
+      if (!company && !personName && !phone) {
+        alert('Please enter at least a name, company, or phone number.');
+        return;
+      }
+      if (!frontImage) {
+        alert('Front side image is required.');
+        return;
+      }
     }
     if (!isPremiumActive && (savedCards?.length || 0) >= FREE_SAVED_CARD_LIMIT) {
       setShowUpgrade(true);
@@ -321,10 +364,14 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
       designation,
       company,
       website,
-      gstin,
-      notes: 'Scanned visiting card',
+      gstin: gst || gstin,
+      notes: manual ? 'Added manually' : 'Scanned visiting card',
       met_context: 'CardFlow scanner',
-      source: 'SCANNED',
+      source: manual ? 'MANUAL' : 'SCANNED',
+      address_line: rawAddress,
+      city,
+      state: stateName,
+      pincode,
       phones: [
         phone ? { raw: phone, e164: phone.replace(/[^0-9+]/g, ''), type: 'mobile', is_whatsapp: false } : null,
         whatsapp ? { raw: whatsapp, e164: whatsapp.replace(/[^0-9+]/g, ''), type: 'mobile', is_whatsapp: true } : null
@@ -339,7 +386,9 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
       const cardId = saved?.id;
       if (!cardId) throw new Error('Could not save card — no card ID returned.');
 
-      await apiClient.uploadCardOriginalImage(cardId, frontImage, token, 'front');
+      if (frontImage) {
+        await apiClient.uploadCardOriginalImage(cardId, frontImage, token, 'front');
+      }
       if (backImage) {
         await apiClient.uploadCardOriginalImage(cardId, backImage, token, 'back');
       }
@@ -347,7 +396,7 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
       await loadUserVault(token);
       const persisted = {
         ...saved,
-        original_card_image_url: `/api/v1/cards/${cardId}/original-image`,
+        original_card_image_url: frontImage ? `/api/v1/cards/${cardId}/original-image` : saved?.original_card_image_url || '',
         original_back_image_url: backImage ? `/api/v1/cards/${cardId}/original-image?side=back` : '',
         person_name: personName,
         company,
@@ -369,12 +418,14 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
 
   const headerTitle =
     phase === 'saved' ? 'Card Saved' :
+    phase === 'review' && manual ? 'Add Card Details' :
     phase === 'review' ? 'Review Card' :
     phase === 'adjust' ? 'Straighten Card' :
     captureSide === 'back' ? 'Scan Back Side' : 'Scan Front Side';
 
   const headerSub =
     phase === 'saved' ? 'Your card is stored in My Cards' :
+    phase === 'review' && manual ? 'Type the details from the card' :
     phase === 'review' ? 'Correct any OCR mistakes before saving' :
     phase === 'adjust' ? 'Line up the 4 corners with the card edges' :
     captureSide === 'back' ? 'Capture extra contact details from the back' :
@@ -392,6 +443,14 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
           <Text style={styles.successSub}>
             Your business card has been safely added to My Cards.
           </Text>
+          {savedCard?.saved_count > 1 ? (
+            <View style={styles.savedCountPill}>
+              <Users size={14} color={colors.primary} />
+              <Text style={styles.savedCountText}>
+                {savedCard.saved_count} people have saved this card
+              </Text>
+            </View>
+          ) : null}
           <Button
             title="View Card"
             onPress={() => onCardSaved && onCardSaved(savedCard)}
@@ -417,7 +476,9 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" style={{ display: 'none' }} />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
+        <input type="file" ref={manualFileRef} onChange={handleManualFile} accept="image/*" style={{ display: 'none' }} />
 
+        {!manual ? (
         <View style={styles.sideRow}>
           <View style={[styles.sideChip, frontImage && styles.sideChipDone, captureSide === 'front' && styles.sideChipActive]}>
             <Text style={[styles.sideChipText, (frontImage || captureSide === 'front') && styles.sideChipTextActive]}>
@@ -430,6 +491,7 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
             </Text>
           </View>
         </View>
+        ) : null}
 
         {phase === 'adjust' && pendingImage ? (
           <CardCornerAdjuster
@@ -500,7 +562,7 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
           </View>
         ) : null}
 
-        {phase === 'review' ? (
+        {phase === 'review' && !manual ? (
           <View style={styles.reviewThumbs}>
             {frontImage ? <img src={frontImage} alt="Front" style={styles.reviewThumb} /> : null}
             {backImage ? <img src={backImage} alt="Back" style={styles.reviewThumb} /> : null}
@@ -538,6 +600,12 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
                 <Text style={styles.skipText}>Skip back side and continue</Text>
               </TouchableOpacity>
             ) : null}
+            {captureSide === 'front' && !frontImage ? (
+              <TouchableOpacity style={styles.manualLink} onPress={startManualEntry}>
+                <PencilLine size={15} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.manualLinkText}>Enter details manually</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
 
@@ -567,7 +635,9 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
           <Card style={styles.formCard}>
             <Text style={styles.formHeaderTitle}>Review details</Text>
             <Text style={styles.formHint}>
-              Blank is better than wrong. Correct anything OCR may have misread.
+              {manual
+                ? 'Name, phone and GSTIN are required. Card photos are optional.'
+                : 'Blank is better than wrong. Correct anything OCR may have misread.'}
             </Text>
 
             <Input
@@ -605,7 +675,7 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
             <Input label="EMAIL" value={email} onChangeText={setEmail} leftIcon={Mail} placeholder="contact@company.com" />
             <Input label="WEBSITE" value={website} onChangeText={setWebsite} leftIcon={Globe} placeholder="www.company.com" />
             <Input
-              label="GSTIN"
+              label={manual ? 'GSTIN *' : 'GSTIN'}
               value={gstin}
               onChangeText={setGstin}
               placeholder="33XXXXXXXXXXXXXX"
@@ -622,6 +692,28 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
             <Input label="CITY" value={city} onChangeText={setCity} placeholder="City" />
             <Input label="STATE" value={stateName} onChangeText={setStateName} placeholder="State" />
             <Input label="PINCODE" value={pincode} onChangeText={setPincode} placeholder="641001" />
+
+            {manual ? (
+              <View style={styles.manualUploads}>
+                <Text style={styles.manualUploadsLabel}>CARD PHOTOS (OPTIONAL)</Text>
+                {[['front', frontImage, setFrontImage, 'Upload Front Card'], ['back', backImage, setBackImage, 'Upload Back Card']].map(
+                  ([side, img, setImg, label]) =>
+                    img ? (
+                      <View key={side} style={styles.manualThumbWrap}>
+                        <img src={img} alt={`${side} of card`} style={styles.reviewThumb} />
+                        <TouchableOpacity style={styles.manualThumbRemove} onPress={() => setImg(null)} accessibilityLabel={`Remove ${side} photo`}>
+                          <X size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity key={side} style={styles.manualUploadBtn} onPress={() => pickManualImage(side)}>
+                        <Upload size={18} color={colors.primary} style={{ marginRight: 8 }} />
+                        <Text style={styles.manualUploadText}>{label}</Text>
+                      </TouchableOpacity>
+                    )
+                )}
+              </View>
+            ) : null}
 
             <Button
               title="Save Card"
@@ -723,6 +815,45 @@ const styles = StyleSheet.create({
   },
   uploadFileBtnText: { color: colors.textPrimary, fontSize: 14, fontWeight: '600' },
   skipText: { textAlign: 'center', color: colors.primary, fontWeight: '600', fontSize: 13, paddingVertical: spacing.sm },
+  manualLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm },
+  manualLinkText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
+  manualUploads: { marginTop: spacing.sm, marginBottom: spacing.sm, gap: spacing.sm },
+  manualUploadsLabel: { fontSize: 11, fontWeight: '700', color: colors.textMuted, letterSpacing: 0.6 },
+  manualUploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: radii.lg,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    backgroundColor: colors.bgCard
+  },
+  manualUploadText: { color: colors.primary, fontWeight: '700', fontSize: 15 },
+  manualThumbWrap: { position: 'relative', alignSelf: 'flex-start' },
+  manualThumbRemove: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(15,23,42,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  savedCountPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    marginBottom: spacing.md
+  },
+  savedCountText: { color: colors.primary, fontWeight: '600', fontSize: 13 },
   previewCtas: { marginBottom: spacing.md },
   capturedHint: { textAlign: 'center', color: colors.textSecondary, fontSize: 13, marginBottom: spacing.sm },
   reviewThumbs: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },

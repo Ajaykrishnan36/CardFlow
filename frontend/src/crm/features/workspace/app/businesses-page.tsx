@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Bookmark, Store } from 'lucide-react';
+import { Store } from 'lucide-react';
 import { workspaceAppApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { AppBusiness } from '@crm/api/types';
@@ -16,8 +16,9 @@ import { RecordNoAccess } from '@crm/features/records/record-states';
 import { useWorkspace } from '../workspace-context';
 import { appAccess, appKeys, appUserPath, businessPath, BusinessStatusBadge, formatPhone, ListingBadge, VerificationBadge } from './app-utils';
 import { RowsSkeleton, useListParams } from './app-users-page';
+import { LeadStatusBadge, SavedByButton } from './business-savers';
 
-const FILTERS = ['all', 'listed', 'hidden', 'verified', 'review'] as const;
+const FILTERS = ['all', 'leads', 'converted', 'listed', 'hidden', 'verified', 'review'] as const;
 type Filter = (typeof FILTERS)[number];
 
 /** /crm/w/:ws/businesses — the app's business directory (listings, badges, visibility). */
@@ -115,28 +116,33 @@ function BusinessRow({ biz: b, code, canUsers }: { biz: AppBusiness; code: strin
           <p className="truncate text-xs uppercase tracking-wide text-muted-foreground">
             {[b.category, b.city && `${b.city} (${b.pincode})`].filter(Boolean).join(' · ')}
           </p>
-          <p className="truncate text-xs text-muted-foreground">
-            {t('workspaceApp.app.owner')}:{' '}
-            {canUsers ? (
-              <Link to={appUserPath(code, b.owner.id)} className="relative z-10 font-medium text-primary hover:underline">
-                {b.owner.name || formatPhone(b.owner.phone)}
-              </Link>
-            ) : (
-              b.owner.name
-            )}{' '}
-            <span className="tabular-nums">({formatPhone(b.owner.phone)})</span>
-          </p>
+          {b.owner.id ? (
+            <p className="truncate text-xs text-muted-foreground">
+              {t('workspaceApp.app.owner')}:{' '}
+              {canUsers ? (
+                <Link to={appUserPath(code, b.owner.id)} className="relative z-10 font-medium text-primary hover:underline">
+                  {b.owner.name || formatPhone(b.owner.phone)}
+                </Link>
+              ) : (
+                b.owner.name
+              )}{' '}
+              <span className="tabular-nums">({formatPhone(b.owner.phone)})</span>
+            </p>
+          ) : (
+            <p className="truncate text-xs text-muted-foreground">
+              {t('workspaceApp.app.fromCard')}: <span className="font-medium text-foreground">{b.contactName || '—'}</span>
+              {b.contactPhone ? <span className="tabular-nums"> ({formatPhone(b.contactPhone)})</span> : null} ·{' '}
+              {t('workspaceApp.app.notOnApp')}
+            </p>
+          )}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 pl-[3.25rem] md:pl-0">
+        <LeadStatusBadge biz={b} />
         <VerificationBadge value={b.verification} />
         <ListingBadge value={b.listing} />
         <BusinessStatusBadge value={b.status} />
-        {b.savedBy ? (
-          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t('workspaceApp.app.savedBy', { count: b.savedBy })}>
-            <Bookmark className="size-3.5" aria-hidden /> {b.savedBy}
-          </span>
-        ) : null}
+        <SavedByButton biz={b} code={code} canUsers={canUsers} />
       </div>
     </li>
   );

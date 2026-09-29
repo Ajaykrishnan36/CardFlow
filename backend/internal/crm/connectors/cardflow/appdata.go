@@ -587,11 +587,24 @@ type AppBusiness struct {
 	SavedBy       int       `json:"savedBy"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
-	Owner         struct {
+	// Owner is empty (ID "") while a card-created business is unclaimed.
+	Owner struct {
 		ID    string `json:"id"`
 		Name  string `json:"name"`
 		Phone string `json:"phone"`
 	} `json:"owner"`
+	// Source is "owner" (registered in the app) or "card" (created from a scanned card).
+	Source string `json:"source"`
+	// LeadStatus: "lead" (card business, owner not on the app yet),
+	// "converted" (card business claimed by its owner), "owner" (registered by the owner).
+	LeadStatus         string     `json:"leadStatus"`
+	LeadID             string     `json:"leadId"`
+	ContactName        string     `json:"contactName"`
+	ContactDesignation string     `json:"contactDesignation"`
+	ContactPhone       string     `json:"contactPhone"`
+	ClaimedAt          *time.Time `json:"claimedAt,omitempty"`
+	HasFrontImage      bool       `json:"hasFrontImage"`
+	HasBackImage       bool       `json:"hasBackImage"`
 }
 
 const businessSelect = `
@@ -601,15 +614,21 @@ const businessSelect = `
 	       b.listing::text, b.phone_verified, b.completeness,
 	       COALESCE((SELECT array_agg(s.name ORDER BY s.created_at) FROM public.business_services s WHERE s.business_id = b.id), '{}'),
 	       COALESCE((SELECT array_agg(p.phone ORDER BY p.created_at) FROM public.business_phones p WHERE p.business_id = b.id), '{}'),
-	       %s, b.created_at, b.updated_at, u.id::text, COALESCE(u.name, ''), u.phone
+	       %s, b.created_at, b.updated_at, COALESCE(u.id::text, ''), COALESCE(NULLIF(u.name, 'CardFlow User'), ''), COALESCE(u.phone, ''),
+	       COALESCE(b.source, 'owner'), COALESCE(b.contact_name, ''), COALESCE(b.contact_designation, ''), COALESCE(b.contact_phone, ''),
+	       b.claimed_at,
+	       EXISTS (SELECT 1 FROM public.business_card_images i WHERE i.business_id = b.id AND i.side = 'front' AND length(i.image_data) > 0),
+	       EXISTS (SELECT 1 FROM public.business_card_images i WHERE i.business_id = b.id AND i.side = 'back' AND length(i.image_data) > 0),
+	       COALESCE((SELECT el.lead_id::text FROM crm.external_links el
+	                 WHERE el.system = 'cardflow' AND el.external_type = 'business' AND el.external_id = b.id::text), '')
 	FROM public.businesses b
-	JOIN public.users u ON u.id = b.owner_user_id
+	LEFT JOIN public.users u ON u.id = b.owner_user_id
 	LEFT JOIN public.categories cat ON cat.id = b.primary_category_id`
 
 func (c *Connector) businessSelect() string {
 	saved := `0`
 	if c.hasCards {
-		saved = `(SELECT count(*) FROM public.saved_cards sc WHERE sc.linked_business_id = b.id AND sc.deleted_at IS NULL)`
+		saved = `(SELECT count(DISTINCT sc.user_id) FROM public.saved_cards sc WHERE sc.linked_business_id = b.id AND sc.deleted_at IS NULL)`
 	}
 	return strings.Replace(businessSelect, "%s", saved, 1)
 }
@@ -619,8 +638,17 @@ func scanBusiness(row pgx.Row) (AppBusiness, error) {
 	var completeness int16
 	err := row.Scan(&b.ID, &b.Name, &b.Slug, &b.Description, &b.CategoryID, &b.Category, &b.Website, &b.Email, &b.AddressLine1,
 		&b.AddressLine2, &b.Locality, &b.City, &b.District, &b.State, &b.Pincode, &b.GSTIN, &b.Status, &b.Verification, &b.Listing,
-		&b.PhoneVerified, &completeness, &b.Services, &b.Phones, &b.SavedBy, &b.CreatedAt, &b.UpdatedAt, &b.Owner.ID, &b.Owner.Name, &b.Owner.Phone)
+		&b.PhoneVerified, &completeness, &b.Services, &b.Phones, &b.SavedBy, &b.CreatedAt, &b.UpdatedAt, &b.Owner.ID, &b.Owner.Name, &b.Owner.Phone,
+		&b.Source, &b.ContactName, &b.ContactDesignation, &b.ContactPhone, &b.ClaimedAt, &b.HasFrontImage, &b.HasBackImage, &b.LeadID)
 	b.GSTIN = strings.TrimSpace(b.GSTIN)
+	switch {
+	case b.Source == "card" && b.Owner.ID == "":
+		b.LeadStatus = "lead"
+	case b.Source == "card":
+		b.LeadStatus = "converted"
+	default:
+		b.LeadStatus = "owner"
+	}
 	b.Completeness = int(completeness)
 	return b, err
 }
@@ -654,28 +682,37 @@ func (c *Connector) handleListBusinesses(w http.ResponseWriter, r *http.Request)
 		"verified": "b.verification::text NOT IN ('pending', 'failed')", "unverified": "b.verification::text IN ('pending', 'failed')",
 		"live": "b.status::text = 'live'", "review": "b.status::text IN ('draft', 'pending_verification', 'under_review')",
 		"suspended": "b.status::text IN ('suspended', 'removed')",
+		"leads":     "b.owner_user_id IS NULL",
+		"converted": "COALESCE(b.source, 'owner') = 'card' AND b.owner_user_id IS NOT NULL",
+		"owners":    "COALESCE(b.source, 'owner') = 'owner'",
 	}[r.URL.Query().Get("filter")]
 	if filter == "" {
 		filter = "true"
 	}
 	list, _, err := c.queryBusinesses(ctx, filter+` AND ($1 = '' OR b.name ILIKE $2 OR b.city ILIKE $2 OR b.pincode ILIKE $2
-		OR COALESCE(cat.name, '') ILIKE $2 OR u.name ILIKE $2 OR u.phone ILIKE $2 OR COALESCE(b.gstin, '') ILIKE $2)`, q, likePattern(q))
+		OR COALESCE(cat.name, '') ILIKE $2 OR COALESCE(u.name, '') ILIKE $2 OR COALESCE(u.phone, '') ILIKE $2 OR COALESCE(b.gstin, '') ILIKE $2
+		OR COALESCE(b.contact_name, '') ILIKE $2 OR COALESCE(b.contact_phone, '') ILIKE $2)`, q, likePattern(q))
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
 	var counts struct {
-		All      int `json:"all"`
-		Listed   int `json:"listed"`
-		Hidden   int `json:"hidden"`
-		Verified int `json:"verified"`
-		Review   int `json:"review"`
+		All       int `json:"all"`
+		Listed    int `json:"listed"`
+		Hidden    int `json:"hidden"`
+		Verified  int `json:"verified"`
+		Review    int `json:"review"`
+		Leads     int `json:"leads"`
+		Converted int `json:"converted"`
 	}
 	if err := c.store.Pool.QueryRow(ctx, `
 		SELECT count(*), count(*) FILTER (WHERE listing::text = 'listed'), count(*) FILTER (WHERE listing::text = 'unlisted'),
 		       count(*) FILTER (WHERE verification::text NOT IN ('pending', 'failed')),
-		       count(*) FILTER (WHERE status::text IN ('draft', 'pending_verification', 'under_review'))
-		FROM public.businesses WHERE deleted_at IS NULL`).Scan(&counts.All, &counts.Listed, &counts.Hidden, &counts.Verified, &counts.Review); err != nil {
+		       count(*) FILTER (WHERE status::text IN ('draft', 'pending_verification', 'under_review')),
+		       count(*) FILTER (WHERE owner_user_id IS NULL),
+		       count(*) FILTER (WHERE COALESCE(source, 'owner') = 'card' AND owner_user_id IS NOT NULL)
+		FROM public.businesses WHERE deleted_at IS NULL`).Scan(&counts.All, &counts.Listed, &counts.Hidden, &counts.Verified, &counts.Review,
+		&counts.Leads, &counts.Converted); err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
@@ -988,6 +1025,9 @@ func (c *Connector) appRoutes(r chi.Router) {
 	r.Get("/app/businesses/{id}", c.handleGetBusiness)
 	r.Patch("/app/businesses/{id}", c.handleUpdateBusiness)
 	r.Delete("/app/businesses/{id}", c.handleDeleteBusiness)
+	r.Get("/app/businesses/{id}/savers", c.handleBusinessSavers)
+	r.Get("/app/businesses/{id}/card-image", c.handleBusinessCardImage)
+	r.Put("/app/businesses/{id}/card-image", c.handleUploadBusinessCardImage)
 	r.Get("/app/categories", c.handleCategories)
 }
 

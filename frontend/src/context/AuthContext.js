@@ -257,7 +257,10 @@ export function AuthProvider({ children }) {
           isSubscribed: apiUser.is_subscribed || false,
           subscriptionPlanId: apiUser.subscription_plan_id || null,
           subscriptionExpiresAt: apiUser.subscription_expires_at || null,
-          isNewUser: apiRes?.data?.is_new_user || apiRes?.is_new_user || false
+          isNewUser: apiRes?.data?.is_new_user || apiRes?.is_new_user || false,
+          // A business created from someone scanning this person's card is now theirs.
+          suggestedName: apiRes?.data?.suggested_name || '',
+          claimedBusinesses: apiRes?.data?.claimed_businesses || []
         };
         isBrandNew = matchedAccount.isNewUser;
       }

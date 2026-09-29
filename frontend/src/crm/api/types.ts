@@ -1045,7 +1045,20 @@ export interface AppBusiness {
   savedBy: number;
   createdAt: string;
   updatedAt: string;
+  /** Empty id while a card-created business has no owner on the app yet. */
   owner: { id: string; name: string; phone: string };
+  /** owner = registered by its owner; card = created from a scanned/typed business card. */
+  source: 'owner' | 'card';
+  /** lead = owner not on the app yet · converted = owner signed up and claimed it · owner = registered by the owner. */
+  leadStatus: 'lead' | 'converted' | 'owner';
+  /** The CRM lead created for a card business (empty for owner-registered ones). */
+  leadId: string;
+  contactName: string;
+  contactDesignation: string;
+  contactPhone: string;
+  claimedAt?: string;
+  hasFrontImage: boolean;
+  hasBackImage: boolean;
 }
 
 export interface BusinessCounts {
@@ -1054,6 +1067,17 @@ export interface BusinessCounts {
   hidden: number;
   verified: number;
   review: number;
+  leads: number;
+  converted: number;
+}
+
+/** An app user who saved a business's card. */
+export interface BusinessSaver {
+  userId: string;
+  name: string;
+  phone: string;
+  city: string;
+  savedAt: string;
 }
 
 export interface AppUserDetail extends AppUser {

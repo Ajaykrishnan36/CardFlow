@@ -177,6 +177,10 @@ func (s *CardService) GetSavedCards(ctx context.Context, userID uuid.UUID) ([]do
 				c.OriginalBackImageURL = originalImageAPIPath(c.ID.String(), "back")
 			}
 
+			if linkedBusinessID != nil {
+				c.SavedCount = s.savedByCount(ctx, *linkedBusinessID)
+			}
+
 			// Parse GSTIN from notes if embedded
 			if c.Notes != "" && len(c.Notes) > 7 && c.Notes[:7] == "__GST__" {
 				parts := strings.SplitN(c.Notes, "\n", 2)
@@ -229,23 +233,16 @@ func (s *CardService) CreateSavedCard(ctx context.Context, userID uuid.UUID, car
 		card.OriginalCardImageURL = ""
 	}
 
-	// If the GSTIN matches an already-registered business, link this card to
-	// it instead of letting every scanner of the same physical card create
-	// their own independent copy of the business's data and images —
-	// GSTIN is the one field that's genuinely unique per business.
-	if card.GSTIN != "" {
-		var businessID uuid.UUID
-		err := s.db.Pool.QueryRow(ctx, `
-				SELECT id FROM businesses WHERE UPPER(gstin) = UPPER($1) AND deleted_at IS NULL LIMIT 1
-			`, card.GSTIN).Scan(&businessID)
-		if err == nil {
-			card.LinkedBusinessID = &businessID
-			// The business already owns the canonical images — don't also
-			// store this saver's copy (it's the same card, and images are
-			// the single biggest thing bloating this table).
-			pendingImage = nil
-			pendingContentType = ""
+	// One business record per GSTIN: link to it (creating it from this card
+	// the first time). The business keeps the canonical card images, so the
+	// saver's copy is only used to fill a side the business doesn't have yet.
+	if gst := NormalizeGSTIN(card.GSTIN); gst != "" {
+		card.GSTIN = gst
+		bizID, err := s.linkCardBusiness(ctx, userID, card)
+		if err != nil {
+			return nil, fmt.Errorf("link business: %w", err)
 		}
+		card.LinkedBusinessID = bizID
 	}
 
 	// Ensure user exists in users table to satisfy foreign key
@@ -312,9 +309,12 @@ func (s *CardService) CreateSavedCard(ctx context.Context, userID uuid.UUID, car
 	}
 
 	if len(pendingImage) > 0 {
-		if err := s.persistOriginalImage(ctx, userID, card.ID, pendingImage, pendingContentType, "front"); err != nil {
+		if err := s.SaveCardImage(ctx, userID, card.ID, pendingImage, pendingContentType, "front"); err != nil {
 			return nil, err
 		}
+	}
+	if card.LinkedBusinessID != nil {
+		card.SavedCount = s.savedByCount(ctx, *card.LinkedBusinessID)
 	}
 
 	if s.hasOriginalImage(card.ID, "front") {

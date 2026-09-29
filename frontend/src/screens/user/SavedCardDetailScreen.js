@@ -11,7 +11,8 @@ import {
   Pencil,
   ShieldCheck,
   Building2,
-  Trash2
+  Trash2,
+  Users
 } from 'lucide-react';
 import { colors, radii, spacing } from '../../theme';
 import { Card } from '../../components/Card';
@@ -257,6 +258,12 @@ export function SavedCardDetailScreen({ card, onBack, onHome, onUpdated, onDelet
         )}
       />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {liveCard.saved_count > 1 ? (
+          <View style={styles.savedCountRow}>
+            <Users size={14} color={colors.primary} />
+            <Text style={styles.savedCountText}>{liveCard.saved_count} people have saved this card</Text>
+          </View>
+        ) : null}
         <CardViewToggle
           value={viewMode}
           onChange={setViewMode}
@@ -501,6 +508,18 @@ export function SavedCardDetailScreen({ card, onBack, onHome, onUpdated, onDelet
 }
 
 const styles = StyleSheet.create({
+  savedCountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    marginBottom: spacing.md
+  },
+  savedCountText: { fontSize: 13, fontWeight: '600', color: colors.primary },
   wrapper: { flex: 1, backgroundColor: colors.bgMuted },
   container: { flex: 1, backgroundColor: colors.bgMuted },
   content: { padding: spacing.lg, paddingBottom: spacing.xxxl },

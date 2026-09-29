@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
-import { Building2, Plus, Upload, X, ChevronRight } from 'lucide-react';
+import { Building2, Plus, Upload, X, ChevronRight, Users } from 'lucide-react';
 import { colors, radii, spacing, typography } from '../../theme';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -117,6 +117,17 @@ export function MyBusinessHubScreen({ onSelectBusiness }) {
               ) : biz.gstin ? (
                 <Badge type="gstPending" label="GST Registered" style={{ marginTop: 4 }} />
               ) : null}
+              {biz.saved_count > 0 ? (
+                <View style={styles.savedRow}>
+                  <Users size={12} color={colors.primary} />
+                  <Text style={styles.savedText}>
+                    Saved by {biz.saved_count} {biz.saved_count === 1 ? 'person' : 'people'}
+                  </Text>
+                </View>
+              ) : null}
+              {biz.source === 'card' && biz.status === 'draft' ? (
+                <Text style={styles.claimedHint}>Created from your business card — review the details and publish it.</Text>
+              ) : null}
             </View>
             <ChevronRight size={16} color={colors.textMuted} />
           </TouchableOpacity>
@@ -206,6 +217,9 @@ export function MyBusinessHubScreen({ onSelectBusiness }) {
 }
 
 const styles = StyleSheet.create({
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  savedText: { fontSize: 12, fontWeight: '600', color: colors.primary },
+  claimedHint: { fontSize: 11, color: colors.textSecondary, marginTop: 4 },
   container: { flex: 1, backgroundColor: colors.bgMuted },
   scrollContent: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.lg, gap: spacing.sm },

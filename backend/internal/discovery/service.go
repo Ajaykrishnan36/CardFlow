@@ -191,7 +191,7 @@ func (s *DiscoveryService) GetBusinessByIDOrSlug(ctx context.Context, identifier
 		       b.listing::text, b.phone_verified, b.completeness, b.created_at, b.updated_at
 		FROM businesses b
 		JOIN categories c ON c.id = b.primary_category_id
-		WHERE (b.id::text = $1 OR b.slug = $1) AND b.status != 'removed'
+		WHERE (b.id::text = $1 OR b.slug = $1) AND b.status != 'removed' AND b.owner_user_id IS NOT NULL
 	`, identifier).Scan(
 		&b.ID, &b.OwnerUserID, &b.Name, &b.Slug, &desc, &b.PrimaryCategoryID,
 		&catName, &logo, &web, &email, &b.AddressLine1, &loc,

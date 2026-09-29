@@ -3,11 +3,13 @@ package card
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"cardflow-backend/internal/domain"
 	"cardflow-backend/internal/middleware"
 	"cardflow-backend/internal/storage"
 	"cardflow-backend/pkg/response"
+	"cardflow-backend/pkg/validator"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -56,6 +58,11 @@ func (h *CardHandler) CreateCard(w http.ResponseWriter, r *http.Request) {
 	var card domain.SavedCard
 	if err := json.NewDecoder(r.Body).Decode(&card); err != nil {
 		response.BadRequest(w, "invalid request body", err.Error())
+		return
+	}
+
+	if msg := validateCard(card); msg != "" {
+		response.BadRequest(w, msg, nil)
 		return
 	}
 
@@ -210,7 +217,7 @@ func (h *CardHandler) UploadOriginalImage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := h.svc.persistOriginalImage(r.Context(), user.ID, cardID, raw, contentType, req.Side); err != nil {
+	if err := h.svc.SaveCardImage(r.Context(), user.ID, cardID, raw, contentType, req.Side); err != nil {
 		response.InternalServerError(w, "failed to save image: "+err.Error())
 		return
 	}
@@ -298,4 +305,48 @@ func (h *CardHandler) PublicGetOriginalImage(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(data)
+}
+
+// validateCard checks a card before saving. Cards typed in by hand
+// (source MANUAL) must have a name, phone and valid GSTIN — the GSTIN is what
+// links everyone's copy of the card to one business, and the phone is how its
+// owner is recognised when they sign up. Scanned cards keep the old rule.
+func validateCard(card domain.SavedCard) string {
+	hasPhone := false
+	for _, p := range card.Phones {
+		raw := p.E164
+		if raw == "" {
+			raw = p.Raw
+		}
+		if strings.TrimSpace(raw) != "" {
+			hasPhone = true
+			break
+		}
+	}
+	if strings.EqualFold(card.Source, "MANUAL") {
+		switch {
+		case strings.TrimSpace(card.PersonName) == "":
+			return "Name is required."
+		case !hasPhone:
+			return "Phone is required."
+		case strings.TrimSpace(card.GSTIN) == "":
+			return "GSTIN is required."
+		case !validator.IsValidGSTIN(NormalizeGSTIN(card.GSTIN)):
+			return "GSTIN doesn't look right — it should be 15 characters like 33ABCDE1234F1Z5."
+		}
+		for _, p := range card.Phones {
+			raw := p.E164
+			if raw == "" {
+				raw = p.Raw
+			}
+			if _, ok := validator.NormalizePhone(raw); !ok && !p.IsWhatsApp {
+				return "Phone number doesn't look right — use a 10-digit mobile number."
+			}
+		}
+		return ""
+	}
+	if strings.TrimSpace(card.PersonName) == "" && strings.TrimSpace(card.Company) == "" && !hasPhone {
+		return "Enter at least a name, company, or phone number."
+	}
+	return ""
 }

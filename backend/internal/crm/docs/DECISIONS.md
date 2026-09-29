@@ -235,6 +235,14 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   A report always runs as the viewer — object permission, field access (D-46) and the role hierarchy (D-48) decide
   what it counts; a report or dashboard can be changed by its creator, the owner or anyone with access.manage.
   Charts are drawn in SVG (no chart library in the shared app bundle).
+- **D-51 One business per GSTIN; card businesses are leads.** The first scan (or manual entry) of a card whose
+  GSTIN isn't on the app creates an unclaimed business (`businesses.owner_user_id` NULL, `source = 'card'`, draft +
+  unlisted, never in search). Later saves link to it: they only fill empty fields and missing card images; name,
+  contact phone and GSTIN never change. Each saver keeps their own vault row (`saved_cards.linked_business_id`).
+  The connector turns each card business into a Lead (`source card_scan`). When the person whose phone is on the
+  card verifies it by OTP, the app assigns them the business (My Business, name pre-filled at onboarding) and the
+  connector converts the lead into their account + contact (`lead_conversions.trigger = 'app_claim'`). An owner
+  registering the same GSTIN also claims it. The Businesses page shows lead status, saved-by (with who) and card images.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

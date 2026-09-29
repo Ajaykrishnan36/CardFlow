@@ -375,8 +375,9 @@ func (u appUser) custom(savedCards, businesses bool) map[string]any {
 }
 
 type syncState struct {
-	UsersSince   time.Time `json:"usersSince"`
-	TicketsSince time.Time `json:"ticketsSince"`
+	UsersSince          time.Time `json:"usersSince"`
+	TicketsSince        time.Time `json:"ticketsSince"`
+	CardBusinessesSince time.Time `json:"cardBusinessesSince"`
 }
 
 func (c *Connector) loadState(ctx context.Context) syncState {
@@ -474,6 +475,14 @@ func (c *Connector) Sync(ctx context.Context) error {
 			break
 		}
 		since = st.UsersSince
+	}
+	// Card-scanned businesses → leads (after users, so a claimed business's
+	// owner already has an account to convert into).
+	if err := c.syncCardBusinesses(ctx, wsID, &st); err != nil {
+		return err
+	}
+	if err := c.saveState(ctx, st); err != nil {
+		return err
 	}
 	if c.hasTickets {
 		if err := c.syncTicketActivity(ctx, wsID, &st); err != nil {

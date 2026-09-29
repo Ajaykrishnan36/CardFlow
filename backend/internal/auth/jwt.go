@@ -24,6 +24,17 @@ type TokenPair struct {
 	RefreshToken string       `json:"refresh_token"`
 	User         *domain.User `json:"user"`
 	IsNewUser    bool         `json:"is_new_user"`
+	// ClaimedBusinesses are card-created businesses that became this user's
+	// at this sign-in because the phone on the card is theirs.
+	ClaimedBusinesses []ClaimedBusiness `json:"claimed_businesses,omitempty"`
+	// SuggestedName pre-fills onboarding for a new user (the name on their card).
+	SuggestedName string `json:"suggested_name,omitempty"`
+}
+
+type ClaimedBusiness struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ContactName string `json:"contact_name"`
 }
 
 type JWTService struct {
