@@ -81,10 +81,11 @@ type Config struct {
 	AppleBundleID                string
 	ApplePrivateKey              string
 
-	// Razorpay
-	RazorpayKeyID         string
-	RazorpayKeySecret     string
-	RazorpayWebhookSecret string
+	// RevenueCat (server-side only — never ship these to a client)
+	RevenueCatWebhookAuth   string // value RevenueCat sends in the webhook Authorization header
+	RevenueCatSecretAPIKey  string // secret REST key (sk_...) used to re-read customers
+	RevenueCatEntitlementID string // the single premium entitlement
+	RevenueCatAPIBaseURL    string
 
 	// FCM
 	FCMServerKey string
@@ -164,9 +165,10 @@ func Load() *Config {
 		AppleBundleID:                getEnv("APPLE_BUNDLE_ID", "com.cardflow.app"),
 		ApplePrivateKey:              getEnv("APPLE_PRIVATE_KEY", ""),
 
-		RazorpayKeyID:         getEnv("RAZORPAY_KEY_ID", ""),
-		RazorpayKeySecret:     getEnv("RAZORPAY_KEY_SECRET", ""),
-		RazorpayWebhookSecret: getEnv("RAZORPAY_WEBHOOK_SECRET", ""),
+		RevenueCatWebhookAuth:   getEnv("REVENUECAT_WEBHOOK_AUTH", ""),
+		RevenueCatSecretAPIKey:  getEnv("REVENUECAT_SECRET_API_KEY", ""),
+		RevenueCatEntitlementID: getEnv("REVENUECAT_ENTITLEMENT_ID", "premium"),
+		RevenueCatAPIBaseURL:    getEnv("REVENUECAT_API_BASE_URL", "https://api.revenuecat.com"),
 
 		FCMServerKey: getEnv("FCM_SERVER_KEY", ""),
 

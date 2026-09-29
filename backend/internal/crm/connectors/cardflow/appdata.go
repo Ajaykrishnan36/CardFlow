@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -199,6 +200,7 @@ type AppPayment struct {
 	PlanID    string     `json:"planId"`
 	PlanName  string     `json:"planName"`
 	AmountINR float64    `json:"amountInr"`
+	Currency  string     `json:"currency,omitempty"` // empty = INR (legacy payments)
 	Status    string     `json:"status"`
 	CreatedAt time.Time  `json:"createdAt"`
 	PaidAt    *time.Time `json:"paidAt,omitempty"`
@@ -271,6 +273,37 @@ func (c *Connector) loadAppUser(ctx context.Context, id string) (*AppUserDetail,
 			d.Payments = append(d.Payments, p)
 		}
 		rows.Close()
+	}
+	// RevenueCat purchase history (CardFlow Premium after the RevenueCat migration).
+	if tableExists(ctx, c.store.Pool, "revenuecat_events") {
+		rows, err := c.store.Pool.Query(ctx, `
+			SELECT COALESCE(product_id, ''), event_type, COALESCE(price, 0)::float8, COALESCE(currency, ''),
+			       COALESCE(event_at, received_at)
+			FROM public.revenuecat_events
+			WHERE user_id = $1 AND status IN ('processed', 'ignored') AND event_type IN ('INITIAL_PURCHASE', 'RENEWAL', 'NON_RENEWING_PURCHASE', 'PRODUCT_CHANGE', 'CANCELLATION', 'EXPIRATION', 'BILLING_ISSUE')
+			ORDER BY 5 DESC LIMIT 50`, id)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var p AppPayment
+			var typ string
+			if err := rows.Scan(&p.PlanID, &typ, &p.AmountINR, &p.Currency, &p.CreatedAt); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			p.PlanName = p.PlanID
+			p.Status = strings.ToLower(typ)
+			switch typ {
+			case "INITIAL_PURCHASE", "RENEWAL", "NON_RENEWING_PURCHASE":
+				p.Status = "paid"
+				at := p.CreatedAt
+				p.PaidAt = &at
+			}
+			d.Payments = append(d.Payments, p)
+		}
+		rows.Close()
+		sort.SliceStable(d.Payments, func(i, j int) bool { return d.Payments[i].CreatedAt.After(d.Payments[j].CreatedAt) })
 	}
 	return d, nil
 }
@@ -416,13 +449,17 @@ func (c *Connector) handleUpdateAppUser(w http.ResponseWriter, r *http.Request) 
 				t := time.Now().AddDate(0, plan.Months, 0)
 				expires = &t
 			}
-			sets = append(sets, "is_subscribed = true")
+			sets = append(sets, "is_subscribed = true", "subscription_status = 'ACTIVE'",
+				"subscription_source = 'crm_grant'", "subscription_will_renew = false", "subscription_updated_at = now()")
 			add("subscription_plan_id", in.Access.PlanID)
 			add("subscription_expires_at", expires)
 			changes["access"] = map[string]any{"granted": in.Access.PlanID, "expiresAt": expires}
 			activity = "Premium access granted: " + plan.Name
 		case "revoke":
-			sets = append(sets, "is_subscribed = false")
+			// Store-bought (RevenueCat) access can only be cancelled by the
+			// customer in their store; revoking here removes CRM-granted access.
+			sets = append(sets, "is_subscribed = false", "subscription_status = 'FREE'",
+				"subscription_source = NULL", "subscription_will_renew = false", "subscription_updated_at = now()")
 			changes["access"] = "revoked"
 			activity = "Premium access revoked"
 		default:

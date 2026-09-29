@@ -1,12 +1,8 @@
 package app.cardflow.mobile;
 
-import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.Bundle;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -14,7 +10,6 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.BridgeWebViewClient;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -41,49 +36,6 @@ public class MainActivity extends BridgeActivity {
             injectSafeAreaInsets(systemBars);
             return insets;
         });
-
-        setupUpiIntentHandling();
-    }
-
-    // Razorpay Checkout's "pay via UPI app" buttons (GPay/PhonePe/Paytm) hand
-    // the WebView an "intent://...#Intent;scheme=upi;package=...;end" URL.
-    // Capacitor's own WebViewClient only opens plain URLs via ACTION_VIEW,
-    // which can't resolve that encoded intent:// form, so tapping those
-    // buttons silently does nothing. Decode it ourselves and launch the
-    // real UPI app (falling back to the Play Store listing if it isn't
-    // installed); everything else still goes through Capacitor's own
-    // handling so plugins/navigation rules keep working as before.
-    private void setupUpiIntentHandling() {
-        Bridge bridge = getBridge();
-        if (bridge == null || bridge.getWebView() == null) return;
-
-        bridge.getWebView().setWebViewClient(new BridgeWebViewClient(bridge) {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri url = request.getUrl();
-                if (url != null && "intent".equals(url.getScheme())) {
-                    return launchUpiIntent(url.toString());
-                }
-                return super.shouldOverrideUrlLoading(view, request);
-            }
-        });
-    }
-
-    private boolean launchUpiIntent(String intentUrl) {
-        try {
-            Intent intent = Intent.parseUri(intentUrl, Intent.URI_INTENT_SCHEME);
-            if (intent.resolveActivity(getPackageManager()) != null) {
-                startActivity(intent);
-                return true;
-            }
-            String fallbackUrl = intent.getStringExtra("browser_fallback_url");
-            if (fallbackUrl != null) {
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl)));
-            }
-        } catch (Exception e) {
-            // Unresolvable/malformed UPI intent — nothing more we can do.
-        }
-        return true;
     }
 
     @Override

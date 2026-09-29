@@ -27,5 +27,9 @@ services:
         value: "true"
       - key: DEV_MOCK_GEMINI
         value: "true"
+      - key: REVENUECAT_WEBHOOK_AUTH
+        sync: false
+      - key: REVENUECAT_SECRET_API_KEY
+        sync: false
       - key: ALLOWED_ORIGINS
         value: https://card-flow-kappa.vercel.app,https://cardflow-api-fsij.onrender.com

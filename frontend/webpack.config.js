@@ -1,5 +1,32 @@
 const path = require('path');
+const fs = require('fs');
+const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+
+// RevenueCat PUBLIC SDK keys, baked into the bundle at build time. Read from the
+// environment (Vercel project env) or a local, git-ignored frontend/.env.local.
+// Secret keys (sk_...) are server-only and fail the build if supplied here.
+function loadRevenueCatKeys() {
+  const names = ['REVENUECAT_IOS_API_KEY', 'REVENUECAT_ANDROID_API_KEY', 'REVENUECAT_WEB_API_KEY'];
+  const local = {};
+  try {
+    fs.readFileSync(path.resolve(__dirname, '.env.local'), 'utf8')
+      .split('\n')
+      .forEach((line) => {
+        const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+        if (m) local[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+      });
+  } catch (e) {}
+  const defs = {};
+  names.forEach((name) => {
+    const value = process.env[name] || local[name] || '';
+    if (/^sk_/.test(value)) {
+      throw new Error(`${name} looks like a RevenueCat SECRET key — only public SDK keys may be used in the app.`);
+    }
+    defs[`process.env.${name}`] = JSON.stringify(value);
+  });
+  return defs;
+}
 
 const crmDir = path.resolve(__dirname, 'src/crm');
 
@@ -50,6 +77,7 @@ module.exports = {
     ]
   },
   plugins: [
+    new webpack.DefinePlugin(loadRevenueCatKeys()),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html'),
       title: 'CardFlow — Business Discovery & Digital Card Vault'

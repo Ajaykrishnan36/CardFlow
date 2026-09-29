@@ -21,11 +21,52 @@ function formatDate(iso) {
   }
 }
 
-const STATUS_STYLES = {
-  paid: { bg: '#ECFDF5', color: '#059669', label: 'Paid' },
-  created: { bg: '#FEF3C7', color: '#B45309', label: 'Pending' },
-  failed: { bg: '#FEE2E2', color: '#DC2626', label: 'Failed' }
+// Event types from the server (RevenueCat events + pre-migration payments).
+const TYPE_STYLES = {
+  INITIAL_PURCHASE: { bg: '#ECFDF5', color: '#059669', label: 'Purchased' },
+  RENEWAL: { bg: '#ECFDF5', color: '#059669', label: 'Renewed' },
+  NON_RENEWING_PURCHASE: { bg: '#ECFDF5', color: '#059669', label: 'Purchased' },
+  PRODUCT_CHANGE: { bg: '#EFF6FF', color: '#2563EB', label: 'Plan changed' },
+  UNCANCELLATION: { bg: '#EFF6FF', color: '#2563EB', label: 'Resumed' },
+  CANCELLATION: { bg: '#FEF3C7', color: '#B45309', label: 'Cancelled' },
+  BILLING_ISSUE: { bg: '#FEE2E2', color: '#DC2626', label: 'Payment issue' },
+  EXPIRATION: { bg: '#F1F5F9', color: '#475569', label: 'Expired' },
+  LEGACY_PAYMENT: { bg: '#ECFDF5', color: '#059669', label: 'Paid' },
+  LEGACY_CREATED: { bg: '#FEF3C7', color: '#B45309', label: 'Pending' },
+  LEGACY_FAILED: { bg: '#FEE2E2', color: '#DC2626', label: 'Failed' }
 };
+
+const STORE_LABELS = {
+  APP_STORE: 'App Store',
+  PLAY_STORE: 'Google Play',
+  RC_BILLING: 'Web',
+  STRIPE: 'Web',
+  TEST_STORE: 'Test Store',
+  PROMOTIONAL: 'Promotional',
+  legacy: 'Earlier purchase'
+};
+
+const LEGACY_PLAN_NAMES = { '3m': '3 Months', '6m': '6 Months', '12m': '12 Months', lifetime: 'Lifetime' };
+
+// cardflow_premium_annual → "Premium Annual" (store product ids are not user-facing).
+function productLabel(id) {
+  if (!id) return '';
+  return id
+    .replace(/^cardflow[_.-]?/i, '')
+    .split(/[_.\-:]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function formatAmount(price, currency) {
+  if (price == null || Number(price) === 0) return '';
+  try {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: currency || 'INR', maximumFractionDigits: 2 }).format(price);
+  } catch (e) {
+    return `${currency || ''} ${price}`.trim();
+  }
+}
 
 export function TransactionHistoryScreen({ onBack }) {
   const { token } = useAuth();
@@ -56,7 +97,7 @@ export function TransactionHistoryScreen({ onBack }) {
         </TouchableOpacity>
       ) : null}
       <Text style={styles.pageTitle}>Transaction History</Text>
-      <Text style={styles.pageSub}>Every CardFlow Premium payment attempt on your account.</Text>
+      <Text style={styles.pageSub}>Your CardFlow Premium purchases, renewals and changes.</Text>
 
       {loading ? (
         <Text style={styles.emptyText}>Loading...</Text>
@@ -67,25 +108,25 @@ export function TransactionHistoryScreen({ onBack }) {
         </Card>
       ) : (
         transactions.map((t, idx) => {
-          const statusStyle = STATUS_STYLES[t.status] || STATUS_STYLES.created;
+          const typeStyle = TYPE_STYLES[t.type] || { bg: '#F1F5F9', color: '#475569', label: t.type };
+          const plan = t.source === 'legacy' ? LEGACY_PLAN_NAMES[t.product_id] || t.product_id : productLabel(t.product_id);
+          const store = STORE_LABELS[t.store] || t.store;
           return (
-            <Card key={t.razorpay_order_id || idx} style={styles.txCard}>
+            <Card key={t.id || idx} style={styles.txCard}>
               <View style={styles.txRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.txPlan}>{t.plan_name || t.plan_id}</Text>
-                  <Text style={styles.txDate}>{formatDate(t.paid_at || t.created_at)}</Text>
+                  <Text style={styles.txPlan}>{plan || 'CardFlow Premium'}</Text>
+                  <Text style={styles.txDate}>{formatDate(t.at)}</Text>
                 </View>
-                <Text style={styles.txAmount}>₹{t.amount_inr}</Text>
+                <Text style={styles.txAmount}>{formatAmount(t.price, t.currency)}</Text>
               </View>
               <View style={styles.txFooter}>
-                <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                  <Text style={[styles.statusText, { color: statusStyle.color }]}>{statusStyle.label}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: typeStyle.bg }]}>
+                  <Text style={[styles.statusText, { color: typeStyle.color }]}>{typeStyle.label}</Text>
                 </View>
-                {t.razorpay_payment_id ? (
-                  <Text style={styles.txId} numberOfLines={1}>{t.razorpay_payment_id}</Text>
-                ) : (
-                  <Text style={styles.txId} numberOfLines={1}>{t.razorpay_order_id}</Text>
-                )}
+                <Text style={styles.txId} numberOfLines={1}>
+                  {[store, t.environment === 'SANDBOX' ? 'Test' : ''].filter(Boolean).join(' · ')}
+                </Text>
               </View>
             </Card>
           );

@@ -2,14 +2,13 @@ package billing
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"math"
+	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"cardflow-backend/internal/config"
@@ -18,578 +17,539 @@ import (
 	"cardflow-backend/internal/middleware"
 	"cardflow-backend/pkg/response"
 	"github.com/google/uuid"
-	razorpay "github.com/razorpay/razorpay-go"
+	"github.com/jackc/pgx/v5"
 )
 
+// BillingHandler serves CardFlow Premium through RevenueCat. Purchases happen
+// in the RevenueCat SDKs (App Store / Play Store / Web Billing); this server
+// only receives RevenueCat's webhooks, re-reads customers with the secret key,
+// and stores the result in PostgreSQL. Premium APIs decide access from the
+// stored state (domain.User.IsPremiumActive), never from a client flag.
 type BillingHandler struct {
-	db  *database.DB
-	cfg *config.Config
-	rzp *razorpay.Client
+	db          *database.DB
+	cfg         *config.Config
+	rc          *RESTClient // nil when REVENUECAT_SECRET_API_KEY isn't set
+	entitlement string
+	now         func() time.Time
+
+	syncMu   sync.Mutex
+	lastSync map[uuid.UUID]time.Time
 }
 
 func NewBillingHandler(db *database.DB, cfg *config.Config) *BillingHandler {
-	var rzp *razorpay.Client
-	if cfg.RazorpayKeyID != "" && cfg.RazorpayKeySecret != "" {
-		rzp = razorpay.NewClient(cfg.RazorpayKeyID, cfg.RazorpayKeySecret)
+	h := &BillingHandler{
+		db:          db,
+		cfg:         cfg,
+		entitlement: cfg.RevenueCatEntitlementID,
+		now:         time.Now,
+		lastSync:    map[uuid.UUID]time.Time{},
 	}
-	return &BillingHandler{db: db, cfg: cfg, rzp: rzp}
-}
-
-// premiumPlans is the single source of truth for CardFlow Premium's duration
-// plans — keep in sync with the frontend's SubscriptionScreen plan list.
-var premiumPlans = map[string]struct {
-	Name     string
-	PriceINR int
-	Months   int // 0 means lifetime (never expires)
-}{
-	"3m":       {"3 Months", 9, 3},
-	"6m":       {"6 Months", 19, 6},
-	"12m":      {"12 Months", 29, 12},
-	"lifetime": {"Lifetime", 39, 0},
-}
-
-func (h *BillingHandler) GetPlans(w http.ResponseWriter, r *http.Request) {
-	plans := []map[string]interface{}{
-		{"id": "3m", "name": "3 Months", "price_inr": 9, "period": "3_months"},
-		{"id": "6m", "name": "6 Months", "price_inr": 19, "period": "6_months", "badge": "Popular"},
-		{"id": "12m", "name": "12 Months", "price_inr": 29, "period": "12_months", "badge": "Best Value"},
-		{"id": "lifetime", "name": "Lifetime", "price_inr": 39, "period": "lifetime", "badge": "One-time"},
+	if h.entitlement == "" {
+		h.entitlement = DefaultEntitlementID
 	}
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"plans": plans,
-	})
+	if cfg.RevenueCatSecretAPIKey != "" {
+		h.rc = &RESTClient{BaseURL: cfg.RevenueCatAPIBaseURL, SecretKey: cfg.RevenueCatSecretAPIKey}
+	}
+	if cfg.RevenueCatWebhookAuth == "" {
+		slog.Warn("REVENUECAT_WEBHOOK_AUTH is not set — RevenueCat webhooks will be rejected")
+	}
+	if h.rc == nil {
+		slog.Warn("REVENUECAT_SECRET_API_KEY is not set — subscriptions update from webhook events only")
+	}
+	return h
 }
 
-// GetTransactions lists the caller's own subscription payment history —
-// shown on the CardFlow Premium screen so a user can see every attempt
-// (paid, pending, failed) without needing access to the Razorpay dashboard.
-func (h *BillingHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
+func (h *BillingHandler) dbReady(w http.ResponseWriter) bool {
+	if h.db == nil || h.db.Pool == nil {
+		response.InternalServerError(w, "database not connected")
+		return false
+	}
+	return true
+}
+
+func currentUser(w http.ResponseWriter, r *http.Request) (*domain.User, bool) {
 	user, ok := r.Context().Value(middleware.UserContextKey).(*domain.User)
 	if !ok || user == nil {
 		response.Unauthorized(w, "authentication required")
-		return
+		return nil, false
 	}
-	if h.db == nil || h.db.Pool == nil {
-		response.InternalServerError(w, "database not connected")
-		return
-	}
+	return user, true
+}
 
+// ---------------------------------------------------------------------------
+// App endpoints
+// ---------------------------------------------------------------------------
+
+type statusResponse struct {
+	AppUserID     string     `json:"app_user_id"` // the RevenueCat App User ID the SDKs must log in with
+	Status        string     `json:"status"`
+	IsPremium     bool       `json:"is_premium"`
+	Entitlement   string     `json:"entitlement"`
+	ProductID     *string    `json:"product_id"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	WillRenew     bool       `json:"will_renew"`
+	Store         *string    `json:"store"`
+	Source        *string    `json:"source"`
+	ManagementURL *string    `json:"management_url"`
+	UpdatedAt     *time.Time `json:"updated_at"`
+	Synced        bool       `json:"synced"`
+}
+
+func (h *BillingHandler) readStatus(ctx context.Context, userID uuid.UUID) (statusResponse, error) {
+	var out statusResponse
+	var stored string
+	err := h.db.Pool.QueryRow(ctx, `
+		SELECT is_subscribed, subscription_plan_id, subscription_expires_at, subscription_status,
+		       subscription_will_renew, subscription_store, subscription_source,
+		       subscription_management_url, subscription_updated_at
+		FROM users WHERE id = $1 AND deleted_at IS NULL`, userID).
+		Scan(&out.IsPremium, &out.ProductID, &out.ExpiresAt, &stored, &out.WillRenew,
+			&out.Store, &out.Source, &out.ManagementURL, &out.UpdatedAt)
+	if err != nil {
+		return out, err
+	}
+	out.Status, out.IsPremium = EffectiveStatus(stored, out.IsPremium, out.ExpiresAt, h.now())
+	out.WillRenew = out.WillRenew && out.IsPremium
+	out.Entitlement = h.entitlement
+	out.AppUserID = userID.String()
+	return out, nil
+}
+
+// GetStatus returns the caller's premium state as stored by the server.
+// GET /api/v1/billing/status
+func (h *BillingHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !h.dbReady(w) {
+		return
+	}
+	st, err := h.readStatus(r.Context(), user.ID)
+	if err != nil {
+		response.InternalServerError(w, "failed to load subscription status")
+		return
+	}
+	response.JSON(w, http.StatusOK, st)
+}
+
+// Sync asks RevenueCat (server-to-server, secret key) for the caller's current
+// entitlements and stores them. The app calls this right after a purchase or
+// restore so premium unlocks without waiting for the webhook. The client's
+// own claim is never used — only RevenueCat's answer.
+// POST /api/v1/billing/sync
+func (h *BillingHandler) Sync(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !h.dbReady(w) {
+		return
+	}
+	synced := false
+	if h.rc != nil && h.allowSync(user.ID) {
+		if err := h.syncUser(r.Context(), user.ID, "app_sync"); err != nil {
+			slog.Warn("RevenueCat sync failed", "user_id", user.ID, "error", err)
+			response.Error(w, http.StatusBadGateway, "SYNC_FAILED", "Could not reach the subscription service. Please try again.", nil)
+			return
+		}
+		synced = true
+	}
+	st, err := h.readStatus(r.Context(), user.ID)
+	if err != nil {
+		response.InternalServerError(w, "failed to load subscription status")
+		return
+	}
+	st.Synced = synced
+	response.JSON(w, http.StatusOK, st)
+}
+
+// allowSync limits each user to one RevenueCat lookup every few seconds.
+func (h *BillingHandler) allowSync(id uuid.UUID) bool {
+	h.syncMu.Lock()
+	defer h.syncMu.Unlock()
+	now := h.now()
+	if last, ok := h.lastSync[id]; ok && now.Sub(last) < 3*time.Second {
+		return false
+	}
+	h.lastSync[id] = now
+	if len(h.lastSync) > 10000 {
+		h.lastSync = map[uuid.UUID]time.Time{id: now}
+	}
+	return true
+}
+
+// GetTransactions lists the caller's subscription history: RevenueCat
+// purchases/renewals plus payments made before the migration (kept as history).
+// GET /api/v1/billing/transactions
+func (h *BillingHandler) GetTransactions(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !h.dbReady(w) {
+		return
+	}
 	rows, err := h.db.Pool.Query(r.Context(), `
-		SELECT plan_id, amount_paise, razorpay_order_id, COALESCE(razorpay_payment_id, ''), status, created_at, paid_at
+		SELECT event_id, event_type, COALESCE(product_id, ''), COALESCE(store, ''), COALESCE(environment, ''),
+		       price, COALESCE(currency, ''), COALESCE(event_at, received_at), expires_at, 'revenuecat'
+		FROM revenuecat_events
+		WHERE user_id = $1 AND status IN ('processed', 'ignored') AND event_type IN
+		      ('INITIAL_PURCHASE', 'RENEWAL', 'NON_RENEWING_PURCHASE', 'PRODUCT_CHANGE', 'CANCELLATION', 'EXPIRATION', 'BILLING_ISSUE', 'UNCANCELLATION')
+		UNION ALL
+		SELECT id::text, CASE status WHEN 'paid' THEN 'LEGACY_PAYMENT' ELSE 'LEGACY_' || upper(status) END,
+		       plan_id, 'legacy', '', amount_paise / 100.0, 'INR', COALESCE(paid_at, created_at), NULL, 'legacy'
 		FROM subscription_payments
 		WHERE user_id = $1
-		ORDER BY created_at DESC
-	`, user.ID)
+		ORDER BY 8 DESC
+		LIMIT 100`, user.ID)
 	if err != nil {
-		response.InternalServerError(w, "failed to load transactions: "+err.Error())
+		response.InternalServerError(w, "failed to load transactions")
 		return
 	}
 	defer rows.Close()
-
-	transactions := []map[string]interface{}{}
+	list := []map[string]interface{}{}
 	for rows.Next() {
-		var planID, orderID, paymentID, status string
-		var amountPaise int
-		var createdAt time.Time
-		var paidAt *time.Time
-		if err := rows.Scan(&planID, &amountPaise, &orderID, &paymentID, &status, &createdAt, &paidAt); err != nil {
-			response.InternalServerError(w, "failed to read transaction: "+err.Error())
+		var id, typ, product, store, env, currency, source string
+		var price *float64
+		var at time.Time
+		var expires *time.Time
+		if err := rows.Scan(&id, &typ, &product, &store, &env, &price, &currency, &at, &expires, &source); err != nil {
+			response.InternalServerError(w, "failed to read transaction")
 			return
 		}
-		planName := planID
-		if plan, known := premiumPlans[planID]; known {
-			planName = plan.Name
-		}
-		transactions = append(transactions, map[string]interface{}{
-			"plan_id":             planID,
-			"plan_name":           planName,
-			"amount_inr":          amountPaise / 100,
-			"razorpay_order_id":   orderID,
-			"razorpay_payment_id": paymentID,
-			"status":              status,
-			"created_at":          createdAt,
-			"paid_at":             paidAt,
+		list = append(list, map[string]interface{}{
+			"id": id, "type": typ, "product_id": product, "store": store, "environment": env,
+			"price": price, "currency": currency, "at": at, "expires_at": expires, "source": source,
 		})
 	}
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{"transactions": transactions})
+	response.JSON(w, http.StatusOK, map[string]interface{}{"transactions": list})
 }
 
-// upgradeQuote describes what a plan switch will actually cost — full price
-// for a free/expired user, or the new plan's price minus a prorated credit
-// for the unused time left on the caller's current plan.
-type upgradeQuote struct {
-	IsUpgrade       bool    `json:"is_upgrade"`
-	CurrentPlanID   string  `json:"current_plan_id,omitempty"`
-	CurrentPlanName string  `json:"current_plan_name,omitempty"`
-	RemainingDays   int     `json:"remaining_days,omitempty"`
-	CreditINR       float64 `json:"credit_inr,omitempty"`
-	NewPlanID       string  `json:"new_plan_id"`
-	NewPlanName     string  `json:"new_plan_name"`
-	FullPriceINR    int     `json:"full_price_inr"`
-	PayableINR      int     `json:"payable_inr"`
-}
+// ---------------------------------------------------------------------------
+// Webhook
+// ---------------------------------------------------------------------------
 
-// computeUpgradeQuote is the single source of truth for what a plan switch
-// costs — used both to preview the price (GetUpgradeQuote) and to actually
-// charge it (CreateOrder), so the server never trusts a client-supplied
-// amount. New plan duration always runs a full term from today; the credit
-// only discounts the price, matching how the "pay the difference, get a
-// fresh full period" pattern works elsewhere.
-func (h *BillingHandler) computeUpgradeQuote(ctx context.Context, user *domain.User, newPlanID string) (*upgradeQuote, error) {
-	newPlan, known := premiumPlans[newPlanID]
-	if !known {
-		return nil, fmt.Errorf("unknown plan_id %q — expected one of 3m, 6m, 12m, lifetime", newPlanID)
-	}
-
-	quote := &upgradeQuote{
-		NewPlanID:    newPlanID,
-		NewPlanName:  newPlan.Name,
-		FullPriceINR: newPlan.PriceINR,
-		PayableINR:   newPlan.PriceINR,
-	}
-
-	if !user.IsPremiumActive() {
-		return quote, nil
-	}
-	if user.SubscriptionPlanID != nil && *user.SubscriptionPlanID == newPlanID {
-		return nil, fmt.Errorf("you're already on the %s plan", newPlan.Name)
-	}
-	if user.SubscriptionPlanID != nil && *user.SubscriptionPlanID == "lifetime" {
-		return nil, fmt.Errorf("you're already on Lifetime — there's no higher plan to switch to")
-	}
-	if user.SubscriptionExpiresAt == nil {
-		return quote, nil
-	}
-
-	var paidPlanID string
-	var paidAmountPaise int
-	var paidAt time.Time
-	err := h.db.Pool.QueryRow(ctx, `
-		SELECT plan_id, amount_paise, paid_at FROM subscription_payments
-		WHERE user_id = $1 AND status = 'paid' AND paid_at IS NOT NULL
-		ORDER BY paid_at DESC LIMIT 1
-	`, user.ID).Scan(&paidPlanID, &paidAmountPaise, &paidAt)
-	if err != nil {
-		// No payment on record to prorate against — charge full price.
-		return quote, nil
-	}
-
-	totalHours := user.SubscriptionExpiresAt.Sub(paidAt).Hours()
-	remainingHours := time.Until(*user.SubscriptionExpiresAt).Hours()
-	if totalHours <= 0 || remainingHours <= 0 {
-		return quote, nil
-	}
-	fraction := remainingHours / totalHours
-	if fraction > 1 {
-		fraction = 1
-	}
-	creditINR := float64(paidAmountPaise) / 100 * fraction
-
-	payable := int(math.Round(float64(newPlan.PriceINR) - creditINR))
-	if payable < 1 {
-		payable = 1 // Razorpay's minimum chargeable amount
-	}
-
-	currentPlanName := paidPlanID
-	if p, known := premiumPlans[paidPlanID]; known {
-		currentPlanName = p.Name
-	}
-
-	quote.IsUpgrade = true
-	quote.CurrentPlanID = paidPlanID
-	quote.CurrentPlanName = currentPlanName
-	quote.RemainingDays = int(math.Ceil(remainingHours / 24))
-	quote.CreditINR = math.Round(creditINR*100) / 100
-	quote.PayableINR = payable
-	return quote, nil
-}
-
-// GetUpgradeQuote previews the price of switching to plan_id, without
-// charging anything — shown as a confirmation popup before the user pays.
-func (h *BillingHandler) GetUpgradeQuote(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(middleware.UserContextKey).(*domain.User)
-	if !ok || user == nil {
-		response.Unauthorized(w, "authentication required")
-		return
-	}
-	planID := r.URL.Query().Get("plan_id")
-	quote, err := h.computeUpgradeQuote(r.Context(), user, planID)
-	if err != nil {
-		response.BadRequest(w, err.Error(), nil)
-		return
-	}
-	response.JSON(w, http.StatusOK, quote)
-}
-
-// CreateOrder starts a real Razorpay payment for the chosen plan. The
-// frontend opens Razorpay Checkout with the returned order_id; nothing is
-// activated until the payment is verified (see VerifyPayment / Webhook).
-func (h *BillingHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(middleware.UserContextKey).(*domain.User)
-	if !ok || user == nil {
-		response.Unauthorized(w, "authentication required")
-		return
-	}
-	if h.rzp == nil {
-		response.InternalServerError(w, "payments are not configured on this server yet")
-		return
-	}
-	if h.db == nil || h.db.Pool == nil {
-		response.InternalServerError(w, "database not connected")
-		return
-	}
-
-	var req struct {
-		PlanID string `json:"plan_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.BadRequest(w, "invalid request body", nil)
-		return
-	}
-
-	quote, err := h.computeUpgradeQuote(r.Context(), user, req.PlanID)
-	if err != nil {
-		response.BadRequest(w, err.Error(), nil)
-		return
-	}
-
-	amountPaise := quote.PayableINR * 100
-	receipt := "sub_" + uuid.New().String()[:12]
-
-	order, err := h.rzp.Order.Create(map[string]interface{}{
-		"amount":   amountPaise,
-		"currency": "INR",
-		"receipt":  receipt,
-		"notes": map[string]interface{}{
-			"user_id": user.ID.String(),
-			"plan_id": req.PlanID,
-		},
-	}, nil)
-	if err != nil {
-		response.InternalServerError(w, "failed to create Razorpay order: "+err.Error())
-		return
-	}
-	orderID, _ := order["id"].(string)
-	if orderID == "" {
-		response.InternalServerError(w, "Razorpay did not return an order id")
-		return
-	}
-
-	_, err = h.db.Pool.Exec(r.Context(), `
-		INSERT INTO subscription_payments (user_id, plan_id, amount_paise, razorpay_order_id, status)
-		VALUES ($1, $2, $3, $4, 'created')
-	`, user.ID, req.PlanID, amountPaise, orderID)
-	if err != nil {
-		response.InternalServerError(w, "failed to record order: "+err.Error())
-		return
-	}
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"order_id":  orderID,
-		"amount":    amountPaise,
-		"currency":  "INR",
-		"key_id":    h.cfg.RazorpayKeyID,
-		"plan_id":   req.PlanID,
-		"plan_name": quote.NewPlanName,
-	})
-}
-
-// VerifyPayment checks Razorpay's checkout signature and, only if valid,
-// activates the subscription. This is the client-side confirmation path;
-// Webhook below is the durable fallback in case the app closes mid-flow.
-func (h *BillingHandler) VerifyPayment(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(middleware.UserContextKey).(*domain.User)
-	if !ok || user == nil {
-		response.Unauthorized(w, "authentication required")
-		return
-	}
-	if h.db == nil || h.db.Pool == nil {
-		response.InternalServerError(w, "database not connected")
-		return
-	}
-
-	var req struct {
-		RazorpayOrderID   string `json:"razorpay_order_id"`
-		RazorpayPaymentID string `json:"razorpay_payment_id"`
-		RazorpaySignature string `json:"razorpay_signature"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.BadRequest(w, "invalid request body", nil)
-		return
-	}
-	if req.RazorpayOrderID == "" || req.RazorpayPaymentID == "" || req.RazorpaySignature == "" {
-		response.BadRequest(w, "razorpay_order_id, razorpay_payment_id and razorpay_signature are required", nil)
-		return
-	}
-
-	if !validSignature(req.RazorpayOrderID+"|"+req.RazorpayPaymentID, req.RazorpaySignature, h.cfg.RazorpayKeySecret) {
-		response.Error(w, http.StatusBadRequest, "INVALID_SIGNATURE", "payment signature verification failed", nil)
-		return
-	}
-
-	planID, alreadyPaid, err := h.markOrderPaid(r.Context(), user.ID, req.RazorpayOrderID, req.RazorpayPaymentID)
-	if err != nil {
-		response.InternalServerError(w, "failed to record payment: "+err.Error())
-		return
-	}
-
-	// A retried verify call for an order already marked paid must not
-	// re-extend the expiry — just report the subscription's current state.
-	var result map[string]interface{}
-	if alreadyPaid {
-		result, err = h.currentSubscriptionState(r.Context(), user.ID)
-	} else {
-		result, err = h.activateSubscription(r.Context(), user.ID, planID)
-	}
-	if err != nil {
-		response.InternalServerError(w, "payment verified but activation failed: "+err.Error())
-		return
-	}
-	result["already_processed"] = alreadyPaid
-	response.JSON(w, http.StatusOK, result)
-}
-
-// Webhook receives Razorpay's server-to-server payment.captured event —
-// configure this URL + a webhook secret in the Razorpay dashboard
-// (Settings → Webhooks). It activates the same way VerifyPayment does, but
-// idempotently, so a payment still gets applied even if the customer's app
-// closed before the checkout callback ran.
+// Webhook receives RevenueCat's server-to-server events.
+// POST /api/webhooks/revenuecat
+//
+// Authenticated by the Authorization header configured in the RevenueCat
+// dashboard (REVENUECAT_WEBHOOK_AUTH). Every event is stored once by id, so a
+// retried delivery is recognised and not applied twice. Returns 5xx only when
+// processing failed and RevenueCat should retry.
 func (h *BillingHandler) Webhook(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	if !ValidWebhookAuth(r.Header.Get("Authorization"), h.cfg.RevenueCatWebhookAuth) {
+		slog.Warn("RevenueCat webhook rejected: bad or missing Authorization header", "remote", r.RemoteAddr)
+		response.Unauthorized(w, "invalid webhook authorization")
+		return
+	}
+	if !h.dbReady(w) {
+		return
+	}
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		response.BadRequest(w, "could not read body", nil)
 		return
 	}
-
-	if h.cfg.RazorpayWebhookSecret != "" {
-		sig := r.Header.Get("X-Razorpay-Signature")
-		if !validSignature(string(body), sig, h.cfg.RazorpayWebhookSecret) {
-			response.Error(w, http.StatusBadRequest, "INVALID_SIGNATURE", "webhook signature verification failed", nil)
-			return
-		}
-	}
-
-	var payload struct {
-		Event   string `json:"event"`
-		Payload struct {
-			Payment struct {
-				Entity struct {
-					ID      string `json:"id"`
-					OrderID string `json:"order_id"`
-				} `json:"entity"`
-			} `json:"payment"`
-		} `json:"payload"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		response.BadRequest(w, "invalid webhook payload", nil)
+	var body webhookBody
+	if err := json.Unmarshal(raw, &body); err != nil || body.Event.ID == "" || body.Event.Type == "" {
+		response.BadRequest(w, "invalid RevenueCat webhook payload", nil)
 		return
 	}
+	ev := body.Event
+	ctx := r.Context()
 
-	if payload.Event != "payment.captured" {
-		response.JSON(w, http.StatusOK, map[string]interface{}{"ignored": payload.Event})
-		return
-	}
-
-	orderID := payload.Payload.Payment.Entity.OrderID
-	paymentID := payload.Payload.Payment.Entity.ID
-	if orderID == "" || paymentID == "" {
-		response.BadRequest(w, "missing order/payment id in webhook payload", nil)
-		return
-	}
-
-	var userID uuid.UUID
-	err = h.db.Pool.QueryRow(r.Context(), `
-		SELECT user_id FROM subscription_payments WHERE razorpay_order_id = $1
-	`, orderID).Scan(&userID)
+	claimed, prior, err := h.claimEvent(ctx, ev, raw)
 	if err != nil {
-		response.BadRequest(w, "unknown order_id", nil)
+		slog.Error("RevenueCat webhook: could not record event", "event_id", ev.ID, "error", err)
+		response.InternalServerError(w, "could not record event")
+		return
+	}
+	if !claimed {
+		slog.Info("RevenueCat webhook duplicate", "event_id", ev.ID, "type", ev.Type, "status", prior)
+		response.JSON(w, http.StatusOK, map[string]interface{}{"status": prior, "duplicate": true})
 		return
 	}
 
-	planID, alreadyPaid, err := h.markOrderPaid(r.Context(), userID, orderID, paymentID)
-	if err != nil {
-		response.InternalServerError(w, "failed to record payment: "+err.Error())
+	status, userID, note, perr := h.processEvent(ctx, ev)
+	if perr != nil {
+		h.finishEvent(ctx, ev.ID, "failed", userID, perr.Error())
+		slog.Error("RevenueCat webhook failed", "event_id", ev.ID, "type", ev.Type, "error", perr)
+		response.InternalServerError(w, "event processing failed")
 		return
 	}
-	// The client-side VerifyPayment call may have already activated this
-	// order — the webhook is a durable fallback, not a second charge.
-	if !alreadyPaid {
-		if _, err := h.activateSubscription(r.Context(), userID, planID); err != nil {
-			response.InternalServerError(w, "webhook activation failed: "+err.Error())
-			return
-		}
-	}
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{"status": "processed"})
+	h.finishEvent(ctx, ev.ID, status, userID, note)
+	slog.Info("RevenueCat webhook", "event_id", ev.ID, "type", ev.Type, "environment", ev.Environment,
+		"status", status, "user_id", userID, "note", note)
+	response.JSON(w, http.StatusOK, map[string]interface{}{"status": status})
 }
 
-// markOrderPaid records the payment against the order (idempotent — a
-// second call for an already-paid order is a no-op) and returns the plan id
-// that order was for.
-func (h *BillingHandler) markOrderPaid(ctx context.Context, userID uuid.UUID, orderID, paymentID string) (planID string, alreadyPaid bool, err error) {
-	var status string
-	err = h.db.Pool.QueryRow(ctx, `
-		SELECT plan_id, status FROM subscription_payments
-		WHERE razorpay_order_id = $1 AND user_id = $2
-	`, orderID, userID).Scan(&planID, &status)
-	if err != nil {
-		return "", false, fmt.Errorf("order not found for this user: %w", err)
+// claimEvent stores the event (first delivery) and marks it as being
+// processed. It returns claimed=false with the prior status when the event is
+// already processed/ignored or is being processed by a concurrent delivery.
+func (h *BillingHandler) claimEvent(ctx context.Context, ev Event, raw []byte) (bool, string, error) {
+	var payload json.RawMessage
+	var env struct {
+		Event json.RawMessage `json:"event"`
 	}
-	if status == "paid" {
-		return planID, true, nil
+	if json.Unmarshal(raw, &env) == nil && len(env.Event) > 0 {
+		payload = env.Event
+	} else {
+		payload = raw
 	}
-
-	_, err = h.db.Pool.Exec(ctx, `
-		UPDATE subscription_payments
-		SET status = 'paid', razorpay_payment_id = $2, paid_at = NOW()
-		WHERE razorpay_order_id = $1
-	`, orderID, paymentID)
-	return planID, false, err
-}
-
-func (h *BillingHandler) activateSubscription(ctx context.Context, userID uuid.UUID, planID string) (map[string]interface{}, error) {
-	plan, known := premiumPlans[planID]
-	if !known {
-		return nil, fmt.Errorf("unknown plan_id %q on paid order", planID)
+	price := ev.PriceInPurchasedCurrency
+	currency := ev.Currency
+	if price == nil && ev.Price != nil {
+		price, currency = ev.Price, "USD"
 	}
-
-	var expiresAt *time.Time
-	if plan.Months > 0 {
-		t := time.Now().AddDate(0, plan.Months, 0)
-		expiresAt = &t
+	product := ev.ProductID
+	if ev.Type == "PRODUCT_CHANGE" && ev.NewProductID != "" {
+		product = ev.NewProductID
 	}
-
 	_, err := h.db.Pool.Exec(ctx, `
-		UPDATE users
-		SET is_subscribed = true, subscription_plan_id = $2, subscription_expires_at = $3, updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL
-	`, userID, planID, expiresAt)
+		INSERT INTO revenuecat_events
+		    (event_id, event_type, app_user_id, product_id, entitlement_ids, store, environment,
+		     price, currency, transaction_id, event_at, expires_at, payload)
+		VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, NULLIF($6, ''), NULLIF($7, ''),
+		        $8, NULLIF($9, ''), NULLIF($10, ''), $11, $12, $13)
+		ON CONFLICT (event_id) DO NOTHING`,
+		ev.ID, ev.Type, ev.AppUserID, product, ev.EntitlementIDs, ev.Store, ev.Environment,
+		price, currency, ev.TransactionID, ev.EventAt(), msTime(ev.ExpirationAtMs), []byte(payload))
 	if err != nil {
-		return nil, err
+		return false, "", err
 	}
-
-	return map[string]interface{}{
-		"is_subscribed":           true,
-		"subscription_plan_id":    planID,
-		"subscription_plan_name":  plan.Name,
-		"subscription_expires_at": expiresAt,
-	}, nil
+	// Claim it: new, previously failed, or stuck "processing" for > 2 minutes.
+	var claimed string
+	err = h.db.Pool.QueryRow(ctx, `
+		UPDATE revenuecat_events
+		SET status = 'processing', attempts = attempts + 1, updated_at = NOW()
+		WHERE event_id = $1 AND (status IN ('received', 'failed')
+		      OR (status = 'processing' AND updated_at < NOW() - INTERVAL '2 minutes'))
+		RETURNING event_id`, ev.ID).Scan(&claimed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var prior string
+		if err := h.db.Pool.QueryRow(ctx, `SELECT status FROM revenuecat_events WHERE event_id = $1`, ev.ID).Scan(&prior); err != nil {
+			return false, "", err
+		}
+		return false, prior, nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	return true, "", nil
 }
 
-// currentSubscriptionState reads back what's actually stored for the user —
-// used when a payment was already processed, so a retried verify call
-// reports reality instead of re-extending the expiry.
-func (h *BillingHandler) currentSubscriptionState(ctx context.Context, userID uuid.UUID) (map[string]interface{}, error) {
-	var isSubscribed bool
-	var planID *string
-	var expiresAt *time.Time
-	err := h.db.Pool.QueryRow(ctx, `
-		SELECT is_subscribed, subscription_plan_id, subscription_expires_at
-		FROM users WHERE id = $1 AND deleted_at IS NULL
-	`, userID).Scan(&isSubscribed, &planID, &expiresAt)
+func (h *BillingHandler) finishEvent(ctx context.Context, eventID, status string, userID *uuid.UUID, note string) {
+	_, err := h.db.Pool.Exec(ctx, `
+		UPDATE revenuecat_events
+		SET status = $2::varchar, user_id = COALESCE($3::uuid, user_id), error = NULLIF($4::text, ''), updated_at = NOW(),
+		    processed_at = CASE WHEN $2::varchar IN ('processed', 'ignored') THEN NOW() ELSE processed_at END
+		WHERE event_id = $1`, eventID, status, userID, note)
 	if err != nil {
-		return nil, err
+		slog.Error("RevenueCat webhook: could not update event status", "event_id", eventID, "error", err)
 	}
-	planName := ""
-	if planID != nil {
-		if plan, known := premiumPlans[*planID]; known {
-			planName = plan.Name
+}
+
+// processEvent applies one event. Returns "processed" or "ignored" (with a
+// note), or an error when it should be retried.
+func (h *BillingHandler) processEvent(ctx context.Context, ev Event) (string, *uuid.UUID, string, error) {
+	if ev.Type == "TEST" {
+		return "ignored", nil, "test event from the RevenueCat dashboard", nil
+	}
+	if !IsAccessEvent(ev.Type) {
+		return "ignored", nil, "event type does not affect premium access", nil
+	}
+	if ev.Type == "TRANSFER" {
+		return h.processTransfer(ctx, ev)
+	}
+	if !ev.TouchesEntitlement(h.entitlement) {
+		return "ignored", nil, "event is for another entitlement", nil
+	}
+	userID, err := h.resolveUser(ctx, ev.CandidateUserIDs())
+	if err != nil {
+		return "", nil, "", err
+	}
+	if userID == nil {
+		return "ignored", nil, "no CardFlow user matches the app user id", nil
+	}
+	if h.rc != nil {
+		if err := h.syncUser(ctx, *userID, "webhook:"+ev.Type); err != nil {
+			return "", userID, "", err
+		}
+		return "processed", userID, "", nil
+	}
+	st, ok := StateFromEvent(ev, h.now())
+	if !ok {
+		return "ignored", userID, "event carries no subscription state", nil
+	}
+	applied, reason, err := h.applyState(ctx, *userID, st, ev.EventAt())
+	if err != nil {
+		return "", userID, "", err
+	}
+	if !applied {
+		return "ignored", userID, reason, nil
+	}
+	return "processed", userID, "", nil
+}
+
+// processTransfer moves access between app users (e.g. a restore on a device
+// that belonged to another account). Both sides are re-read from RevenueCat;
+// without the secret key the losing side is revoked and the receiving side
+// picks up its access on its next /billing/sync.
+func (h *BillingHandler) processTransfer(ctx context.Context, ev Event) (string, *uuid.UUID, string, error) {
+	var first *uuid.UUID
+	touched := 0
+	for _, side := range []struct {
+		ids  []string
+		lose bool
+	}{{ev.TransferredFrom, true}, {ev.TransferredTo, false}} {
+		for _, appID := range side.ids {
+			userID, err := h.resolveUser(ctx, []string{appID})
+			if err != nil {
+				return "", first, "", err
+			}
+			if userID == nil {
+				continue
+			}
+			if first == nil {
+				first = userID
+			}
+			if h.rc != nil {
+				if err := h.syncUser(ctx, *userID, "webhook:TRANSFER"); err != nil {
+					return "", first, "", err
+				}
+				touched++
+			} else if side.lose {
+				if ok, _, err := h.applyState(ctx, *userID, State{Status: StatusExpired, Source: SourceRevenueCat}, ev.EventAt()); err != nil {
+					return "", first, "", err
+				} else if ok {
+					touched++
+				}
+			}
 		}
 	}
-	return map[string]interface{}{
-		"is_subscribed":           isSubscribed,
-		"subscription_plan_id":    planID,
-		"subscription_plan_name":  planName,
-		"subscription_expires_at": expiresAt,
-	}, nil
+	if touched == 0 {
+		return "ignored", first, "transfer touched no CardFlow users", nil
+	}
+	return "processed", first, "", nil
 }
 
-func validSignature(payload, signature, secret string) bool {
-	if secret == "" || signature == "" {
-		return false
+// resolveUser maps RevenueCat app user ids to a CardFlow user. Anonymous
+// RevenueCat ids ($RCAnonymousID:...) are not UUIDs and never match.
+func (h *BillingHandler) resolveUser(ctx context.Context, ids []string) (*uuid.UUID, error) {
+	for _, raw := range ids {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			continue
+		}
+		var found uuid.UUID
+		err = h.db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE id = $1`, id).Scan(&found)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return &found, nil
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(payload))
-	expected := hex.EncodeToString(mac.Sum(nil))
-	return hmac.Equal([]byte(expected), []byte(signature))
+	return nil, nil
 }
 
-// CancelSubscription revokes premium access immediately (the plan/expiry
-// columns are left as a historical record).
-func (h *BillingHandler) CancelSubscription(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(middleware.UserContextKey).(*domain.User)
-	if !ok || user == nil {
-		response.Unauthorized(w, "authentication required")
-		return
-	}
-	if h.db == nil || h.db.Pool == nil {
-		response.InternalServerError(w, "database not connected")
-		return
-	}
-	_, err := h.db.Pool.Exec(r.Context(), `
-		UPDATE users SET is_subscribed = false, updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL
-	`, user.ID)
+// syncUser re-reads the customer from RevenueCat and stores the result.
+func (h *BillingHandler) syncUser(ctx context.Context, userID uuid.UUID, reason string) error {
+	sub, err := h.rc.GetSubscriber(ctx, userID.String())
 	if err != nil {
-		response.InternalServerError(w, "failed to cancel subscription: "+err.Error())
-		return
+		return err
 	}
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{"is_subscribed": false})
+	st := StateFromSubscriber(sub, h.entitlement, h.now())
+	applied, why, err := h.applyState(ctx, userID, st, nil)
+	if err != nil {
+		return err
+	}
+	slog.Info("RevenueCat sync", "user_id", userID, "reason", reason, "status", st.Status,
+		"premium", st.IsPremium, "applied", applied, "note", why)
+	return nil
 }
 
-func (h *BillingHandler) VerifyPurchase(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(middleware.UserContextKey).(*domain.User)
-	if !ok || user == nil {
-		response.Unauthorized(w, "authentication required")
-		return
+// applyState writes a RevenueCat state to users, inside a row lock so
+// concurrent webhooks for one user can't interleave. eventAt is the event
+// timestamp for webhook-derived states (nil for a live REST sync).
+func (h *BillingHandler) applyState(ctx context.Context, userID uuid.UUID, st State, eventAt *time.Time) (bool, string, error) {
+	tx, err := h.db.Pool.Begin(ctx)
+	if err != nil {
+		return false, "", err
 	}
+	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var req struct {
-		Store         string `json:"store"` // 'play' or 'appstore'
-		ProductID     string `json:"product_id"`
-		PurchaseToken string `json:"purchase_token"`
+	var cur Current
+	var source *string
+	err = tx.QueryRow(ctx, `
+		SELECT is_subscribed, subscription_expires_at, subscription_source, subscription_event_at
+		FROM users WHERE id = $1 FOR UPDATE`, userID).Scan(&cur.IsSubscribed, &cur.ExpiresAt, &source, &cur.EventAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, "user not found", nil
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
-
-	// In sandbox / test environment, verify and activate plan
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"status":       "activated",
-		"plan":         "plus",
-		"user_id":      user.ID,
-		"activated_at": time.Now(),
-		"expires_at":   time.Now().AddDate(0, 1, 0),
-	})
+	if err != nil {
+		return false, "", err
+	}
+	if source != nil {
+		cur.Source = *source
+	}
+	now := h.now()
+	if ok, why := ShouldApply(cur, st, eventAt, now); !ok {
+		return false, why, tx.Commit(ctx)
+	}
+	stamp := now
+	if eventAt != nil {
+		stamp = *eventAt
+	}
+	var product, store, mgmt *string
+	if st.ProductID != "" {
+		product = &st.ProductID
+	}
+	if st.Store != "" {
+		store = &st.Store
+	}
+	if st.ManagementURL != "" {
+		mgmt = &st.ManagementURL
+	}
+	// A customer RevenueCat has never seen stays FREE and keeps its old
+	// plan/expiry columns as history.
+	if st.Status == StatusFree && !cur.IsSubscribed && cur.Source == "" {
+		_, err = tx.Exec(ctx, `
+			UPDATE users SET subscription_updated_at = NOW(),
+			       subscription_management_url = COALESCE($2, subscription_management_url)
+			WHERE id = $1`, userID, mgmt)
+		if err != nil {
+			return false, "", err
+		}
+		return true, "", tx.Commit(ctx)
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE users
+		SET is_subscribed = $2,
+		    subscription_plan_id = COALESCE($3, subscription_plan_id),
+		    subscription_expires_at = $4,
+		    subscription_status = $5,
+		    subscription_will_renew = $6,
+		    subscription_store = COALESCE($7, subscription_store),
+		    subscription_source = $8,
+		    subscription_management_url = COALESCE($9, subscription_management_url),
+		    subscription_event_at = GREATEST(COALESCE(subscription_event_at, $10), $10),
+		    subscription_updated_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1`,
+		userID, st.IsPremium, product, st.ExpiresAt, st.Status, st.WillRenew, store,
+		SourceRevenueCat, mgmt, stamp)
+	if err != nil {
+		return false, "", fmt.Errorf("update subscription: %w", err)
+	}
+	return true, "", tx.Commit(ctx)
 }
 
+// GetCredits returns the scan-credit summary (unrelated to subscriptions).
 func (h *BillingHandler) GetCredits(w http.ResponseWriter, r *http.Request) {
-	user, ok := r.Context().Value(middleware.UserContextKey).(*domain.User)
-	if !ok || user == nil {
-		response.Unauthorized(w, "authentication required")
+	if _, ok := currentUser(w, r); !ok {
 		return
 	}
-
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"balance":              25,
 		"free_scans_remaining": 30,
 		"reset_date":           time.Now().AddDate(0, 1, 0),
 		"history": []map[string]interface{}{
-			{
-				"id":            uuid.New(),
-				"delta":         10,
-				"reason":        "Signup Welcome Bonus",
-				"balance_after": 10,
-				"created_at":    time.Now().AddDate(0, 0, -5),
-			},
-			{
-				"id":            uuid.New(),
-				"delta":         15,
-				"reason":        "Mini Pack Top-up (15 Credits)",
-				"balance_after": 25,
-				"created_at":    time.Now().AddDate(0, 0, -1),
-			},
+			{"id": uuid.New(), "delta": 10, "reason": "Signup Welcome Bonus", "balance_after": 10, "created_at": time.Now().AddDate(0, 0, -5)},
+			{"id": uuid.New(), "delta": 15, "reason": "Mini Pack Top-up (15 Credits)", "balance_after": 25, "created_at": time.Now().AddDate(0, 0, -1)},
 		},
 	})
 }

@@ -158,6 +158,10 @@ func main() {
 	// Public Web Profile Route (e.g. https://cardflow-api-fsij.onrender.com/b/kovai-precision-tools)
 	r.Get("/b/{slug}", discoveryHandler.RenderPublicHTML)
 
+	// RevenueCat server-to-server webhook (no user JWT) — authenticated by the
+	// Authorization header configured in the RevenueCat dashboard.
+	r.Post("/api/webhooks/revenuecat", billingHandler.Webhook)
+
 	// API v1 Routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// 1. Auth Endpoints
@@ -177,8 +181,6 @@ func main() {
 		// Shareable card link — recipient may not have an account yet.
 		r.Get("/public/cards/{id}", cardHandler.PublicGetCard)
 		r.Get("/public/cards/{id}/original-image", cardHandler.PublicGetOriginalImage)
-		// Razorpay calls this directly (no user JWT) — authenticated by its own signature check.
-		r.Post("/billing/webhook", billingHandler.Webhook)
 
 		// 3. User Account Endpoints (Protected)
 		r.Group(func(r chi.Router) {
@@ -207,15 +209,11 @@ func main() {
 			r.Post("/support/tickets", supportHandler.CreateTicket)
 			r.Get("/support/tickets/my", supportHandler.GetMyTickets)
 
-			// Billing & Credits
-			r.Get("/billing/plans", billingHandler.GetPlans)
-			r.Post("/billing/verify-purchase", billingHandler.VerifyPurchase)
-			r.Get("/billing/credits", billingHandler.GetCredits)
-			r.Post("/billing/create-order", billingHandler.CreateOrder)
-			r.Post("/billing/verify-payment", billingHandler.VerifyPayment)
-			r.Post("/billing/cancel", billingHandler.CancelSubscription)
+			// Billing: CardFlow Premium via RevenueCat (purchases happen in the SDKs)
+			r.Get("/billing/status", billingHandler.GetStatus)
+			r.Post("/billing/sync", billingHandler.Sync)
 			r.Get("/billing/transactions", billingHandler.GetTransactions)
-			r.Get("/billing/upgrade-quote", billingHandler.GetUpgradeQuote)
+			r.Get("/billing/credits", billingHandler.GetCredits)
 
 			// Phone contacts backup/restore (native app only — the web build never calls these)
 			r.Post("/contacts/backup", contactsHandler.BackupContacts)

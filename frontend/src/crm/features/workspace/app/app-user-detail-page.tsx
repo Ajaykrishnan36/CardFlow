@@ -328,7 +328,10 @@ function AppUserDetailView({ id }: { id: string }) {
                     <Badge tone={p.status === 'paid' ? 'success' : p.status === 'failed' ? 'danger' : 'neutral'}>
                       {t(`workspaceApp.app.payment.${p.status}`, { defaultValue: p.status })}
                     </Badge>
-                    <span className="w-20 text-right font-medium tabular-nums">₹{p.amountInr.toLocaleString('en-IN')}</span>
+                    <span className="w-24 text-right font-medium tabular-nums">
+                      {p.currency && p.currency !== 'INR' ? `${p.currency} ` : '₹'}
+                      {p.amountInr.toLocaleString('en-IN')}
+                    </span>
                   </li>
                 ))}
               </ul>

@@ -1,100 +1,171 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal } from 'react-native';
-import { Crown, Check, Receipt, ChevronRight } from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { Crown, Check, Receipt, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react';
 import { colors, spacing, radii, typography } from '../theme';
 import { Card } from './Card';
 import { Button } from './Button';
 import { TransactionHistoryScreen } from './TransactionHistoryScreen';
 import { useAuth } from '../context/AuthContext';
-import { apiClient } from '../services/api';
-
-const PLANS = [
-  { id: '3m', label: '3 Months', price: 9 },
-  { id: '6m', label: '6 Months', price: 19, badge: 'Popular' },
-  { id: '12m', label: '12 Months', price: 29, badge: 'Best Value' },
-  { id: 'lifetime', label: 'Lifetime', price: 39, badge: 'One-time' }
-];
+import { billingPlatformName, isBillingConfigured } from '../services/subscription/subscriptionService';
 
 const PERKS = [
-  'Unlimited business card scans',
-  'Priority verification badge',
-  'Advanced business analytics',
-  'Remove CardFlow watermark'
+  'Unlimited saved business cards',
+  'Unlimited businesses on your account',
+  'Premium card templates & themes',
+  'Cloud backup of your phone contacts'
 ];
 
-function formatExpiry(iso) {
-  if (!iso) return null;
+// ISO 8601 period (P1M, P1Y, P3M, P1W…) → labels.
+const UNIT = { D: ['day', 'daily'], W: ['week', 'weekly'], M: ['month', 'monthly'], Y: ['year', 'yearly'] };
+function describePeriod(iso) {
+  const m = /^P(\d+)([DWMY])$/.exec(iso || '');
+  if (!m) return null;
+  const n = Number(m[1]);
+  const [unit, adverb] = UNIT[m[2]];
+  if (n === 1) return { per: unit, name: adverb.charAt(0).toUpperCase() + adverb.slice(1) };
+  return { per: `${n} ${unit}s`, name: `${n} ${unit.charAt(0).toUpperCase() + unit.slice(1)}s` };
+}
+
+const PACKAGE_BADGES = { $rc_annual: 'Best Value', $rc_lifetime: 'One-time' };
+
+function formatDate(v) {
+  if (!v) return null;
   try {
-    return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   } catch (e) {
     return null;
   }
 }
 
+const STORE_NOTE = {
+  ios: 'Payment is charged to your Apple ID. The subscription renews automatically unless cancelled at least 24 hours before the end of the period. Manage or cancel it in your App Store settings.',
+  android: 'Payment is charged to your Google Play account. The subscription renews automatically unless cancelled. Manage or cancel it in Google Play → Subscriptions.',
+  web: 'Secure card payment. The subscription renews automatically unless cancelled. Manage or cancel it any time from "Manage subscription".'
+};
+
+function StatusCard({ subscription, onManage }) {
+  if (!subscription || subscription.status === 'FREE') return null;
+  const until = formatDate(subscription.expires_at);
+  const map = {
+    ACTIVE: {
+      title: 'CardFlow Premium is active',
+      sub: subscription.expires_at ? (subscription.will_renew ? `Renews on ${until}` : `Active until ${until}`) : 'Lifetime access',
+      tone: 'gold'
+    },
+    CANCELLED: {
+      title: 'Premium — cancelled',
+      sub: `You keep Premium until ${until}. It won't renew.`,
+      tone: 'gold'
+    },
+    BILLING_ISSUE: {
+      title: 'There is a problem with your payment',
+      sub: subscription.is_premium
+        ? `Update your payment method to keep Premium (access until ${until}).`
+        : 'Update your payment method to restore Premium.',
+      tone: 'danger'
+    },
+    EXPIRED: {
+      title: 'Your Premium has expired',
+      sub: until ? `Expired on ${until}. Subscribe again to unlock Premium.` : 'Subscribe again to unlock Premium.',
+      tone: 'muted'
+    }
+  };
+  const m = map[subscription.status] || map.ACTIVE;
+  return (
+    <Card style={[styles.statusCard, m.tone === 'danger' && styles.statusDanger, m.tone === 'muted' && styles.statusMuted]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        {m.tone === 'danger' ? <AlertTriangle size={16} color={colors.danger} /> : <Crown size={16} color={colors.gold} />}
+        <Text style={styles.statusTitle}>{m.title}</Text>
+      </View>
+      <Text style={styles.statusSub}>{m.sub}</Text>
+      {subscription.status === 'BILLING_ISSUE' ? (
+        <Button title="Update payment method" variant="danger" size="sm" onPress={onManage} style={{ marginTop: spacing.sm, alignSelf: 'flex-start' }} />
+      ) : null}
+    </Card>
+  );
+}
+
 export function SubscriptionScreen({ onBack }) {
-  const { user, token, isPremiumActive, activateSubscription, cancelSubscription } = useAuth();
-  const [selected, setSelected] = useState(user?.subscriptionPlanId || '6m');
-  const [working, setWorking] = useState(false);
+  const { isPremiumActive, subscription, isPurchasing, loadOfferings, purchasePackage, restorePurchases, refreshSubscription, manageSubscription } = useAuth();
+  const [packages, setPackages] = useState(null); // null = loading
+  const [loadError, setLoadError] = useState('');
+  const [selected, setSelected] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [quote, setQuote] = useState(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
-  const selectedPlan = PLANS.find((p) => p.id === selected) || PLANS[1];
-  const activePlan = PLANS.find((p) => p.id === user?.subscriptionPlanId);
-  const expiryLabel = formatExpiry(user?.subscriptionExpiresAt);
+  const [notice, setNotice] = useState(null); // { tone: 'success' | 'error' | 'info', text }
+  const configured = isBillingConfigured();
+
+  const flash = (tone, text) => {
+    setNotice({ tone, text });
+    setTimeout(() => setNotice((n) => (n && n.text === text ? null : n)), 5000);
+  };
+
+  const fetchOfferings = useCallback(async () => {
+    if (!configured) {
+      setPackages([]);
+      return;
+    }
+    setPackages(null);
+    setLoadError('');
+    // The SDK may still be logging in right after sign-in — retry briefly.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        const list = await loadOfferings();
+        setPackages(list);
+        setSelected((cur) => cur || list.find((p) => p.packageType === '$rc_annual')?.id || list[0]?.id || null);
+        return;
+      } catch (e) {
+        if (e?.code !== 'not_ready' || attempt === 3) {
+          setLoadError(e?.message || 'Could not load plans.');
+          setPackages([]);
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+    }
+  }, [configured, loadOfferings]);
+
+  useEffect(() => {
+    fetchOfferings();
+    refreshSubscription().catch(() => {});
+  }, [fetchOfferings, refreshSubscription]);
 
   if (showHistory) {
     return <TransactionHistoryScreen onBack={() => setShowHistory(false)} />;
   }
 
-  const proceedToPayment = async (planId, planLabel) => {
-    setWorking(true);
+  const pkg = (packages || []).find((p) => p.id === selected) || null;
+  const period = describePeriod(pkg?.period);
+
+  const handlePurchase = async () => {
+    if (!pkg || isPurchasing) return;
     try {
-      await activateSubscription(planId);
-      alert(`Payment successful — ${planLabel} Premium is now active!`);
+      const res = await purchasePackage(pkg);
+      if (res.status === 'active') flash('success', 'Welcome to CardFlow Premium — everything is unlocked!');
+      else flash('info', 'Purchase received. Premium will unlock as soon as the store confirms the payment.');
     } catch (e) {
-      if (e.message !== 'Payment cancelled.') {
-        alert(e.message || 'Could not complete payment. Please try again.');
-      }
-    } finally {
-      setWorking(false);
+      if (e?.code === 'cancelled' || e?.code === 'busy') return;
+      flash('error', e?.message || 'The purchase could not be completed. You have not been charged.');
     }
   };
 
-  const handleChoose = async () => {
-    const isSwitch = isPremiumActive && selected !== user?.subscriptionPlanId;
-    if (!isSwitch) {
-      await proceedToPayment(selectedPlan.id, selectedPlan.label);
-      return;
-    }
-    setQuoteLoading(true);
+  const handleRestore = async () => {
+    if (isPurchasing) return;
     try {
-      const q = await apiClient.getUpgradeQuote(selected, token);
-      setQuote(q);
+      const res = await restorePurchases();
+      if (res.restored) flash('success', 'Purchases restored — Premium is active.');
+      else flash('info', 'No active Premium subscription was found for this account.');
     } catch (e) {
-      alert(e.message || 'Could not calculate upgrade price.');
-    } finally {
-      setQuoteLoading(false);
+      if (e?.code === 'busy') return;
+      flash('error', e?.message || 'Could not restore purchases.');
     }
   };
 
-  const handleConfirmSwitch = async () => {
-    const planId = quote.new_plan_id;
-    const planLabel = quote.new_plan_name;
-    setQuote(null);
-    await proceedToPayment(planId, planLabel);
+  const handleManage = async () => {
+    const opened = await manageSubscription();
+    if (!opened) flash('info', 'Manage your subscription from the store where you bought it.');
   };
 
-  const handleCancel = async () => {
-    setWorking(true);
-    try {
-      await cancelSubscription();
-      alert('Subscription cancelled — you are back on the Free plan.');
-    } catch (e) {
-      alert(e.message || 'Could not cancel subscription.');
-    } finally {
-      setWorking(false);
-    }
-  };
+  const canBuy = !isPremiumActive || subscription?.status === 'EXPIRED';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -116,16 +187,13 @@ export function SubscriptionScreen({ onBack }) {
         <ChevronRight size={16} color={colors.textMuted} />
       </TouchableOpacity>
 
-      {isPremiumActive ? (
-        <Card style={styles.statusCard}>
-          <Text style={styles.statusTitle}>
-            You're on {activePlan?.label || 'Premium'}
-          </Text>
-          <Text style={styles.statusSub}>
-            {expiryLabel ? `Active until ${expiryLabel}` : 'Lifetime — never expires'}
-          </Text>
-        </Card>
+      {notice ? (
+        <View style={[styles.notice, styles[`notice_${notice.tone}`]]} accessibilityLiveRegion="polite">
+          <Text style={styles.noticeText}>{notice.text}</Text>
+        </View>
       ) : null}
+
+      <StatusCard subscription={subscription} onManage={handleManage} />
 
       <Card style={styles.perksCard}>
         {PERKS.map((perk) => (
@@ -136,90 +204,83 @@ export function SubscriptionScreen({ onBack }) {
         ))}
       </Card>
 
-      <Text style={styles.sectionTitle}>Choose a Plan</Text>
-      {PLANS.map((plan) => {
-        const isSelected = selected === plan.id;
-        return (
-          <TouchableOpacity key={plan.id} activeOpacity={0.85} onPress={() => setSelected(plan.id)}>
-            <Card style={[styles.planCard, isSelected && styles.planCardActive]}>
-              <View style={[styles.radio, isSelected && styles.radioActive]}>
-                {isSelected ? <View style={styles.radioDot} /> : null}
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={styles.planHeaderRow}>
-                  <Text style={styles.planLabel}>{plan.label}</Text>
-                  {plan.badge ? (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{plan.badge}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-              <Text style={styles.planPrice}>₹{plan.price}</Text>
+      {canBuy ? (
+        <>
+          <Text style={styles.sectionTitle}>Choose a Plan</Text>
+          {!configured ? (
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Subscriptions aren't available on this build yet.</Text>
             </Card>
-          </TouchableOpacity>
-        );
-      })}
-
-      <Button
-        title={`Choose ${selectedPlan.label} — ₹${selectedPlan.price}`}
-        onPress={handleChoose}
-        loading={working || quoteLoading}
-        size="lg"
-        style={{ marginTop: spacing.md }}
-      />
-      <Text style={styles.disclaimer}>Secure checkout powered by Razorpay.</Text>
-
-      {isPremiumActive ? (
-        <TouchableOpacity onPress={handleCancel} style={{ marginTop: spacing.md, alignSelf: 'center' }} disabled={working}>
-          <Text style={styles.cancelLink}>Cancel Subscription</Text>
-        </TouchableOpacity>
-      ) : null}
-
-      {quote ? (
-        <Modal transparent animationType="fade" visible={!!quote} onRequestClose={() => setQuote(null)}>
-          <View style={styles.modalOverlay}>
-            <Card style={styles.quoteCard}>
-              <Text style={styles.quoteTitle}>Switch to {quote.new_plan_name}?</Text>
-
-              <View style={styles.quoteRow}>
-                <Text style={styles.quoteLabel}>You already have</Text>
-                <Text style={styles.quoteValue}>{quote.current_plan_name}</Text>
-              </View>
-              <View style={styles.quoteRow}>
-                <Text style={styles.quoteLabel}>Days remaining</Text>
-                <Text style={styles.quoteValue}>{quote.remaining_days} days</Text>
-              </View>
-              <View style={styles.quoteRow}>
-                <Text style={styles.quoteLabel}>Credit for unused time</Text>
-                <Text style={styles.quoteValue}>− ₹{quote.credit_inr}</Text>
-              </View>
-
-              <View style={styles.quoteDivider} />
-
-              <View style={styles.quoteRow}>
-                <Text style={styles.quoteLabel}>{quote.new_plan_name} price</Text>
-                <Text style={styles.quoteValue}>₹{quote.full_price_inr}</Text>
-              </View>
-              <View style={styles.quoteRow}>
-                <Text style={styles.quoteTotalLabel}>You pay now</Text>
-                <Text style={styles.quoteTotalValue}>₹{quote.payable_inr}</Text>
-              </View>
-
-              <Button
-                title={`Pay ₹${quote.payable_inr} & Switch`}
-                onPress={handleConfirmSwitch}
-                loading={working}
-                size="lg"
-                style={{ marginTop: spacing.md }}
-              />
-              <TouchableOpacity onPress={() => setQuote(null)} style={styles.quoteCancelHit} disabled={working}>
-                <Text style={styles.quoteCancelText}>Not now</Text>
+          ) : packages === null ? (
+            <Card style={styles.emptyCard}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.emptyText}>Loading plans…</Text>
+            </Card>
+          ) : loadError || packages.length === 0 ? (
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyText}>{loadError || 'No plans are available right now.'}</Text>
+              <TouchableOpacity onPress={fetchOfferings} style={styles.retryRow}>
+                <RefreshCw size={14} color={colors.primary} />
+                <Text style={styles.retryText}>Try again</Text>
               </TouchableOpacity>
             </Card>
-          </View>
-        </Modal>
+          ) : (
+            packages.map((p) => {
+              const isSelected = selected === p.id;
+              const per = describePeriod(p.period);
+              const badge = PACKAGE_BADGES[p.packageType];
+              return (
+                <TouchableOpacity key={p.id} activeOpacity={0.85} onPress={() => setSelected(p.id)} disabled={isPurchasing}>
+                  <Card style={[styles.planCard, isSelected && styles.planCardActive]}>
+                    <View style={[styles.radio, isSelected && styles.radioActive]}>{isSelected ? <View style={styles.radioDot} /> : null}</View>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.planHeaderRow}>
+                        <Text style={styles.planLabel}>{per?.name || p.title}</Text>
+                        {badge ? (
+                          <View style={styles.badge}>
+                            <Text style={styles.badgeText}>{badge}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      {p.description ? <Text style={styles.planDesc} numberOfLines={2}>{p.description}</Text> : null}
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.planPrice}>{p.priceString}</Text>
+                      {per ? <Text style={styles.planPer}>per {per.per}</Text> : null}
+                    </View>
+                  </Card>
+                </TouchableOpacity>
+              );
+            })
+          )}
+
+          {pkg ? (
+            <Button
+              title={isPurchasing ? 'Processing…' : `Continue — ${pkg.priceString}${period ? ` / ${period.per}` : ''}`}
+              onPress={handlePurchase}
+              loading={isPurchasing}
+              disabled={isPurchasing}
+              size="lg"
+              style={{ marginTop: spacing.md }}
+            />
+          ) : null}
+        </>
       ) : null}
+
+      {configured ? (
+        <View style={styles.linksRow}>
+          <TouchableOpacity onPress={handleRestore} disabled={isPurchasing} style={styles.linkHit}>
+            <Text style={styles.link}>Restore purchases</Text>
+          </TouchableOpacity>
+          {subscription && subscription.status !== 'FREE' ? (
+            <TouchableOpacity onPress={handleManage} disabled={isPurchasing} style={styles.linkHit}>
+              <Text style={styles.link}>Manage subscription</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
+      <Text style={styles.disclaimer}>{STORE_NOTE[billingPlatformName] || STORE_NOTE.web}</Text>
     </ScrollView>
   );
 }
@@ -240,22 +301,18 @@ const styles = StyleSheet.create({
   },
   pageTitle: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, marginBottom: 4 },
   pageSub: { ...typography.bodyMedium, marginBottom: spacing.md },
-  historyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md
-  },
+  historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, marginBottom: spacing.md },
   historyText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.textPrimary },
-  statusCard: {
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    backgroundColor: colors.goldLight,
-    borderWidth: 1,
-    borderColor: colors.gold
-  },
-  statusTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
-  statusSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  notice: { padding: spacing.md, borderRadius: radii.md, marginBottom: spacing.md, borderWidth: 1 },
+  notice_success: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+  notice_error: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  notice_info: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  noticeText: { fontSize: 13, color: colors.textPrimary },
+  statusCard: { padding: spacing.md, marginBottom: spacing.lg, backgroundColor: colors.goldLight, borderWidth: 1, borderColor: colors.gold },
+  statusDanger: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  statusMuted: { backgroundColor: colors.bgMuted, borderColor: colors.border },
+  statusTitle: { fontSize: 14, fontWeight: '700', color: colors.textPrimary, flexShrink: 1 },
+  statusSub: { fontSize: 12, color: colors.textSecondary, marginTop: 4 },
   perksCard: { padding: spacing.lg, marginBottom: spacing.lg },
   perkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   perkText: { fontSize: 13, color: colors.textPrimary, flex: 1 },
@@ -268,6 +325,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     textTransform: 'uppercase'
   },
+  emptyCard: { padding: spacing.lg, alignItems: 'center', gap: spacing.sm },
+  emptyText: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
+  retryRow: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 4 },
+  retryText: { fontSize: 13, fontWeight: '600', color: colors.primary },
   planCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -278,38 +339,18 @@ const styles = StyleSheet.create({
     borderColor: 'transparent'
   },
   planCardActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   radioActive: { borderColor: colors.primary },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
   planHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   planLabel: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  badge: {
-    backgroundColor: colors.goldLight,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.pill
-  },
+  planDesc: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  badge: { backgroundColor: colors.goldLight, paddingHorizontal: 8, paddingVertical: 2, borderRadius: radii.pill },
   badgeText: { fontSize: 10, fontWeight: '700', color: colors.gold },
   planPrice: { fontSize: 17, fontWeight: '800', color: colors.textPrimary },
-  disclaimer: { fontSize: 11, color: colors.textMuted, textAlign: 'center', marginTop: spacing.sm },
-  cancelLink: { fontSize: 12, fontWeight: '600', color: colors.danger },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.65)', justifyContent: 'center', padding: spacing.md },
-  quoteCard: { padding: spacing.lg, maxWidth: 420, width: '100%', alignSelf: 'center' },
-  quoteTitle: { ...typography.titleSmall, color: colors.textPrimary, marginBottom: spacing.md },
-  quoteRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  quoteLabel: { fontSize: 13, color: colors.textSecondary },
-  quoteValue: { fontSize: 13, fontWeight: '600', color: colors.textPrimary },
-  quoteDivider: { height: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
-  quoteTotalLabel: { fontSize: 14, fontWeight: '700', color: colors.textPrimary },
-  quoteTotalValue: { fontSize: 18, fontWeight: '800', color: colors.primary },
-  quoteCancelHit: { marginTop: spacing.sm, alignSelf: 'center', padding: 4 },
-  quoteCancelText: { fontSize: 13, fontWeight: '600', color: colors.textMuted }
+  planPer: { fontSize: 11, color: colors.textMuted },
+  linksRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.lg, marginTop: spacing.md, flexWrap: 'wrap' },
+  linkHit: { padding: 4 },
+  link: { fontSize: 13, fontWeight: '600', color: colors.primary },
+  disclaimer: { fontSize: 11, color: colors.textMuted, textAlign: 'center', marginTop: spacing.md, lineHeight: 16 }
 });

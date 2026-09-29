@@ -1006,6 +1006,8 @@ export interface AppPayment {
   planId: string;
   planName: string;
   amountInr: number;
+  /** Set for RevenueCat purchases (store currency); empty means INR. */
+  currency?: string;
   status: string;
   createdAt: string;
   paidAt?: string;

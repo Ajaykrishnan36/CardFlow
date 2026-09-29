@@ -43,6 +43,9 @@ var migration011SavedCardLinkedBusinessSQL string
 //go:embed migrations/012_support_tickets.sql
 var migration012SupportTicketsSQL string
 
+//go:embed migrations/013_revenuecat.sql
+var migration013RevenueCatSQL string
+
 func RunMigrations(ctx context.Context, db *DB) error {
 	if db == nil || db.Pool == nil {
 		return fmt.Errorf("database pool is not initialized")
@@ -59,17 +62,21 @@ func RunMigrations(ctx context.Context, db *DB) error {
 		slog.Info("Schema migration applied successfully")
 	}
 
-	for name, sql := range map[string]string{
-		"003_saved_card_gstin_image":     migration003SQL,
-		"004_saved_card_image_data":      migration004SQL,
-		"005_business_card_images":       migration005SQL,
-		"007_dev_business_bootstrap":     migration007BusinessBootstrapSQL,
-		"008_user_subscription":          migration008UserSubscriptionSQL,
-		"009_subscription_payments":      migration009SubscriptionPaymentsSQL,
-		"010_contact_backups":            migration010ContactBackupsSQL,
-		"011_saved_card_linked_business": migration011SavedCardLinkedBusinessSQL,
-		"012_support_tickets":            migration012SupportTicketsSQL,
+	// Applied in order (a map would run them in random order, so a later
+	// migration could run before the one that creates what it alters).
+	for _, m := range []struct{ name, sql string }{
+		{"003_saved_card_gstin_image", migration003SQL},
+		{"004_saved_card_image_data", migration004SQL},
+		{"005_business_card_images", migration005SQL},
+		{"007_dev_business_bootstrap", migration007BusinessBootstrapSQL},
+		{"008_user_subscription", migration008UserSubscriptionSQL},
+		{"009_subscription_payments", migration009SubscriptionPaymentsSQL},
+		{"010_contact_backups", migration010ContactBackupsSQL},
+		{"011_saved_card_linked_business", migration011SavedCardLinkedBusinessSQL},
+		{"012_support_tickets", migration012SupportTicketsSQL},
+		{"013_revenuecat", migration013RevenueCatSQL},
 	} {
+		name, sql := m.name, m.sql
 		if _, err := db.Pool.Exec(ctx, sql); err != nil {
 			slog.Warn("Incremental migration note", "migration", name, "error", err)
 		} else {

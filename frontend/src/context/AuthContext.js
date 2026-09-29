@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { mockBusinesses } from '../data/mockData';
 import { apiClient } from '../services/api';
 import { syncAuthNotifications } from '../utils/pushNotifications';
+import * as subscriptionService from '../services/subscription/subscriptionService';
 
 const AuthContext = createContext(null);
 
@@ -243,6 +244,7 @@ export function AuthProvider({ children }) {
       const apiUser = apiRes?.data?.user || apiRes?.user;
       if (apiUser) {
         matchedAccount = {
+          id: apiUser.id || null,
           phone: (apiUser.phone || phone).replace('+91', ''),
           role: apiUser.role || 'user',
           name: apiUser.name || 'CardFlow User',
@@ -371,84 +373,148 @@ export function AuthProvider({ children }) {
     return merged;
   }, [user, token]);
 
-  // Opens Razorpay Checkout for the chosen plan and resolves once the
-  // payment is verified server-side and the subscription is activated.
-  // Rejects if the payment fails or the user closes the checkout modal.
-  const activateSubscription = useCallback((planId) => {
-    return new Promise((resolve, reject) => {
-      if (!token) {
-        reject(new Error('Not signed in'));
-        return;
-      }
-      (async () => {
-        try {
-          const order = await apiClient.createBillingOrder(planId, token);
-          if (typeof window === 'undefined' || !window.Razorpay) {
-            reject(new Error('Payment SDK failed to load — check your connection and try again.'));
-            return;
-          }
-          const rzp = new window.Razorpay({
-            key: order.key_id,
-            amount: order.amount,
-            currency: order.currency,
-            name: 'CardFlow',
-            description: `${order.plan_name} Premium`,
-            order_id: order.order_id,
-            prefill: { name: user?.name, contact: user?.phone },
-            theme: { color: '#32145F' },
-            handler: async (rzpResponse) => {
-              try {
-                const result = await apiClient.verifyBillingPayment({
-                  razorpay_order_id: rzpResponse.razorpay_order_id,
-                  razorpay_payment_id: rzpResponse.razorpay_payment_id,
-                  razorpay_signature: rzpResponse.razorpay_signature
-                }, token);
-                const merged = {
-                  ...user,
-                  isSubscribed: !!result?.is_subscribed,
-                  subscriptionPlanId: result?.subscription_plan_id ?? planId,
-                  subscriptionExpiresAt: result?.subscription_expires_at ?? null
-                };
-                setUser(merged);
-                try {
-                  localStorage.setItem('cf_user', JSON.stringify(merged));
-                } catch (e) {}
-                resolve(merged);
-              } catch (e) {
-                reject(e);
-              }
-            },
-            modal: {
-              ondismiss: () => reject(new Error('Payment cancelled.'))
-            }
-          });
-          rzp.on('payment.failed', (resp) => {
-            reject(new Error(resp?.error?.description || 'Payment failed. Please try again.'));
-          });
-          rzp.open();
-        } catch (e) {
-          reject(e);
-        }
-      })();
+  // ---------------------------------------------------------------------
+  // CardFlow Premium (RevenueCat)
+  // The RevenueCat App User ID is the signed-in CardFlow user id (returned by
+  // the server). Premium access comes from the server's stored state, which
+  // it builds from RevenueCat webhooks / REST — the client never grants it.
+  // ---------------------------------------------------------------------
+  const [subscription, setSubscription] = useState(null); // server /billing/status
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  const purchasingRef = useRef(false);
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+
+  const applyServerStatus = useCallback((st) => {
+    if (!st) return;
+    setSubscription(st);
+    setUser((prev) => {
+      if (!prev) return prev;
+      const merged = {
+        ...prev,
+        id: st.app_user_id || prev.id,
+        isSubscribed: !!st.is_premium,
+        subscriptionStatus: st.status,
+        subscriptionPlanId: st.product_id || null,
+        subscriptionExpiresAt: st.expires_at || null
+      };
+      try {
+        localStorage.setItem('cf_user', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
     });
-  }, [user, token]);
+  }, []);
 
-  const cancelSubscription = useCallback(async () => {
-    if (!token) throw new Error('Not signed in');
-    await apiClient.cancelSubscription(token);
-    const merged = { ...user, isSubscribed: false };
-    setUser(merged);
+  const refreshSubscription = useCallback(async ({ sync = false } = {}) => {
+    const t = tokenRef.current;
+    if (!t) return null;
+    const st = sync ? await apiClient.syncBilling(t) : await apiClient.getBillingStatus(t);
+    applyServerStatus(st);
+    return st;
+  }, [applyServerStatus]);
+
+  // Log RevenueCat in whenever a session starts (login or restore), out on logout.
+  useEffect(() => {
+    if (!token || token.startsWith('cf_token_')) {
+      setSubscription(null);
+      subscriptionService.reset();
+      return undefined;
+    }
+    let alive = true;
+    let syncTimer = null;
+    apiClient
+      .getBillingStatus(token)
+      .then((st) => {
+        if (!alive) return;
+        applyServerStatus(st);
+        // The SDK tells us when the store reports a change (renewal,
+        // purchase on another device…) — ask the server to re-sync.
+        return subscriptionService.identify(st.app_user_id, () => {
+          clearTimeout(syncTimer);
+          syncTimer = setTimeout(() => {
+            if (alive && !purchasingRef.current) refreshSubscription({ sync: true }).catch(() => {});
+          }, 1500);
+        });
+      })
+      .catch((e) => console.warn('Could not load subscription status', e));
+    return () => {
+      alive = false;
+      clearTimeout(syncTimer);
+    };
+  }, [token, applyServerStatus, refreshSubscription]);
+
+  // After a purchase/restore the server may learn about it a moment later
+  // (webhook). Re-sync until it confirms, for up to ~20 seconds.
+  const waitForServerPremium = useCallback(async () => {
+    for (let i = 0; i < 8; i += 1) {
+      try {
+        const st = await refreshSubscription({ sync: true });
+        if (st?.is_premium) return st;
+      } catch (e) {}
+      await new Promise((r) => setTimeout(r, 2500));
+    }
+    return null;
+  }, [refreshSubscription]);
+
+  const loadOfferings = useCallback(() => subscriptionService.getOfferings(), []);
+
+  // Buys a RevenueCat package. Resolves { status: 'active' | 'pending' }.
+  // Throws BillingError (code 'cancelled' when the user backs out).
+  const purchasePackage = useCallback(async (pkg) => {
+    if (!tokenRef.current) throw new subscriptionService.BillingError('failed', 'Please sign in first.');
+    if (purchasingRef.current) throw new subscriptionService.BillingError('busy', 'A purchase is already in progress.');
+    purchasingRef.current = true;
+    setIsPurchasing(true);
     try {
-      localStorage.setItem('cf_user', JSON.stringify(merged));
-    } catch (e) {}
-    return merged;
-  }, [user, token]);
+      const info = await subscriptionService.purchaseSubscription(pkg);
+      if (!subscriptionService.hasPremiumAccess(info)) {
+        // e.g. an Ask-to-Buy / pending payment — nothing granted yet.
+        return { status: 'pending' };
+      }
+      const st = await waitForServerPremium();
+      return { status: st?.is_premium ? 'active' : 'pending' };
+    } finally {
+      purchasingRef.current = false;
+      setIsPurchasing(false);
+    }
+  }, [waitForServerPremium]);
 
-  // A nil/missing expiry means a lifetime plan — never expires.
-  const isPremiumActive = !!(
-    user?.isSubscribed &&
-    (!user?.subscriptionExpiresAt || new Date(user.subscriptionExpiresAt) > new Date())
-  );
+  // Resolves { restored: boolean }.
+  const restorePurchases = useCallback(async () => {
+    if (purchasingRef.current) throw new subscriptionService.BillingError('busy', 'A purchase is already in progress.');
+    purchasingRef.current = true;
+    setIsPurchasing(true);
+    try {
+      const info = await subscriptionService.restorePurchases();
+      if (!subscriptionService.hasPremiumAccess(info)) {
+        await refreshSubscription({ sync: true }).catch(() => {});
+        return { restored: false };
+      }
+      const st = await waitForServerPremium();
+      return { restored: !!st?.is_premium };
+    } finally {
+      purchasingRef.current = false;
+      setIsPurchasing(false);
+    }
+  }, [refreshSubscription, waitForServerPremium]);
+
+  // Store subscription page / Web Billing portal (cancel, change plan, update payment).
+  const manageSubscription = useCallback(async () => {
+    let url = subscription?.management_url || null;
+    try {
+      const info = await subscriptionService.getCustomerInfo();
+      url = info?.managementURL || url;
+    } catch (e) {}
+    return subscriptionService.openCustomerCenter(url);
+  }, [subscription]);
+
+  // Server state wins; the cached user flags only cover the moment before it loads.
+  const isPremiumActive = subscription
+    ? !!subscription.is_premium
+    : !!(
+        user?.isSubscribed &&
+        (!user?.subscriptionExpiresAt || new Date(user.subscriptionExpiresAt) > new Date())
+      );
 
   // Re-arms the local push-notification queue whenever the caller's auth
   // state changes: logged out -> "please log in", logged in free -> "go
@@ -579,6 +645,8 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    subscriptionService.reset();
+    setSubscription(null);
     setUser(null);
     setRole(null);
     setToken(null);
@@ -656,8 +724,13 @@ export function AuthProvider({ children }) {
         updateProfile,
         changePhone,
         isPremiumActive,
-        activateSubscription,
-        cancelSubscription,
+        subscription,
+        isPurchasing,
+        loadOfferings,
+        purchasePackage,
+        restorePurchases,
+        refreshSubscription,
+        manageSubscription,
         subscriptionOverlayOpen,
         openSubscription,
         closeSubscription,

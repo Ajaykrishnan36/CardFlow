@@ -171,41 +171,24 @@ export const apiClient = {
     return data.data || data;
   },
 
-  // Starts a real Razorpay payment for the given plan — returns the order
-  // details needed to open Razorpay Checkout (see AuthContext.activateSubscription).
-  async createBillingOrder(planId, token = '') {
-    const headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/billing/create-order`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ plan_id: planId })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Could not start payment');
-    return data.data || data;
-  },
-
-  // Verifies a completed Razorpay Checkout payment and activates the plan.
-  async verifyBillingPayment(payload, token = '') {
-    const headers = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/billing/verify-payment`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Payment verification failed');
-    return data.data || data;
-  },
-
-  async cancelSubscription(token = '') {
+  // CardFlow Premium (RevenueCat). The server's stored state is what premium
+  // APIs enforce; the app shows it and asks the server to re-sync after a purchase.
+  async getBillingStatus(token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/billing/cancel`, { method: 'POST', headers });
+    const res = await fetch(`${API_BASE_URL}/billing/status`, { headers });
     const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Could not cancel subscription');
+    if (!res.ok) throw new Error(data?.error?.message || 'Could not load subscription status');
+    return data.data || data;
+  },
+
+  // Asks the server to re-read this user's entitlements from RevenueCat.
+  async syncBilling(token = '') {
+    const headers = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE_URL}/billing/sync`, { method: 'POST', headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error?.message || 'Could not refresh subscription');
     return data.data || data;
   },
 
@@ -215,18 +198,6 @@ export const apiClient = {
     const res = await fetch(`${API_BASE_URL}/billing/transactions`, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not load transactions');
-    return data.data || data;
-  },
-
-  // Previews what switching to planId will cost — full price for a
-  // free/expired user, or a prorated price crediting unused time on the
-  // caller's current plan.
-  async getUpgradeQuote(planId, token = '') {
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/billing/upgrade-quote?plan_id=${encodeURIComponent(planId)}`, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Could not calculate upgrade price');
     return data.data || data;
   },
 
