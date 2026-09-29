@@ -63,6 +63,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if e.HasCapability(CapAccessManage) || e.HasCapability(CapMembersManage) {
 		nav = append(nav, NavItem{Key: "admin", Label: "Users & access", Path: base + "/settings/access", Icon: "shield-check", Group: "Settings", Available: true})
 	}
+	// Which roles see which API keys (fields) — for whoever manages roles (D-47).
+	if e.HasCapability(CapAccessManage) {
+		nav = append(nav, NavItem{Key: "api-sharing", Label: "API & sharing", Path: base + "/settings/api", Icon: "share-2", Group: "Settings", Available: true})
+	}
 	nav = append(nav, NavItem{Key: "settings", Label: "Profile & security", Path: "/crm/me", Icon: "settings", Group: "Account", Available: true})
 	return nav
 }

@@ -139,7 +139,8 @@ const strings = {
     overview: 'Overview',
     products: 'Products',
     people: 'People',
-    permissions: 'Roles & permission sets',
+    api: 'API & sharing',
+      permissions: 'Roles & permission sets',
     settings: 'Settings'
   },
   overview: {

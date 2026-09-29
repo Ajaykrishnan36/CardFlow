@@ -179,7 +179,7 @@ const strings = {
       catalogEmpty: 'No modules are available yet.',
       objectsIntro: 'Every module is a set of objects with their own pages, fields, permissions and API. Need something else? Create your own object — it appears here as a module.',
       manageObjects: 'Manage objects',
-      newObject: 'New object',
+      newObject: 'Add custom object',
       editObject: 'Edit fields & statuses →',
       customBadge: 'Custom',
       plannedBadge: 'Planned',
