@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Archive, ArchiveRestore, Boxes, Building2, Ellipsis, GitBranch, KeyRound, LayoutGrid, Rocket, TriangleAlert, UsersRound } from 'lucide-react';
@@ -19,10 +19,9 @@ import { ProductIcon } from './product-icon';
 import { canPublish, nextVersion, productStatusTone, SETUP_STEPS, type SetupStep } from './product-utils';
 import { draftFromProduct, useProductDraft } from './use-product-draft';
 import { ProductSetupWizard } from './product-setup-wizard';
-import { ProductApiTab } from './product-api-tab';
 
-type Tab = 'overview' | 'setup' | 'api' | 'versions' | 'workspaces';
-const TABS: Tab[] = ['overview', 'setup', 'api', 'versions', 'workspaces'];
+type Tab = 'overview' | 'setup' | 'versions' | 'workspaces';
+const TABS: Tab[] = ['overview', 'setup', 'versions', 'workspaces'];
 
 export function ProductDetailPage() {
   const { t } = useTranslation();
@@ -67,6 +66,7 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const tabParam = params.get('tab') as Tab | null;
   const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'overview';
   const stepParam = params.get('step') as SetupStep | null;
@@ -114,6 +114,12 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
     }
   });
 
+  // After publishing, go back to the product this setup belongs to (its Product setup tab).
+  const backToProduct = (p: ProductDetail) => {
+    const backTo = assignTo ?? projectParam ?? (p.assignedWorkspaces.length === 1 ? p.assignedWorkspaces[0]!.id : null);
+    if (backTo) navigate(`/crm/owner/workspaces/${encodeURIComponent(backTo)}?tab=products`);
+  };
+
   const publish = useMutation({
     mutationFn: async () => {
       if (dirty) applyServer(await productsApi.update(product.id, saveBody()));
@@ -125,6 +131,7 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
       setPublishOpen(false);
       void qc.invalidateQueries({ queryKey: ['workspace'] });
       toast.success(t('products.publish.done', { version: p.currentVersion ?? nextVersion(product) }));
+      const goBack = () => backToProduct(p);
       if (assignTo && !p.assignedWorkspaces.some((w) => w.id === assignTo)) {
         void workspacesApi
           .assignProduct(assignTo, p.id)
@@ -132,20 +139,21 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
             toast.success(t('products.assignTo.done', { workspace: assignWs.data?.name ?? '' }));
             void qc.invalidateQueries({ queryKey: ['workspace'] });
             void qc.invalidateQueries({ queryKey: ['product', p.id] });
-            setParams(
-              (prev) => {
-                const sp = new URLSearchParams(prev);
-                sp.delete('assignTo');
-                return sp;
-              },
-              { replace: true }
-            );
+            goBack();
           })
           .catch((e: unknown) => toast.error(isApiError(e) ? e.message : t('common.genericError')));
+        return;
       }
+      goBack();
     },
     onError: (e) => {
       setPublishOpen(false);
+      if (isApiError(e) && e.code === 'nothing_to_publish') {
+        // Only the name or description changed: that's saved, there's no new version to publish.
+        toast.success(t('products.setup.draftSaved'));
+        backToProduct(product);
+        return;
+      }
       if (isApiError(e) && e.status === 422 && Object.keys(e.fieldErrors).length > 0) {
         setPublishErrors(e.fieldErrors);
         go({ tab: 'setup', step: 'review' });
@@ -267,7 +275,6 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
               </span>
             )
           },
-          { value: 'api', label: t('products.tabs.api') },
           { value: 'versions', label: <TabLabel label={t('products.tabs.versions')} count={product.versions.length} /> },
           { value: 'workspaces', label: <TabLabel label={t('products.tabs.workspaces')} count={product.assignedWorkspaces.length} /> }
         ]}
@@ -299,7 +306,6 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
         />
       ) : null}
       {tab === 'versions' ? <VersionsTab product={product} /> : null}
-      {tab === 'api' ? <ProductApiTab product={product} modules={draft.config.modules} /> : null}
       {tab === 'workspaces' ? <WorkspacesTab product={product} /> : null}
 
       <ConfirmDialog
