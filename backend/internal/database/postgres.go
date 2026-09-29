@@ -52,7 +52,11 @@ func NewPostgresPool(ctx context.Context, cfg *config.Config) (*DB, error) {
 	}
 
 	poolConfig.MaxConns = int32(cfg.DBMaxOpenConns)
-	poolConfig.MinConns = int32(cfg.DBMaxIdleConns)
+	// No always-open connections, and idle ones close after 2 minutes: an open
+	// connection keeps a serverless database (Neon free tier) awake and burning
+	// its compute allowance even when nobody is using the app.
+	poolConfig.MinConns = 0
+	poolConfig.MaxConnIdleTime = 2 * time.Minute
 
 	if lifetime, err := time.ParseDuration(cfg.DBConnMaxLifetime); err == nil {
 		poolConfig.MaxConnLifetime = lifetime

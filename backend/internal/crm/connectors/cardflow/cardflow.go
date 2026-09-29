@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -37,8 +38,20 @@ const (
 	WorkspaceCode = "business-card-snap"
 	AppName       = "Business Card Snap"
 	stateKey      = "cardflow"
-	syncInterval  = 5 * time.Second
+	// syncInterval is the background sync. It's long on purpose: every query
+	// keeps a serverless database (Neon free tier) awake, so frequent polling
+	// used up its compute allowance. Opening the CRM's app pages syncs on
+	// demand instead (at most every onDemandGap). CRM_SYNC_INTERVAL overrides.
+	defaultSyncInterval = time.Hour
+	onDemandGap         = time.Minute
 )
+
+var syncInterval = func() time.Duration {
+	if d, err := time.ParseDuration(os.Getenv("CRM_SYNC_INTERVAL")); err == nil && d >= 10*time.Second {
+		return d
+	}
+	return defaultSyncInterval
+}()
 
 type Connector struct {
 	store    *store.Store
@@ -55,6 +68,7 @@ type Connector struct {
 	hasCards    bool
 	hasTickets  bool
 	triggerSync chan struct{}
+	lastDemand  time.Time
 }
 
 func New(st *store.Store, cfg shared.Config, p *platform.Handler) *Connector {
@@ -395,6 +409,21 @@ func (c *Connector) saveState(ctx context.Context, st syncState) error {
 		INSERT INTO crm.connector_state (key, value) VALUES ($1, $2)
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, stateKey, raw)
 	return err
+}
+
+// SyncOnDemand asks for a sync when someone opens a CRM page showing app
+// data, at most once per onDemandGap, so the CRM is fresh while in use and the
+// database can sleep while it isn't.
+func (c *Connector) SyncOnDemand() {
+	c.mu.Lock()
+	due := time.Since(c.lastDemand) >= onDemandGap
+	if due {
+		c.lastDemand = time.Now()
+	}
+	c.mu.Unlock()
+	if due {
+		c.TriggerSync()
+	}
 }
 
 // TriggerSync asks the loop to sync now (non-blocking).

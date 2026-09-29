@@ -129,6 +129,7 @@ func scanAppUser(row pgx.Row) (AppUser, error) {
 }
 
 func (c *Connector) handleListAppUsers(w http.ResponseWriter, r *http.Request) {
+	c.SyncOnDemand()
 	if _, ok := c.appScope(w, r, "app_user", "read"); !ok {
 		return
 	}
@@ -672,6 +673,7 @@ func (c *Connector) queryBusinesses(ctx context.Context, where string, args ...a
 }
 
 func (c *Connector) handleListBusinesses(w http.ResponseWriter, r *http.Request) {
+	c.SyncOnDemand()
 	if _, ok := c.appScope(w, r, "app_business", "read"); !ok {
 		return
 	}

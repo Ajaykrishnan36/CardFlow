@@ -88,6 +88,7 @@ func (c *Connector) supportScope(w http.ResponseWriter, r *http.Request, action 
 }
 
 func (c *Connector) handleListTickets(w http.ResponseWriter, r *http.Request) {
+	c.SyncOnDemand()
 	if _, ok := c.supportScope(w, r, "read"); !ok {
 		return
 	}
