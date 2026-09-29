@@ -28,14 +28,13 @@ func OwnerCapabilities() Capabilities {
 			{Key: "leads", Label: "Leads", Path: "/crm/owner/leads", Icon: "user-plus", Group: "Platform CRM", Available: true},
 			{Key: "accounts", Label: "Accounts", Path: "/crm/owner/accounts", Icon: "briefcase", Group: "Platform CRM", Available: true},
 			{Key: "contacts", Label: "Contacts", Path: "/crm/owner/contacts", Icon: "contact", Group: "Platform CRM", Available: true},
-			{Key: "products", Label: "Products", Path: "/crm/owner/products", Icon: "boxes", Group: "Platform", Available: true},
-			{Key: "objects", Label: "Objects", Path: "/crm/owner/objects", Icon: "box", Group: "Platform", Available: true},
-			{Key: "workspaces", Label: "Customer Workspaces", Path: "/crm/owner/workspaces", Icon: "building-2", Group: "Platform", Available: true},
-			{Key: "users", Label: "Users & Access", Path: "/crm/owner/users", Icon: "shield-check", Group: "Platform", Available: true},
-			{Key: "billing", Label: "Plans & Billing", Path: "/crm/owner/plans", Icon: "credit-card", Group: "Operations"},
-			{Key: "integrations", Label: "Integrations", Path: "/crm/owner/integrations", Icon: "plug", Group: "Operations", Available: true},
-			{Key: "audit", Label: "Audit log", Path: "/crm/owner/audit", Icon: "scroll-text", Group: "Operations", Available: true},
-			{Key: "settings", Label: "Settings", Path: "/crm/me", Icon: "settings", Group: "Operations", Available: true},
+			// Each app is a project (D-49); its setup (modules, pipeline…) lives inside the project.
+			{Key: "workspaces", Label: "Projects", Path: "/crm/owner/workspaces", Icon: "building-2", Group: "Projects", Available: true},
+			{Key: "objects", Label: "Objects", Path: "/crm/owner/objects", Icon: "box", Group: "Projects", Available: true},
+			{Key: "users", Label: "Users & Access", Path: "/crm/owner/users", Icon: "shield-check", Group: "Projects", Available: true},
+			{Key: "integrations", Label: "Integrations", Path: "/crm/owner/integrations", Icon: "plug", Group: "Settings", Available: true},
+			{Key: "audit", Label: "Audit log", Path: "/crm/owner/audit", Icon: "scroll-text", Group: "Settings", Available: true},
+			{Key: "settings", Label: "Profile & security", Path: "/crm/me", Icon: "settings", Group: "Settings", Available: true},
 		},
 	}
 	return c

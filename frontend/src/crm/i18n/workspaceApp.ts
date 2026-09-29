@@ -1,17 +1,17 @@
-// 'workspaceApp' i18n namespace (merged into the crm bundle as workspaceApp.*).
+// 'projectApp' i18n namespace (merged into the crm bundle as workspaceApp.*).
 // The member-facing workspace app at /crm/w/:ws. Nav labels come from the API.
 const strings = {
   layout: {
-    errorTitle: "Couldn't open this workspace",
-    forbiddenTitle: "You can't open this workspace",
+    errorTitle: "Couldn't open this project",
+    forbiddenTitle: "You can't open this project",
     forbiddenBody: 'You’re not an active member of it. If you think this is a mistake, ask its administrator to check your access.',
-    notFoundTitle: 'Workspace not found',
-    notFoundBody: 'There’s no workspace with the code “{{code}}”. Check the link, or pick one of yours.',
-    yourWorkspaces: 'Your workspaces',
+    notFoundTitle: 'Project not found',
+    notFoundBody: 'There’s no project with the code “{{code}}”. Check the link, or pick one of yours.',
+    yourWorkspaces: 'Your projects',
     profile: 'Profile & security'
   },
   home: {
-    noWorkspacesBody: 'When an administrator gives you access to a workspace, it will open here automatically.'
+    noWorkspacesBody: 'When an administrator gives you access to a project, it will open here automatically.'
   },
   dashboard: {
     docTitle: '{{workspace}} · Home',
@@ -46,7 +46,7 @@ const strings = {
     forbidden: 'You don’t have permission to do that.',
     yourAccess: 'Your access',
     yourAccessTitle: 'Your access',
-    yourAccessBody: 'This is the most you can give anyone else in this workspace.',
+    yourAccessBody: 'This is the most you can give anyone else in this project.',
     tabs: { users: 'Users', roles: 'Roles', sets: 'Permission sets' },
     notYours: 'You don’t have this yourself',
     moreThanYours: 'More than your access',
@@ -109,8 +109,8 @@ const strings = {
     },
     users: {
       title: 'Users',
-      count_one: '{{count}} person in this workspace',
-      count_other: '{{count}} people in this workspace',
+      count_one: '{{count}} person in this project',
+      count_other: '{{count}} people in this project',
       invite: 'Invite user',
       errorTitle: "Couldn't load users",
       emptyTitle: 'No users yet',
@@ -131,7 +131,7 @@ const strings = {
       sets: 'Permission sets',
       noSets: 'No permission sets yet. Create one in the Permission sets tab.',
       active: 'Can sign in',
-      activeOn: 'Active — they can sign in to this workspace.',
+      activeOn: 'Active — they can sign in to this project.',
       activeOff: 'Suspended — they can’t sign in until reactivated.',
       effectiveSavedNote: 'Shows their saved access. Save to apply your changes.',
       saved: 'Access updated for {{name}}'
@@ -165,7 +165,7 @@ const strings = {
       donePasswordTitle: '{{name}} can sign in now',
       donePasswordBody: '{{name}} can sign in with {{email}} and the temporary password. They’ll be asked to change it.',
       doneExistingTitle: '{{name}} was added',
-      doneExistingBody: '{{name}} already had a login. They keep their current password and now see this workspace.',
+      doneExistingBody: '{{name}} already had a login. They keep their current password and now see this project.',
       another: 'Invite another',
       done: 'Done'
     }
@@ -370,10 +370,10 @@ const strings = {
     role: 'Platform owner'
   },
   shell: {
-    switchWorkspace: 'Switch workspace',
-    currentWorkspace: 'Current workspace',
+    switchWorkspace: 'Switch project',
+    currentWorkspace: 'Current project',
     switchTo: 'Switch to {{name}}',
-    workspaceMenu: 'Workspace menu for {{name}}',
+    workspaceMenu: 'Project menu for {{name}}',
     member: 'Member'
   }
 };

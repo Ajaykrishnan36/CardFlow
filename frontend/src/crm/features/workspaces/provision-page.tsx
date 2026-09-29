@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, AtSign, Boxes, Check, CircleCheck, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AtSign, Check, CircleCheck, ShieldCheck } from 'lucide-react';
 import { productsApi, workspacesApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { ProductSummary, ProvisionBody, ProvisionResult } from '@crm/api/types';
@@ -12,7 +12,7 @@ import { Input } from '@crm/components/ui/input';
 import { Field } from '@crm/components/ui/field';
 import { Checkbox, Select } from '@crm/components/ui/form-controls';
 import { Skeleton } from '@crm/components/ui/spinner';
-import { EmptyState, ErrorState } from '@crm/components/states';
+import { ErrorState } from '@crm/components/states';
 import { DetailItem, DevLink, PageContainer, PageHeader } from '@crm/components/page';
 import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
@@ -88,7 +88,6 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
       if (!name.trim()) e.name = t('workspaces.provision.nameRequired');
       if (!WORKSPACE_CODE_RE.test(code)) e.code = t('workspaces.provision.codeInvalid');
     }
-    if (s === 1 && productIds.length === 0) e.productIds = t('workspaces.provision.productsRequired');
     if (s === 2 && !inviteLater) {
       if (!adminName.trim()) e['superAdmin.name'] = t('workspaces.provision.adminNameRequired');
       if (!EMAIL_RE.test(adminEmail.trim())) e['superAdmin.email'] = t('workspaces.provision.adminEmailInvalid');
@@ -229,6 +228,8 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
             ) : null}
 
             {current === 'products' ? (
+              <div className="space-y-3">
+              <Alert tone="info">{t('workspaces.provision.ownSetupHint')}</Alert>
               <ProductPicker
                 query={products}
                 items={activeProducts}
@@ -239,6 +240,7 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
                   clearError('productIds');
                 }}
               />
+              </div>
             ) : null}
 
             {current === 'admin' ? (
@@ -298,6 +300,7 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
                 </ReviewSection>
                 <ReviewSection title={t('workspaces.provision.steps.products.title')} onEdit={() => goTo(1)}>
                   <ul className="flex flex-wrap gap-1.5">
+                    {selectedProducts.length === 0 ? <li className="text-[13px] text-muted-foreground">{t('workspaces.provision.ownSetupReview')}</li> : null}
                     {selectedProducts.map((p) => (
                       <li key={p.id} className="rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
                         {p.name} {p.currentVersion ? <span className="font-mono text-muted-foreground">v{p.currentVersion}</span> : null}
@@ -425,21 +428,7 @@ function ProductPicker({
       </div>
     );
   }
-  if (items.length === 0) {
-    return (
-      <EmptyState
-        icon={Boxes}
-        className="py-8"
-        title={t('workspaces.provision.noProductsTitle')}
-        body={t('workspaces.provision.noProductsBody')}
-        action={
-          <Button asChild variant="outline">
-            <Link to="/crm/owner/products">{t('workspaces.provision.goToProducts')}</Link>
-          </Button>
-        }
-      />
-    );
-  }
+  if (items.length === 0) return null;
   return (
     <div className="space-y-3">
       {error ? <Alert tone="danger">{error}</Alert> : null}

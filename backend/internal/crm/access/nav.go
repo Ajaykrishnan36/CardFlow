@@ -60,6 +60,13 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if hasSupport && e.Can("app_business", "read") {
 		nav = append(nav, NavItem{Key: "businesses", Label: "Businesses", Path: base + "/businesses", Icon: "store", Group: "App", Available: true})
 	}
+	// Reports & dashboards run as the viewer, so anyone with the dashboard can use them (D-50).
+	if e.HasCapability(CapDashboard) {
+		nav = append(nav,
+			NavItem{Key: "reports", Label: "Reports", Path: base + "/reports", Icon: "bar-chart-3", Group: "Analytics", Available: true},
+			NavItem{Key: "dashboards", Label: "Dashboards", Path: base + "/dashboards", Icon: "layout-grid", Group: "Analytics", Available: true},
+		)
+	}
 	if e.HasCapability(CapAccessManage) || e.HasCapability(CapMembersManage) {
 		nav = append(nav, NavItem{Key: "admin", Label: "Users & access", Path: base + "/settings/access", Icon: "shield-check", Group: "Settings", Available: true})
 	}

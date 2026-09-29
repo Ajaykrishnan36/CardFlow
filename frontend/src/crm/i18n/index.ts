@@ -11,11 +11,12 @@ import access from './access';
 import workspaceApp from './workspaceApp';
 import integrations from './integrations';
 import objects from './objects';
+import reports from './reports';
 
 // Feature strings live in their own files and are merged under their feature key,
 // e.g. t('products.list.title').
 void i18n.use(initReactI18next).init({
-  resources: { en: { crm: { ...en, products, workspaces, records, users, audit, invite, access, workspaceApp, integrations, objects } } },
+  resources: { en: { crm: { ...en, products, workspaces, records, users, audit, invite, access, workspaceApp, integrations, objects, reports } } },
   lng: 'en',
   fallbackLng: 'en',
   defaultNS: 'crm',

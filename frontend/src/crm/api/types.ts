@@ -825,6 +825,87 @@ export interface TicketCounts {
   resolved: number;
 }
 
+// ---- Reports & dashboards (/w/{code}/reports, /dashboards — D-50) ----
+export type ReportChart = 'bar' | 'line' | 'donut' | 'number' | 'table';
+export type FilterOp = 'eq' | 'neq' | 'contains' | 'gt' | 'gte' | 'lt' | 'lte' | 'empty' | 'notEmpty' | 'lastDays';
+
+export interface ReportFilter {
+  field: string;
+  op: FilterOp;
+  value?: string | number | boolean;
+}
+
+export interface ReportDefinition {
+  filters: ReportFilter[];
+  groupBy?: string;
+  dateBucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | '';
+  measure: { fn: 'count' | 'sum' | 'avg' | 'min' | 'max'; field?: string };
+  chart: ReportChart;
+  limit?: number;
+}
+
+export interface ReportSummary {
+  id: string;
+  name: string;
+  description: string;
+  object: string;
+  objectLabel: string;
+  definition: ReportDefinition;
+  ownerId?: string;
+  ownerName: string;
+  canEdit: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReportResult {
+  object: string;
+  objectLabel: string;
+  groupLabel?: string;
+  measureLabel: string;
+  chart: ReportChart;
+  rows: Array<{ key: string; label: string; value: number; count: number }>;
+  total: number;
+  count: number;
+  currency?: boolean;
+}
+
+export interface ReportObject {
+  key: string;
+  label: string;
+  icon?: string;
+  fields: FieldDef[];
+}
+
+export interface DashboardWidget {
+  reportId: string;
+  chart?: ReportChart | '';
+  size: 'sm' | 'md' | 'lg';
+  report?: ReportSummary;
+  result?: ReportResult;
+  error?: string;
+}
+
+export interface DashboardSummary {
+  id: string;
+  name: string;
+  description: string;
+  widgets: number;
+  ownerName: string;
+  canEdit: boolean;
+  updatedAt: string;
+}
+
+export interface DashboardDetail {
+  id: string;
+  name: string;
+  description: string;
+  widgets: DashboardWidget[];
+  ownerName: string;
+  canEdit: boolean;
+  updatedAt: string;
+}
+
 // ---- Objects defined as data (/platform/objects, D-45) ----
 export interface ObjectFieldDef {
   key: string;

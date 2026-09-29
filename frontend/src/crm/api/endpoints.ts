@@ -1,5 +1,12 @@
 import { api } from './client';
 import type {
+  DashboardDetail,
+  DashboardSummary,
+  DashboardWidget,
+  ReportDefinition,
+  ReportObject,
+  ReportResult,
+  ReportSummary,
   FieldCatalogObject,
   ObjectDefinition,
   ObjectDefinitionBody,
@@ -273,6 +280,30 @@ export function workspaceSupportApi(code: string) {
     /** Reply and/or change status; the app user sees the reply in the app right away. */
     update: (id: string, body: { status?: TicketStatus; reply?: string }) =>
       api<SupportTicket>(`${base}/${enc(id)}`, { method: 'PATCH', body })
+  };
+}
+
+/** Reports & dashboards of a project; they always run as the signed-in viewer. */
+export function reportsApi(code: string) {
+  const base = `/w/${enc(code)}`;
+  type ReportBody = { name?: string; description?: string; object?: string; definition?: ReportDefinition };
+  type WidgetBody = Pick<DashboardWidget, 'reportId' | 'chart' | 'size'>;
+  return {
+    objects: () => api<{ data: ReportObject[] }>(`${base}/reports/objects`).then((r) => r.data),
+    run: (object: string, definition: ReportDefinition) => api<ReportResult>(`${base}/reports/run`, { method: 'POST', body: { object, definition } }),
+    list: () => api<{ data: ReportSummary[] }>(`${base}/reports`).then((r) => r.data),
+    get: (id: string) => api<ReportSummary>(`${base}/reports/${enc(id)}`),
+    result: (id: string) => api<ReportResult>(`${base}/reports/${enc(id)}/result`),
+    create: (body: ReportBody) => api<ReportSummary>(`${base}/reports`, { method: 'POST', body }),
+    update: (id: string, body: ReportBody) => api<ReportSummary>(`${base}/reports/${enc(id)}`, { method: 'PATCH', body }),
+    remove: (id: string) => api<void>(`${base}/reports/${enc(id)}`, { method: 'DELETE' }),
+    dashboards: () => api<{ data: DashboardSummary[] }>(`${base}/dashboards`).then((r) => r.data),
+    dashboard: (id: string) => api<DashboardDetail>(`${base}/dashboards/${enc(id)}`),
+    createDashboard: (body: { name: string; description?: string; widgets?: WidgetBody[] }) =>
+      api<DashboardDetail>(`${base}/dashboards`, { method: 'POST', body }),
+    updateDashboard: (id: string, body: { name?: string; description?: string; widgets?: WidgetBody[] }) =>
+      api<DashboardDetail>(`${base}/dashboards/${enc(id)}`, { method: 'PATCH', body }),
+    removeDashboard: (id: string) => api<void>(`${base}/dashboards/${enc(id)}`, { method: 'DELETE' })
   };
 }
 

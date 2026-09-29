@@ -35,11 +35,11 @@ const strings = {
   archive: 'Archive',
   restore: 'Restore',
   archiveTitle: 'Archive {{name}}?',
-  archiveBody: 'It disappears from every workspace and product. Its records are kept, and you can restore it any time.',
-  archivedBody: 'This object is archived: it doesn’t appear in any workspace. Restore it to use it again.',
+  archiveBody: 'It disappears from every project and product. Its records are kept, and you can restore it any time.',
+  archivedBody: 'This object is archived: it doesn’t appear in any project. Restore it to use it again.',
   archivedToast: '{{name}} archived',
   restoredToast: '{{name}} restored',
-  savedToast: '{{name}} saved — workspaces see the change right away',
+  savedToast: '{{name}} saved — projects see the change right away',
   details: 'Details',
   nameLabel: 'Name field label',
   nameLabelHint: 'Every record has a name; call it what fits (e.g. “Project name”, “Subject”).',
@@ -54,7 +54,7 @@ const strings = {
   saveStatuses: 'Save statuses',
   tones: { neutral: 'Grey', primary: 'Blue', success: 'Green', warning: 'Amber', danger: 'Red' },
   fields: 'Fields',
-  fieldsBody: 'Workspaces get these on every record. Each workspace can still add its own custom fields and arrange the page layout.',
+  fieldsBody: 'Projects get these on every record. Each project can still add its own custom fields and arrange the page layout.',
   addField: 'Add field',
   editField: 'Edit field',
   applyField: 'Apply',
@@ -106,7 +106,7 @@ const strings = {
     update: 'Update: { "values": { … }, "expectedVersion": n }',
     delete: 'Delete a record',
     meta: 'Fields, layout and statuses',
-    enable: 'Available in a workspace once a product it uses has the “{{module}}” module switched on.'
+    enable: 'Available in a project once a product it uses has the “{{module}}” module switched on.'
   }
 };
 

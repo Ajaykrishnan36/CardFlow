@@ -1,9 +1,10 @@
 // 'products' i18n namespace (merged into the crm bundle as products.*).
 const strings = {
+  setupCrumb: 'Setup',
   api: {
     emptyTitle: 'No objects switched on yet',
     emptyBody: 'Turn on modules in Setup → Modules & data and their APIs appear here.',
-    onBody: 'API access is on: every workspace on this product can use these endpoints (with a signed-in session). What each user gets depends on their role, permission sets and field access.',
+    onBody: 'API access is on: every project on this product can use these endpoints (with a signed-in session). What each user gets depends on their role, permission sets and field access.',
     offBody: 'API access is off for this product. The web app still uses these endpoints; switch API access on to offer them to integrations.',
     changeSetting: 'Change in Login & integrations →',
     objects_one: '{{count}} object',
@@ -21,24 +22,24 @@ const strings = {
     required: 'Required',
     readOnly: 'Read only',
     custom: 'Custom',
-    workspaceFields: 'Workspaces can add their own custom fields to an object; those appear in their API automatically.'
+    workspaceFields: 'Projects can add their own custom fields to an object; those appear in their API automatically.'
   },
   assignTo: {
-    banner: 'You’re creating this product for {{workspace}}. Set it up, then publish — it’s added to the workspace automatically.',
-    thisWorkspace: 'this workspace',
-    back: 'Back to the workspace',
+    banner: 'You’re creating this product for {{workspace}}. Set it up, then publish — it’s added to the project automatically.',
+    thisWorkspace: 'this project',
+    back: 'Back to the project',
     done: 'Added to {{workspace}} — its users have it now'
   },
   list: {
     title: 'Products',
-    description: 'Configurable CRM products you publish and assign to customer workspaces.',
+    description: 'Configurable CRM products you publish and assign to projects.',
     newProduct: 'New product',
     search: 'Search by name or key…',
     filterAll: 'All',
     colProduct: 'Product',
     colStatus: 'Status',
     colVersion: 'Version',
-    colWorkspaces: 'Workspaces',
+    colWorkspaces: 'Projects',
     colUpdated: 'Updated',
     unpublished: 'Unpublished changes',
     emptyTitle: 'No products yet',
@@ -47,8 +48,8 @@ const strings = {
     noMatchBody: 'Try a different search or status filter.',
     clearFilters: 'Clear filters',
     errorTitle: "Couldn't load products",
-    workspacesCount_one: '{{count}} workspace',
-    workspacesCount_other: '{{count}} workspaces',
+    workspacesCount_one: '{{count}} project',
+    workspacesCount_other: '{{count}} projects',
     showing: 'Showing {{shown}} of {{total}}'
   },
   create: {
@@ -76,26 +77,26 @@ const strings = {
     restore: 'Restore',
     archived: 'Product archived.',
     restored: 'Product restored.',
-    archivedBanner: "This product is archived. It can't be published or assigned to new workspaces.",
+    archivedBanner: "This product is archived. It can't be published or assigned to new projects.",
     archiveTitle: 'Archive {{name}}?',
-    archiveBody: "It can't be assigned to new workspaces or published. Workspaces already using it keep their current version. You can restore it later."
+    archiveBody: "It can't be assigned to new projects or published. Projects already using it keep their current version. You can restore it later."
   },
   tabs: {
     overview: 'Overview',
     api: 'API',
       setup: 'Setup',
     versions: 'Versions',
-    workspaces: 'Workspaces'
+    workspaces: 'Projects'
   },
   publish: {
     button: 'Publish v{{version}}',
     done: 'Published v{{version}}.',
     fixFirst: 'Fix the highlighted items before publishing.',
     confirmTitle: 'Publish {{name}} v{{version}}?',
-    impactFirst: 'This makes {{name}} available to assign to customer workspaces.',
-    impactUpgrade: 'Workspaces on older versions keep their version until you upgrade them.',
-    impactCount_one: '{{count}} workspace currently uses this product.',
-    impactCount_other: '{{count}} workspaces currently use this product.',
+    impactFirst: 'This makes {{name}} available to assign to projects.',
+    impactUpgrade: 'Projects on older versions keep their version until you upgrade them.',
+    impactCount_one: '{{count}} project currently uses this product.',
+    impactCount_other: '{{count}} projects currently use this product.',
     savesFirst: 'Your unsaved setup changes will be saved first.'
   },
   overview: {
@@ -104,7 +105,7 @@ const strings = {
     userTypes: 'User types',
     roles: 'Roles',
     loginMethods: 'Sign-in methods',
-    workspaces: 'Workspaces',
+    workspaces: 'Projects',
     liveConfig: 'Live configuration · v{{version}}',
     draftConfig: 'Draft configuration',
     pendingNote: 'Setup has changes that are not published yet.',
@@ -117,24 +118,24 @@ const strings = {
   },
   versions: {
     title: 'Version history',
-    description: 'Each publish creates an immutable version. Workspaces stay pinned to theirs until upgraded.',
+    description: 'Each publish creates an immutable version. Projects stay pinned to theirs until upgraded.',
     emptyTitle: 'Not published yet',
     emptyBody: 'Finish setup and publish v1 to start the history.',
     version: 'Version {{version}}',
     current: 'Current',
     published: 'Published {{time}}',
     publishedBy: 'Published {{time}} by {{who}}',
-    pinned_one: '{{count}} workspace pinned',
-    pinned_other: '{{count}} workspaces pinned'
+    pinned_one: '{{count}} project pinned',
+    pinned_other: '{{count}} projects pinned'
   },
   workspaces: {
-    title: 'Workspaces using this product',
-    description: 'Each workspace runs the version it was assigned or last upgraded to.',
-    emptyTitle: 'No workspaces yet',
-    emptyBody: 'Provision a customer workspace and assign this product to it.',
+    title: 'Projects using this product',
+    description: 'Each project runs the version it was assigned or last upgraded to.',
+    emptyTitle: 'No projects yet',
+    emptyBody: 'Provision a project and assign this product to it.',
     emptyBodyDraft: 'Publish this product first. Only active products can be assigned.',
-    provision: 'Provision workspace',
-    colWorkspace: 'Workspace',
+    provision: 'Provision project',
+    colWorkspace: 'Project',
     colStatus: 'Status',
     colVersion: 'Version',
     accessSuspended: 'Access suspended',
@@ -183,7 +184,7 @@ const strings = {
       editObject: 'Edit fields & statuses →',
       customBadge: 'Custom',
       plannedBadge: 'Planned',
-      plannedHint: '{{list}} can’t be used yet — they stay switched on for later but don’t appear in workspaces.'
+      plannedHint: '{{list}} can’t be used yet — they stay switched on for later but don’t appear in projects.'
     },
     roles: {
       rolesTitle: 'System roles',
@@ -237,9 +238,9 @@ const strings = {
       selfRegistrationHint: 'Let people sign up without an invitation. Off means invitation-only.',
       integrationsTitle: 'Integrations',
       apiAccess: 'API access',
-      apiAccessHint: 'Workspaces can create API keys.',
+      apiAccessHint: 'Projects can create API keys.',
       webhooks: 'Webhooks',
-      webhooksHint: 'Workspaces can subscribe to record events.'
+      webhooksHint: 'Projects can subscribe to record events.'
     },
     review: {
       edit: 'Edit',
@@ -249,7 +250,7 @@ const strings = {
       fix: 'Fix in {{step}}',
       readyTitle: 'Publish v{{version}}',
       currentIs: 'Current: v{{version}}',
-      readyBody: 'Publishing freezes this configuration as a new version. Existing workspaces stay on their version until you upgrade them.',
+      readyBody: 'Publishing freezes this configuration as a new version. Existing projects stay on their version until you upgrade them.',
       nothingToPublish: 'Nothing new to publish. Make a change in setup first.'
     }
   }

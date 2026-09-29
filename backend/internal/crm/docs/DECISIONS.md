@@ -226,6 +226,15 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   moved each role's former permissions into a permission set assigned to the same members and pending invitations,
   and placed roles in the tree (Super Admin → Admin → Staff → End user; custom roles under Super Admin or Admin).
   Roles can't loop; deleting one moves its children up.
+- **D-49 Each app is a project.** "Customer workspaces" are presented as Projects; the owner sidebar drops Products
+  and Plans & Billing. A project created without picking a setup gets its own (a product used only by it, published
+  v1 with the standard modules); its Setup tab opens that configuration (breadcrumbs lead back to the project).
+  Products still exist underneath, so a setup can be shared by several projects. Team and customer logins stay.
+- **D-50 Reports & dashboards.** Per project: `crm.reports` (object, filters, group-by with date buckets, measure
+  count/sum/avg/min/max, chart bar/line/donut/number/table) and `crm.dashboards` (widgets = report + chart + size).
+  A report always runs as the viewer — object permission, field access (D-46) and the role hierarchy (D-48) decide
+  what it counts; a report or dashboard can be changed by its creator, the owner or anyone with access.manage.
+  Charts are drawn in SVG (no chart library in the shared app bundle).
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

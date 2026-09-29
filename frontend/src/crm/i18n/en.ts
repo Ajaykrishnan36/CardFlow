@@ -35,10 +35,10 @@ const en = {
   auth: {
     brand: {
       eyebrow: 'Configurable CRM platform',
-      headline: 'Run every customer, product and workspace from one place.',
+      headline: 'Run every customer, product and project from one place.',
       sub: 'Leads, pipelines, onboarding and support — isolated per customer, governed by you.',
-      f1Title: 'Workspaces & products',
-      f1Body: 'Provision isolated customer workspaces and switch on exactly the products they bought.',
+      f1Title: 'Projects & products',
+      f1Body: 'Provision isolated projects and switch on exactly the products they bought.',
       f2Title: 'From lead to login',
       f2Body: 'Saving a lead never grants access. Invitations do — with the role you previewed.',
       f3Title: 'Permissions that hold',
@@ -51,7 +51,7 @@ const en = {
     },
     login: {
       title: 'Welcome back',
-      subtitle: 'Sign in to continue to your workspace.',
+      subtitle: 'Sign in to continue to your project.',
       identifier: 'Email or phone',
       identifierPlaceholder: 'you@company.com',
       password: 'Password',
@@ -88,9 +88,9 @@ const en = {
     },
     owner: {
       title: 'Owner console',
-      subtitle: 'Manage products, customer workspaces and platform settings.',
+      subtitle: 'Manage products, projects and platform settings.',
       restricted: 'Restricted to the platform owner. Every sign-in is audited.',
-      workspaceLink: 'Workspace sign-in',
+      workspaceLink: 'Project sign-in',
       notOwner: 'This console is for the platform owner.'
     },
     mfa: {
@@ -164,7 +164,7 @@ const en = {
     expand: 'Expand sidebar',
     openMenu: 'Open navigation',
     closeMenu: 'Close navigation',
-    workspace: 'Workspace',
+    workspace: 'Project',
     profile: 'Profile & security',
     appearance: 'Appearance',
     light: 'Light',
@@ -191,9 +191,9 @@ const en = {
       stepDone: 'Done',
       stepStart: 'Start',
       stepUpcoming: 'Coming soon',
-      recentTitle: 'Recent customer workspaces',
-      recentEmpty: 'No customer workspaces yet. Provision your first customer to see them here.',
-      colWorkspace: 'Workspace',
+      recentTitle: 'Recent projects',
+      recentEmpty: 'No projects yet. Provision your first customer to see them here.',
+      colWorkspace: 'Project',
       colStatus: 'Status',
       colProducts: 'Products',
       colMembers: 'Members',
@@ -209,7 +209,7 @@ const en = {
       quickActions: 'Quick actions',
       newLead: 'New lead',
       newProduct: 'New product',
-      provisionWorkspace: 'Provision workspace'
+      provisionWorkspace: 'Provision project'
     }
   },
   status: {
@@ -223,9 +223,9 @@ const en = {
   workspace: {
     home: {
       title: 'Welcome, {{name}}',
-      subtitle: 'Your workspaces',
+      subtitle: 'Your projects',
       rollout: 'Leads, accounts and pipelines arrive in the next release. Your access is already set up.',
-      noWorkspaces: "You're not a member of any workspace yet.",
+      noWorkspaces: "You're not a member of any project yet.",
       role: 'Role'
     }
   },

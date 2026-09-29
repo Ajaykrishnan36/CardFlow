@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -245,9 +246,7 @@ func (in *ProvisionInput) normalizeAndValidate(fieldPrefix string) map[string]st
 	if !currencyRe.MatchString(in.Currency) {
 		f[fieldPrefix+"currency"] = "Use a 3-letter currency code."
 	}
-	if len(in.ProductIDs) == 0 {
-		f[fieldPrefix+"productIds"] = "Choose at least one product."
-	}
+	// No product picked: the project gets its own setup (D-49), created when it's provisioned.
 	if in.SuperAdmin != nil {
 		in.SuperAdmin.Name = strings.TrimSpace(in.SuperAdmin.Name)
 		if in.SuperAdmin.Name == "" {
@@ -299,6 +298,14 @@ func ProvisionTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in ProvisionIn
 	// Roles form a hierarchy; permissions come from the default permission sets (D-48).
 	if err := EnsureRoleTree(ctx, tx, wsID); err != nil {
 		return uuid.Nil, err
+	}
+	// Each app is a project with its own setup (modules, pipeline…): without a product, make one.
+	if len(in.ProductIDs) == 0 {
+		pid, err := createProjectSetup(ctx, tx, actor, in.Name, in.Code)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		in.ProductIDs = []uuid.UUID{pid}
 	}
 	seen := map[uuid.UUID]bool{}
 	for _, pid := range in.ProductIDs {
@@ -592,4 +599,34 @@ func (h *Handler) handleUpdateWorkspaceProduct(w http.ResponseWriter, r *http.Re
 	}
 	d, err := h.getWorkspace(r.Context(), id)
 	writeResult(w, r, http.StatusOK, d, err)
+}
+
+// createProjectSetup makes a project's own configuration (a product used only by it),
+// published as version 1 with the default modules, so the project works right away.
+func createProjectSetup(ctx context.Context, tx pgx.Tx, actor uuid.UUID, name, code string) (uuid.UUID, error) {
+	key := strings.ReplaceAll(code, "-", "_")
+	base := key
+	for i := 2; ; i++ {
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.products WHERE key = $1)`, key).Scan(&taken); err != nil {
+			return uuid.Nil, err
+		}
+		if !taken {
+			break
+		}
+		key = base + "_" + strconv.Itoa(i)
+	}
+	cfg := DefaultProductConfig()
+	raw, _ := json.Marshal(cfg)
+	var id uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO crm.products (key, name, description, icon, status, current_version, draft_config, created_by)
+		VALUES ($1, $2, $3, 'boxes', 'active', 1, $4, $5) RETURNING id`,
+		key, name, "Setup of the "+name+" project.", raw, actor).Scan(&id); err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO crm.product_versions (product_id, version, config, published_by) VALUES ($1, 1, $2, $3)`, id, raw, actor); err != nil {
+		return uuid.Nil, err
+	}
+	return id, nil
 }

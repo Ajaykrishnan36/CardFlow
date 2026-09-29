@@ -73,6 +73,10 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
   const step: SetupStep = stepParam && SETUP_STEPS.includes(stepParam) ? stepParam : 'general';
 
   const { draft, setDraft, updateConfig, dirty } = useProductDraft(product);
+  // Opened from a project's Setup tab: breadcrumbs lead back to that project.
+  const projectParam = params.get('project');
+  const fromProjectQ = useQuery({ queryKey: ['workspace', projectParam], queryFn: () => workspacesApi.get(projectParam!), enabled: Boolean(projectParam) });
+  const fromProject = fromProjectQ.data ? { id: fromProjectQ.data.id, name: fromProjectQ.data.name } : null;
   // Created from a workspace (workspace first): add it there as soon as it's published.
   const assignTo = params.get('assignTo');
   const assignWs = useQuery({ queryKey: ['workspace', assignTo], queryFn: () => workspacesApi.get(assignTo!), enabled: Boolean(assignTo) });
@@ -178,7 +182,15 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
   return (
     <PageContainer>
       <PageHeader
-        crumbs={[{ label: t('products.list.title'), to: '/crm/owner/products' }, { label: product.name }]}
+        crumbs={
+          fromProject
+            ? [
+                { label: t('workspaces.list.title'), to: '/crm/owner/workspaces' },
+                { label: fromProject.name, to: `/crm/owner/workspaces/${fromProject.id}?tab=products` },
+                { label: t('products.setupCrumb') }
+              ]
+            : [{ label: t('products.list.title'), to: '/crm/owner/products' }, { label: product.name }]
+        }
         icon={<ProductIcon icon={draft.icon} accent={draft.config.accentColor} size="lg" />}
         title={product.name}
         description={<span className="font-mono text-xs">{product.key}</span>}

@@ -86,7 +86,10 @@ export function WorkspaceProductsTab({ workspace }: { workspace: WorkspaceDetail
                   <ProductIcon size="sm" />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link to={`/crm/owner/products/${p.productId}`} className="truncate text-[13px] font-medium text-foreground hover:underline">
+                      <Link
+                        to={`/crm/owner/products/${p.productId}?tab=setup&project=${encodeURIComponent(workspace.id)}`}
+                        className="truncate text-[13px] font-medium text-foreground hover:underline"
+                      >
                         {p.name}
                       </Link>
                       <span className="font-mono text-xs tabular-nums text-muted-foreground">v{p.configVersion}</span>
@@ -99,6 +102,11 @@ export function WorkspaceProductsTab({ workspace }: { workspace: WorkspaceDetail
                   </div>
                 </div>
                 <div className="flex items-center justify-between gap-3 sm:justify-end">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/crm/owner/products/${p.productId}?tab=setup&step=modules&project=${encodeURIComponent(workspace.id)}`}>
+                      {t('workspaces.products.editSetup')}
+                    </Link>
+                  </Button>
                   {behind ? (
                     <Button variant="outline" size="sm" onClick={() => setPending({ kind: 'upgrade', product: p })} disabled={busy(p.productId)}>
                       <ArrowUpRight /> {t('workspaces.products.upgrade', { version: p.latestVersion })}

@@ -26,6 +26,10 @@ const WorkspaceIndexRedirect = lazy(() => import('@crm/features/workspace/worksp
 const WorkspaceAccessPage = lazy(() => import('@crm/features/workspace/admin/access-page').then((m) => ({ default: m.WorkspaceAccessPage })));
 const SupportListPage = lazy(() => import('@crm/features/workspace/support/support-list-page').then((m) => ({ default: m.SupportListPage })));
 const TicketDetailPage = lazy(() => import('@crm/features/workspace/support/ticket-detail-page').then((m) => ({ default: m.TicketDetailPage })));
+const ReportsPage = lazy(() => import('@crm/features/reports/reports-page').then((m) => ({ default: m.ReportsPage })));
+const ReportBuilderPage = lazy(() => import('@crm/features/reports/report-builder-page').then((m) => ({ default: m.ReportBuilderPage })));
+const DashboardsPage = lazy(() => import('@crm/features/reports/dashboards-page').then((m) => ({ default: m.DashboardsPage })));
+const DashboardPage = lazy(() => import('@crm/features/reports/dashboards-page').then((m) => ({ default: m.DashboardPage })));
 const ObjectsPage = lazy(() => import('@crm/features/objects/objects-page').then((m) => ({ default: m.ObjectsPage })));
 const ObjectDetailPage = lazy(() => import('@crm/features/objects/object-detail-page').then((m) => ({ default: m.ObjectDetailPage })));
 const AppUsersPage = lazy(() => import('@crm/features/workspace/app/app-users-page').then((m) => ({ default: m.AppUsersPage })));
@@ -131,6 +135,11 @@ function AppRoutes() {
               <Route path="app-users/:id" element={<AppUserDetailPage />} />
               <Route path="businesses" element={<BusinessesPage />} />
               <Route path="businesses/:id" element={<BusinessDetailPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="reports/new" element={<ReportBuilderPage />} />
+              <Route path="reports/:id" element={<ReportBuilderPage />} />
+              <Route path="dashboards" element={<DashboardsPage />} />
+              <Route path="dashboards/:id" element={<DashboardPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [
                 <Route key={`w-${object}`} path={object} element={<RecordListPage key={object} object={object} />} />,
                 <Route key={`w-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,

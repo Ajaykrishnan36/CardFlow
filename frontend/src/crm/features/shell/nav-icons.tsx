@@ -1,4 +1,6 @@
 import {
+  BarChart3,
+  LayoutGrid,
   Banknote,
   Book,
   Box,
@@ -99,7 +101,9 @@ const icons: Record<string, LucideIcon> = {
   car: Car,
   stethoscope: Stethoscope,
   book: Book,
-  zap: Zap
+  zap: Zap,
+  'bar-chart-3': BarChart3,
+  'layout-grid': LayoutGrid
 };
 
 export function navIcon(key: string): LucideIcon {

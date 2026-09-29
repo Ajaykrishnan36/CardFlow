@@ -48,6 +48,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/context", h.handleContext)
 		r.Get("/dashboard", h.handleDashboard)
 		r.Get("/access/fields", h.handleWorkspaceFieldCatalog)
+		h.reportRoutes(r)
 		h.mountRecords(r, "")
 		for _, ext := range h.extensions {
 			if ext.MemberRoutes != nil {
