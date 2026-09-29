@@ -303,7 +303,8 @@ func (c *RESTClient) GetSubscriber(ctx context.Context, appUserID string) (Subsc
 	}
 	defer res.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-	if res.StatusCode != http.StatusOK {
+	// 201 = RevenueCat created the customer on this first lookup.
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusCreated {
 		return Subscriber{}, fmt.Errorf("revenuecat returned %d", res.StatusCode)
 	}
 	var out struct {

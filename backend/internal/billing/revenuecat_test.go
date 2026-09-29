@@ -220,6 +220,11 @@ func TestRESTClientGetSubscriber(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
+		if r.URL.Path == "/v1/subscribers/new-user" {
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"subscriber":{"entitlements":{},"subscriptions":{}}}`))
+			return
+		}
 		if r.URL.Path != "/v1/subscribers/user-1" {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -238,6 +243,10 @@ func TestRESTClientGetSubscriber(t *testing.T) {
 	st := StateFromSubscriber(s, "premium", now)
 	if !st.IsPremium || st.Status != StatusActive || st.Store != "play_store" || st.ProductID != "annual" || !st.WillRenew {
 		t.Fatalf("got %+v", st)
+	}
+	// First lookup of a customer RevenueCat hasn't seen returns 201.
+	if s, err := c.GetSubscriber(context.Background(), "new-user"); err != nil || StateFromSubscriber(s, "premium", now).Status != StatusFree {
+		t.Fatalf("201 for a new customer should read as FREE, got err=%v", err)
 	}
 	bad := &RESTClient{BaseURL: srv.URL, SecretKey: "wrong"}
 	if _, err := bad.GetSubscriber(context.Background(), "user-1"); err == nil {
