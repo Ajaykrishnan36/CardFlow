@@ -17,6 +17,7 @@ import (
 	"cardflow-backend/internal/crm/platform"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -821,6 +822,7 @@ func (h *Handler) objectRoutes(r chi.Router) {
 	r.Patch("/platform/objects/{key}", h.handleUpdateObject)
 	r.Post("/platform/objects/{key}/archive", h.setObjectStatus("archived"))
 	r.Post("/platform/objects/{key}/restore", h.setObjectStatus("active"))
+	r.Get("/platform/workspaces/{id}/fields", h.handleOwnerFieldCatalog)
 }
 
 // relatedObjects lists, for a record, the records of every enabled object with a lookup
@@ -864,4 +866,74 @@ func (h *Handler) relatedObjects(ctx context.Context, ws string, target, id stri
 		}
 	}
 	return out, nil
+}
+
+// ---- field catalog for the field-access editor (D-46) ----
+
+type catalogField struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Type     string `json:"type"`
+	Standard bool   `json:"standard"`
+	// Locked fields (required ones, the record ID) are always available and can't be restricted.
+	Locked bool `json:"locked"`
+}
+
+type catalogObject struct {
+	Key    string         `json:"key"`    // permission key (lead, account… or the object key)
+	Object string         `json:"object"` // record API key (leads, accounts…)
+	Label  string         `json:"label"`
+	Fields []catalogField `json:"fields"`
+}
+
+// fieldCatalog lists the fields of every record object switched on in a workspace.
+func (h *Handler) fieldCatalog(ctx context.Context, wsID uuid.UUID) ([]catalogObject, error) {
+	modules, err := access.WorkspaceModules(ctx, h.store.Pool, wsID)
+	if err != nil {
+		return nil, err
+	}
+	all := []*objectSpec{specs["leads"], specs["accounts"], specs["contacts"]}
+	all = append(all, dynamicSpecs()...)
+	moduleOf := map[string]string{}
+	for _, o := range access.CatalogObjects() {
+		moduleOf[o.Key] = o.Module
+	}
+	out := []catalogObject{}
+	for _, s := range all {
+		perm := permKey(s.Key)
+		if !modules[moduleOf[perm]] {
+			continue
+		}
+		fields, err := allFieldsRaw(ctx, h.store.Pool, wsID, s)
+		if err != nil {
+			return nil, err
+		}
+		co := catalogObject{Key: perm, Object: s.Key, Label: s.Plural, Fields: []catalogField{}}
+		for _, f := range fields {
+			co.Fields = append(co.Fields, catalogField{Key: f.Key, Label: f.Label, Type: f.Type, Standard: f.Standard,
+				Locked: f.Required || f.Key == "code"})
+		}
+		out = append(out, co)
+	}
+	return out, nil
+}
+
+func (h *Handler) handleWorkspaceFieldCatalog(w http.ResponseWriter, r *http.Request) {
+	sc := scopeFrom(r.Context())
+	if !sc.Owner && !sc.Eff.HasCapability(access.CapAccessManage) && !sc.Eff.HasCapability(access.CapMembersManage) {
+		shared.WriteError(w, r, errForbidden)
+		return
+	}
+	list, err := h.fieldCatalog(r.Context(), sc.WS)
+	respond(w, r, http.StatusOK, map[string]any{"data": list}, err)
+}
+
+func (h *Handler) handleOwnerFieldCatalog(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		shared.WriteError(w, r, shared.NotFound("workspace_not_found"))
+		return
+	}
+	list, err := h.fieldCatalog(r.Context(), id)
+	respond(w, r, http.StatusOK, map[string]any{"data": list}, err)
 }

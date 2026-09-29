@@ -131,7 +131,7 @@ function LayoutEditorView({ object }: { object: ObjectKey }) {
   const qc = useQueryClient();
   const scope = useRecordScope();
   const recordsApi = scope.api;
-  const metaQ = useObjectMeta(object);
+  const metaQ = useObjectMeta(object, { forLayout: true });
   const meta = metaQ.data;
   useDocumentTitle(meta ? t('records.layout.title', { object: meta.labelSingular }) : t('records.common.loading'));
 
@@ -171,7 +171,11 @@ function LayoutEditorView({ object }: { object: ObjectKey }) {
 
   const update = (fn: (l: Layout) => Layout) => setDraft((l) => (l ? fn(l) : l));
 
-  const adopt = (m: ObjectMeta) => qc.setQueryData(recordKeys.meta(scope.prefix, object), m);
+  const adopt = (m: ObjectMeta) => {
+    qc.setQueryData([...recordKeys.meta(scope.prefix, object), 'layout'], m);
+    // Record pages keep their own (field-access filtered) meta; refresh it.
+    void qc.invalidateQueries({ queryKey: recordKeys.meta(scope.prefix, object), exact: true });
+  };
 
   const save = useMutation({
     mutationFn: (l: Layout) => recordsApi.saveLayout(object, l),

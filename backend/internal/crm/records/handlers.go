@@ -47,6 +47,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Use(identity.RequireReady, h.memberScope)
 		r.Get("/context", h.handleContext)
 		r.Get("/dashboard", h.handleDashboard)
+		r.Get("/access/fields", h.handleWorkspaceFieldCatalog)
 		h.mountRecords(r, "")
 		for _, ext := range h.extensions {
 			if ext.MemberRoutes != nil {
@@ -153,7 +154,12 @@ func (h *Handler) handleMeta(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	m, err := h.meta(r.Context(), ws, spec)
+	ctx := r.Context()
+	// The page-layout editor places every field; field access limits what records show, not the layout.
+	if r.URL.Query().Get("purpose") == "layout" && scopeFrom(ctx).CanCustomize() {
+		ctx = withAllFields(ctx)
+	}
+	m, err := h.meta(ctx, ws, spec)
 	respond(w, r, http.StatusOK, m, err)
 }
 
@@ -169,7 +175,7 @@ func (h *Handler) handleSaveLayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
-		fields, err := allFields(r.Context(), tx, ws, spec)
+		fields, err := allFieldsRaw(r.Context(), tx, ws, spec)
 		if err != nil {
 			return err
 		}
@@ -187,7 +193,7 @@ func (h *Handler) handleSaveLayout(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	m, err := h.meta(r.Context(), ws, spec)
+	m, err := h.meta(withAllFields(r.Context()), ws, spec) // customizers edit every field
 	respond(w, r, http.StatusOK, m, err)
 }
 
@@ -207,7 +213,7 @@ func (h *Handler) handleResetLayout(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	m, err := h.meta(r.Context(), ws, spec)
+	m, err := h.meta(withAllFields(r.Context()), ws, spec) // customizers edit every field
 	respond(w, r, http.StatusOK, m, err)
 }
 
@@ -267,7 +273,7 @@ func (h *Handler) handleCreateField(w http.ResponseWriter, r *http.Request) {
 	required := in.Required != nil && *in.Required
 
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
-		fields, err := allFields(r.Context(), tx, ws, spec)
+		fields, err := allFieldsRaw(r.Context(), tx, ws, spec)
 		if err != nil {
 			return err
 		}
@@ -327,7 +333,7 @@ func (h *Handler) handleCreateField(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	m, err := h.meta(r.Context(), ws, spec)
+	m, err := h.meta(withAllFields(r.Context()), ws, spec) // customizers edit every field
 	respond(w, r, http.StatusCreated, m, err)
 }
 
@@ -398,7 +404,7 @@ func (h *Handler) handleUpdateField(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	m, err := h.meta(r.Context(), ws, spec)
+	m, err := h.meta(withAllFields(r.Context()), ws, spec) // customizers edit every field
 	respond(w, r, http.StatusOK, m, err)
 }
 
@@ -430,7 +436,7 @@ func (h *Handler) handleDeleteField(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	m, err := h.meta(r.Context(), ws, spec)
+	m, err := h.meta(withAllFields(r.Context()), ws, spec) // customizers edit every field
 	respond(w, r, http.StatusOK, m, err)
 }
 

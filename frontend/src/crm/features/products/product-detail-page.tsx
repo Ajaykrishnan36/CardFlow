@@ -19,9 +19,10 @@ import { ProductIcon } from './product-icon';
 import { canPublish, nextVersion, productStatusTone, SETUP_STEPS, type SetupStep } from './product-utils';
 import { draftFromProduct, useProductDraft } from './use-product-draft';
 import { ProductSetupWizard } from './product-setup-wizard';
+import { ProductApiTab } from './product-api-tab';
 
-type Tab = 'overview' | 'setup' | 'versions' | 'workspaces';
-const TABS: Tab[] = ['overview', 'setup', 'versions', 'workspaces'];
+type Tab = 'overview' | 'setup' | 'api' | 'versions' | 'workspaces';
+const TABS: Tab[] = ['overview', 'setup', 'api', 'versions', 'workspaces'];
 
 export function ProductDetailPage() {
   const { t } = useTranslation();
@@ -254,6 +255,7 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
               </span>
             )
           },
+          { value: 'api', label: t('products.tabs.api') },
           { value: 'versions', label: <TabLabel label={t('products.tabs.versions')} count={product.versions.length} /> },
           { value: 'workspaces', label: <TabLabel label={t('products.tabs.workspaces')} count={product.assignedWorkspaces.length} /> }
         ]}
@@ -285,6 +287,7 @@ function ProductDetailView({ product }: { product: ProductDetail }) {
         />
       ) : null}
       {tab === 'versions' ? <VersionsTab product={product} /> : null}
+      {tab === 'api' ? <ProductApiTab product={product} modules={draft.config.modules} /> : null}
       {tab === 'workspaces' ? <WorkspacesTab product={product} /> : null}
 
       <ConfirmDialog

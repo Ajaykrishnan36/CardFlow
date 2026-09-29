@@ -7,35 +7,15 @@ import (
 )
 
 var (
-	supportMu   sync.RWMutex
-	supportWS   = map[uuid.UUID]bool{}
-	supportCode string
+	supportMu sync.RWMutex
+	supportWS = map[uuid.UUID]bool{}
 )
 
 // SetSupport marks a workspace as having a connected support source (a connector).
 func SetSupport(ws uuid.UUID, code string) {
 	supportMu.Lock()
 	supportWS[ws] = true
-	if supportCode == "" {
-		supportCode = code
-	}
 	supportMu.Unlock()
-}
-
-// SupportPath is where the owner's "Support" goes: the first connected app's tickets.
-func SupportPath() string {
-	supportMu.RLock()
-	defer supportMu.RUnlock()
-	if supportCode == "" {
-		return ""
-	}
-	return "/crm/w/" + supportCode + "/support"
-}
-
-func supportWorkspaceCode() string {
-	supportMu.RLock()
-	defer supportMu.RUnlock()
-	return supportCode
 }
 
 func HasSupport(ws uuid.UUID) bool {

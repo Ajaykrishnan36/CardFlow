@@ -1,5 +1,28 @@
 // 'products' i18n namespace (merged into the crm bundle as products.*).
 const strings = {
+  api: {
+    emptyTitle: 'No objects switched on yet',
+    emptyBody: 'Turn on modules in Setup → Modules & data and their APIs appear here.',
+    onBody: 'API access is on: every workspace on this product can use these endpoints (with a signed-in session). What each user gets depends on their role, permission sets and field access.',
+    offBody: 'API access is off for this product. The web app still uses these endpoints; switch API access on to offer them to integrations.',
+    changeSetting: 'Change in Login & integrations →',
+    objects_one: '{{count}} object',
+    objects_other: '{{count}} objects',
+    loadError: 'Couldn’t load this object’s fields',
+    endpoints: '{{name}} API',
+    example: 'Example request',
+    fields_one: '{{count}} field',
+    fields_other: '{{count}} fields',
+    fieldAccessNote: 'Every field below is in the API by default. Hide a field or make it read-only per role or permission set (Roles & permission sets → Field access) — hidden fields are left out of that user’s pages and API responses.',
+    colField: 'Field',
+    colApiName: 'API name',
+    colType: 'Type',
+    colRules: 'Rules',
+    required: 'Required',
+    readOnly: 'Read only',
+    custom: 'Custom',
+    workspaceFields: 'Workspaces can add their own custom fields to an object; those appear in their API automatically.'
+  },
   assignTo: {
     banner: 'You’re creating this product for {{workspace}}. Set it up, then publish — it’s added to the workspace automatically.',
     thisWorkspace: 'this workspace',
@@ -59,7 +82,8 @@ const strings = {
   },
   tabs: {
     overview: 'Overview',
-    setup: 'Setup',
+    api: 'API',
+      setup: 'Setup',
     versions: 'Versions',
     workspaces: 'Workspaces'
   },

@@ -1,5 +1,6 @@
 import { api } from './client';
 import type {
+  FieldCatalogObject,
   ObjectDefinition,
   ObjectDefinitionBody,
   ObjectsResponse,
@@ -170,6 +171,8 @@ export const usersApi = {
 
 export const accessApi = {
   catalog: () => api<AccessCatalog>('/platform/access/catalog'),
+  /** Fields of every object switched on in a workspace (for field access). */
+  fieldCatalog: (workspaceId: string) => api<{ data: FieldCatalogObject[] }>(`/platform/workspaces/${enc(workspaceId)}/fields`).then((r) => r.data),
   /** Every workspace (platform first) with its products and permission sets — feeds the pickers. */
   workspaces: () => api<{ data: AccessWorkspaceOption[] }>('/platform/access/workspaces').then((r) => r.data),
   permissionSets: (workspaceId: string) =>
@@ -205,6 +208,8 @@ export const workspaceApi = {
 export function recordsApiFor(prefix: string) {
   return {
   meta: (object: ObjectKey) => api<ObjectMeta>(`${prefix}/crm/meta/${object}`),
+  /** Every field, whatever the viewer's field access (page-layout editing). */
+  layoutMeta: (object: ObjectKey) => api<ObjectMeta>(`${prefix}/crm/meta/${object}?purpose=layout`),
   saveLayout: (object: ObjectKey, layout: Layout) => api<ObjectMeta>(`${prefix}/crm/meta/${object}/layout`, { method: 'PUT', body: layout }),
   resetLayout: (object: ObjectKey) => api<ObjectMeta>(`${prefix}/crm/meta/${object}/layout/reset`, { method: 'POST', body: {} }),
   createField: (object: ObjectKey, body: FieldCreateBody) => api<ObjectMeta>(`${prefix}/crm/meta/${object}/fields`, { method: 'POST', body }),
@@ -241,6 +246,7 @@ export function workspaceAdminApi(code: string) {
   const base = `/w/${enc(code)}/admin`;
   return {
     options: () => api<WorkspaceAdminOptions>(`${base}/options`),
+    fieldCatalog: () => api<{ data: FieldCatalogObject[] }>(`/w/${enc(code)}/access/fields`).then((r) => r.data),
     members: () => api<{ data: WorkspaceAdminMember[]; invitations: Invitation[] }>(`${base}/members`),
     invite: (body: WorkspaceInviteBody) =>
       api<{ identityId: string; membershipId: string; invitation?: Invitation; existingLogin?: boolean }>(`${base}/members`, { method: 'POST', body }),

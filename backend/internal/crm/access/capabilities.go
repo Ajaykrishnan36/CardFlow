@@ -33,33 +33,10 @@ func OwnerCapabilities() Capabilities {
 			{Key: "workspaces", Label: "Customer Workspaces", Path: "/crm/owner/workspaces", Icon: "building-2", Group: "Platform", Available: true},
 			{Key: "users", Label: "Users & Access", Path: "/crm/owner/users", Icon: "shield-check", Group: "Platform", Available: true},
 			{Key: "billing", Label: "Plans & Billing", Path: "/crm/owner/plans", Icon: "credit-card", Group: "Operations"},
-			supportItem(),
 			{Key: "integrations", Label: "Integrations", Path: "/crm/owner/integrations", Icon: "plug", Group: "Operations", Available: true},
 			{Key: "audit", Label: "Audit log", Path: "/crm/owner/audit", Icon: "scroll-text", Group: "Operations", Available: true},
 			{Key: "settings", Label: "Settings", Path: "/crm/me", Icon: "settings", Group: "Operations", Available: true},
 		},
 	}
-	// The connected app's users and business listings, right below Customer Workspaces.
-	if code := supportWorkspaceCode(); code != "" {
-		base := "/crm/w/" + code
-		app := []NavItem{
-			{Key: "app-users", Label: "App users", Path: base + "/app-users", Icon: "smartphone", Group: "Platform", Available: true},
-			{Key: "businesses", Label: "App businesses", Path: base + "/businesses", Icon: "store", Group: "Platform", Available: true},
-		}
-		for i, n := range c.Navigation {
-			if n.Key == "workspaces" {
-				c.Navigation = append(c.Navigation[:i+1], append(app, c.Navigation[i+1:]...)...)
-				break
-			}
-		}
-	}
 	return c
-}
-
-func supportItem() NavItem {
-	item := NavItem{Key: "support", Label: "Support", Path: "/crm/owner/support", Icon: "life-buoy", Group: "Operations"}
-	if p := SupportPath(); p != "" {
-		item.Path, item.Available = p, true
-	}
-	return item
 }

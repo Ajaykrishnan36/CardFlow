@@ -183,9 +183,15 @@ func (h *Handler) list(ctx context.Context, wsID uuid.UUID, spec *objectSpec, p 
 	}
 	if p.Q != "" {
 		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(p.Q)+"%")
-		parts := make([]string, len(spec.SearchSQL))
-		for i, c := range spec.SearchSQL {
-			parts[i] = c + " ILIKE $" + strconv.Itoa(len(args))
+		parts := []string{}
+		for _, c := range spec.SearchSQL {
+			if hiddenSearch(c, fields, spec) {
+				continue // never match on a field the requester can't see
+			}
+			parts = append(parts, c+" ILIKE $"+strconv.Itoa(len(args)))
+		}
+		if len(parts) == 0 {
+			parts = append(parts, "t.code ILIKE $"+strconv.Itoa(len(args)))
 		}
 		where += " AND (" + strings.Join(parts, " OR ") + ")"
 	}

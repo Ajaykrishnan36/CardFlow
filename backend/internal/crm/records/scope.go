@@ -220,6 +220,7 @@ type dashboardKPI struct {
 	Value int    `json:"value"`
 	Hint  string `json:"hint,omitempty"`
 	Path  string `json:"path,omitempty"`
+	Icon  string `json:"icon,omitempty"` // nav icon key (objects defined as data, connected apps)
 }
 
 type recentList struct {
@@ -263,7 +264,7 @@ func (h *Handler) handleDashboard(w http.ResponseWriter, r *http.Request) {
 			shared.WriteError(w, r, err)
 			return
 		}
-		k := dashboardKPI{Key: key, Label: spec.Plural, Value: total, Path: "/crm/w/" + sc.Code + "/" + key}
+		k := dashboardKPI{Key: key, Label: spec.Plural, Value: total, Path: "/crm/w/" + sc.Code + "/" + key, Icon: spec.Icon}
 		if sc.OwnOnly(key) {
 			k.Label = "My " + spec.Plural
 		}

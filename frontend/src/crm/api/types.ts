@@ -92,6 +92,8 @@ export interface Kpi {
   hint?: string;
   /** List page the card opens. */
   path?: string;
+  /** Nav icon key for objects defined as data and connected apps. */
+  icon?: string;
 }
 
 export interface ChecklistStep {
@@ -587,10 +589,22 @@ export type ObjectAction = 'read' | 'create' | 'update' | 'delete' | 'convert' |
 export type RowScope = 'own' | 'workspace';
 
 /** Shape of roles.base_rules and permission_sets.rules. Object keys are singular: lead, account, contact. */
+export type FieldLevel = 'edit' | 'read' | 'hidden';
+
 export interface AccessRules {
   objects: Record<string, ObjectAction[]>;
   rows: Record<string, { scope: RowScope }>;
   capabilities: string[];
+  /** Field access per object (D-46): only restricted fields are listed; the rest are editable. */
+  fields?: Record<string, Record<string, 'read' | 'hidden'>>;
+}
+
+/** GET /platform/workspaces/{id}/fields · /w/{code}/access/fields */
+export interface FieldCatalogObject {
+  key: string;
+  object: string;
+  label: string;
+  fields: Array<{ key: string; label: string; type: string; standard: boolean; locked: boolean }>;
 }
 
 export interface AccessCatalog {
@@ -624,6 +638,8 @@ export interface EffectiveObjectAccess {
   sources: string[];
   /** False when none of the user's products enables this module (then nothing is allowed). */
   moduleEnabled: boolean;
+  /** Restricted fields only (read-only or hidden). */
+  fields?: Record<string, 'read' | 'hidden'>;
 }
 
 export interface EffectiveAccess {

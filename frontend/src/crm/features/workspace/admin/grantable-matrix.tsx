@@ -1,7 +1,8 @@
 import { useId, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Lock } from 'lucide-react';
-import type { AccessCatalog, AccessRules, ObjectAction, RowScope } from '@crm/api/types';
+import type { AccessCatalog, AccessRules, FieldCatalogObject, ObjectAction, RowScope } from '@crm/api/types';
+import { FieldAccessEditor } from '@crm/features/access/field-access-editor';
 import { Checkbox, Select, Switch } from '@crm/components/ui/form-controls';
 import { Tooltip } from '@crm/components/ui/menu';
 import { AccessMatrix, TriCheckbox, type MatrixRow } from '@crm/features/access/access-matrix';
@@ -19,13 +20,17 @@ export function GrantableMatrix({
   onChange,
   catalog,
   grantable,
-  disabled
+  disabled,
+  fieldCatalog,
+  fieldCatalogLoading
 }: {
   value: AccessRules;
   onChange: (rules: AccessRules) => void;
   catalog: AccessCatalog;
   grantable: AccessRules;
   disabled?: boolean;
+  fieldCatalog?: FieldCatalogObject[];
+  fieldCatalogLoading?: boolean;
 }) {
   const { t } = useTranslation();
   const uid = useId();
@@ -130,6 +135,10 @@ export function GrantableMatrix({
         />
         <p className="mt-1.5 text-xs text-muted-foreground">{t('workspaceApp.admin.matrixHint')}</p>
       </div>
+
+      {fieldCatalog || fieldCatalogLoading ? (
+        <FieldAccessEditor rules={rules} onChange={emit} catalog={fieldCatalog} loading={fieldCatalogLoading} disabled={disabled} limit={grantable.fields} />
+      ) : null}
 
       {catalog.capabilities.length > 0 ? (
         <fieldset className="rounded-lg border">

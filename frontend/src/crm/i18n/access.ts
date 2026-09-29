@@ -1,5 +1,19 @@
 // 'access' i18n namespace (merged into the crm bundle as access.*).
 const strings = {
+  fields: {
+    title: 'Field access',
+    hint: 'Choose which values people see and edit — in pages and in API responses.',
+    object: 'Object',
+    restricted_one: '{{count}} restricted',
+    restricted_other: '{{count}} restricted',
+    nothingGranted: 'Grant access to an object above to set its field access.',
+    setAll: 'Set every field:',
+    level: { edit: 'Edit', read: 'Read only', hidden: 'Hidden' },
+    custom: 'Custom',
+    alwaysEditable: 'Always',
+    lockedHint: 'Required fields and the record ID are always available — records couldn’t be saved without them.',
+    notYours: 'You can’t give more access to this field than you have.'
+  },
   workspace: {
     platformLabel: 'Your team · Platform CRM',
     platformShort: 'Your team'

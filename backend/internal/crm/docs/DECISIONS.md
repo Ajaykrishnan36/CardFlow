@@ -208,6 +208,15 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   can't be edited, and it covers every product of the workspace, including later ones. The owner inside a workspace
   sees that workspace's modules. Publishing a product version upgrades every workspace on it (opt out with
   `upgradeWorkspaces: false`). A product can be created from a workspace and is assigned to it on first publish.
+- **D-46 Field access; product API view; owner console stays generic.** Roles and permission sets carry
+  `fields: {object: {field: "read"|"hidden"}}`; grants add up, so a field is restricted only when every grant of the
+  object restricts it (most open wins). Enforced in the record engine for pages and the REST API alike: hidden fields
+  are left out of meta, lists, records, lookups and search; read-only ones reject writes. Required fields and the record
+  ID can't be restricted. Delegated admins can't open a field beyond their own access (Exceeds). Owner and Super Admin
+  are never restricted; the page-layout editor always sees every field (`?purpose=layout`). Editors load the fields
+  from `/platform/workspaces/{id}/fields` and `/w/{code}/access/fields`. Each product has an API tab listing the
+  endpoints and fields of every object its modules switch on. Connected-app pages (app users, businesses, support)
+  are no longer in the owner sidebar; they live in that app's workspace, with tiles on its dashboard.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

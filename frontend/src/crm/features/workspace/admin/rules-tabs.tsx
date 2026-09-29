@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Ellipsis, KeyRound, Layers, Lock, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { workspaceAdminApi } from '@crm/api/endpoints';
@@ -172,6 +172,8 @@ function RulesDialog({ kind, code, options, item, onClose }: { kind: Kind; code:
   const beyond = exceedingGrants(rules, options.grantable, options.catalog, t('access.matrix.scope.workspace').toLowerCase());
   const unchanged = existing ? existing.name === name.trim() && (existing.description ?? '') === description.trim() && rulesEqual(existing.rules, rules, options.catalog) : false;
 
+  const fieldCatalog = useQuery({ queryKey: ['workspace', code, 'access', 'fields'], queryFn: () => workspaceAdminApi(code).fieldCatalog(), enabled: open, staleTime: 60_000 });
+
   const save = useMutation({
     mutationFn: async () => {
       const api = workspaceAdminApi(code);
@@ -236,7 +238,15 @@ function RulesDialog({ kind, code, options, item, onClose }: { kind: Kind; code:
                 {t('workspaceApp.admin.beyondBody', { list: beyond.join(', ') })}
               </Alert>
             ) : null}
-            <GrantableMatrix value={rules} onChange={setRules} catalog={options.catalog} grantable={options.grantable} disabled={save.isPending} />
+            <GrantableMatrix
+              value={rules}
+              onChange={setRules}
+              catalog={options.catalog}
+              grantable={options.grantable}
+              disabled={save.isPending}
+              fieldCatalog={fieldCatalog.data}
+              fieldCatalogLoading={fieldCatalog.isPending}
+            />
           </div>
           <div className="flex flex-col-reverse gap-2 border-t bg-muted/30 px-5 py-3 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={onClose} disabled={save.isPending}>

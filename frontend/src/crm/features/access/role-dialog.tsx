@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Lock } from 'lucide-react';
 import { accessApi } from '@crm/api/endpoints';
@@ -42,6 +42,7 @@ export function RoleDialog(props: RoleDialogProps) {
 function RoleForm({ onOpenChange, workspaceId, workspaceName, role, roles, onSaved }: RoleDialogProps) {
   const { t } = useTranslation();
   const catalog = useAccessCatalog();
+  const fieldCatalog = useQuery({ queryKey: ['access', 'fields', workspaceId], queryFn: () => accessApi.fieldCatalog(workspaceId), staleTime: 60_000 });
   const invalidate = useInvalidateAccess();
   const editing = Boolean(role);
   const builtIn = Boolean(role?.isSystem);
@@ -167,7 +168,14 @@ function RoleForm({ onOpenChange, workspaceId, workspaceName, role, roles, onSav
             ) : null}
           </div>
           {catalog.data ? (
-            <PermissionSetEditor value={rules} onChange={setRules} catalog={catalog.data} disabled={save.isPending} />
+            <PermissionSetEditor
+              value={rules}
+              onChange={setRules}
+              catalog={catalog.data}
+              disabled={save.isPending}
+              fieldCatalog={fieldCatalog.data}
+              fieldCatalogLoading={fieldCatalog.isPending}
+            />
           ) : catalog.isError ? (
             <ErrorState title={t('access.roles.errorTitle')} message={isApiError(catalog.error) ? catalog.error.message : undefined} onRetry={() => void catalog.refetch()} />
           ) : (

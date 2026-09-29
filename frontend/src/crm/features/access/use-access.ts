@@ -120,7 +120,20 @@ export function normalizeRules(rules: AccessRules | undefined, catalog?: AccessC
     rows[key] = { scope: src.rows?.[key]?.scope === 'workspace' ? 'workspace' : 'own' };
   }
   const caps = Array.from(new Set(src.capabilities ?? [])).filter((c) => !catalog || catalog.capabilities.some((x) => x.key === c));
-  return { objects, rows, capabilities: caps.sort() };
+  // Field access is kept only for objects still granted, and only real restrictions.
+  const fields: NonNullable<AccessRules['fields']> = {};
+  for (const [obj, map] of Object.entries(src.fields ?? {})) {
+    if (!objects[obj]) continue;
+    const kept = Object.fromEntries(
+      Object.entries(map)
+        .filter(([, l]) => l === 'read' || l === 'hidden')
+        .sort(([a], [b]) => a.localeCompare(b))
+    ) as Record<string, 'read' | 'hidden'>;
+    if (Object.keys(kept).length) fields[obj] = kept;
+  }
+  const out: AccessRules = { objects, rows, capabilities: caps.sort() };
+  if (Object.keys(fields).length) out.fields = fields;
+  return out;
 }
 
 export function rulesEqual(a: AccessRules, b: AccessRules, catalog?: AccessCatalog): boolean {

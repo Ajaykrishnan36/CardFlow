@@ -267,8 +267,38 @@ func (c *Connector) Extension() records.Extension {
 			return append(app, list), rows.Err()
 		},
 		KPIs: func(ctx context.Context, sc *records.Scope) ([]records.KPI, error) {
-			if sc.WS != c.WorkspaceID() || !c.hasTickets || (!sc.Owner && !sc.Eff.Can("ticket", "read")) {
+			if sc.WS != c.WorkspaceID() {
 				return nil, nil
+			}
+			out := []records.KPI{}
+			// The connected app's own data lives on this workspace's dashboard (not the owner console).
+			if sc.Owner || sc.Eff.Can("app_user", "read") {
+				var total, premium, newWeek int
+				if err := c.store.Pool.QueryRow(ctx, `
+					SELECT count(*), count(*) FILTER (WHERE `+strings.ReplaceAll(premiumExpr, "u.", "")+`),
+					       count(*) FILTER (WHERE created_at > now() - interval '7 days')
+					FROM public.users WHERE deleted_at IS NULL`).Scan(&total, &premium, &newWeek); err != nil {
+					return nil, err
+				}
+				k := records.KPI{Key: "app-users", Label: "App users", Value: total, Path: "/crm/w/" + sc.Code + "/app-users", Icon: "smartphone",
+					Hint: strconv.Itoa(premium) + " premium"}
+				if newWeek > 0 {
+					k.Hint += " · " + strconv.Itoa(newWeek) + " new this week"
+				}
+				out = append(out, k)
+			}
+			if c.hasBiz && (sc.Owner || sc.Eff.Can("app_business", "read")) {
+				var total, listed int
+				if err := c.store.Pool.QueryRow(ctx, `
+					SELECT count(*), count(*) FILTER (WHERE listing::text = 'listed') FROM public.businesses WHERE deleted_at IS NULL`).
+					Scan(&total, &listed); err != nil {
+					return nil, err
+				}
+				out = append(out, records.KPI{Key: "app-businesses", Label: "Businesses", Value: total, Path: "/crm/w/" + sc.Code + "/businesses", Icon: "store",
+					Hint: strconv.Itoa(listed) + " listed in search"})
+			}
+			if !c.hasTickets || (!sc.Owner && !sc.Eff.Can("ticket", "read")) {
+				return out, nil
 			}
 			var open, today int
 			if err := c.store.Pool.QueryRow(ctx, `
@@ -276,11 +306,11 @@ func (c *Connector) Extension() records.Extension {
 				FROM public.support_tickets`).Scan(&open, &today); err != nil {
 				return nil, err
 			}
-			k := records.KPI{Key: "tickets", Label: "Open tickets", Value: open, Path: "/crm/w/" + sc.Code + "/support"}
+			k := records.KPI{Key: "tickets", Label: "Open tickets", Value: open, Path: "/crm/w/" + sc.Code + "/support", Icon: "life-buoy"}
 			if today > 0 {
 				k.Hint = strconv.Itoa(today) + " new today"
 			}
-			return []records.KPI{k}, nil
+			return append(out, k), nil
 		},
 	}
 }

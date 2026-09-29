@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Trash2 } from 'lucide-react';
 import { accessApi } from '@crm/api/endpoints';
@@ -45,6 +45,7 @@ export function PermissionSetDialog(props: PermissionSetDialogProps) {
 function PermissionSetForm({ onOpenChange, workspaceId, workspaceName, permissionSet, onSaved, onDeleted }: PermissionSetDialogProps) {
   const { t } = useTranslation();
   const catalog = useAccessCatalog();
+  const fieldCatalog = useQuery({ queryKey: ['access', 'fields', workspaceId], queryFn: () => accessApi.fieldCatalog(workspaceId), staleTime: 60_000 });
   const workspaces = useAccessWorkspaces();
   const invalidate = useInvalidateAccess();
   const wsRoles = useWorkspaceRoles(workspaceId);
@@ -161,7 +162,14 @@ function PermissionSetForm({ onOpenChange, workspaceId, workspaceName, permissio
             ) : null}
           </div>
           {catalog.data ? (
-            <PermissionSetEditor value={rules} onChange={setRules} catalog={catalog.data} disabled={save.isPending || remove.isPending} />
+            <PermissionSetEditor
+              value={rules}
+              onChange={setRules}
+              catalog={catalog.data}
+              disabled={save.isPending || remove.isPending}
+              fieldCatalog={fieldCatalog.data}
+              fieldCatalogLoading={fieldCatalog.isPending}
+            />
           ) : catalog.isError ? (
             <ErrorState
               title={t('access.sets.errorTitle')}

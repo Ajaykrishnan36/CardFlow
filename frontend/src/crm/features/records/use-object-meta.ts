@@ -16,9 +16,13 @@ export const recordKeys = {
   detail: (prefix: string, object: ObjectKey, id: string) => ['records', prefix, object, 'detail', id] as const
 };
 
-export function useObjectMeta(object: ObjectKey) {
+export function useObjectMeta(object: ObjectKey, opts: { forLayout?: boolean } = {}) {
   const scope = useRecordScope();
-  return useQuery({ queryKey: recordKeys.meta(scope.prefix, object), queryFn: () => scope.api.meta(object), staleTime: 5 * 60_000 });
+  return useQuery({
+    queryKey: opts.forLayout ? [...recordKeys.meta(scope.prefix, object), 'layout'] : recordKeys.meta(scope.prefix, object),
+    queryFn: () => (opts.forLayout ? scope.api.layoutMeta(object) : scope.api.meta(object)),
+    staleTime: 5 * 60_000
+  });
 }
 
 const builtinIcons: Record<string, LucideIcon> = { leads: Target, accounts: Building2, contacts: Contact };

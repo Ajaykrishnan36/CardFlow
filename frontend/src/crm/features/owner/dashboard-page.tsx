@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { navIcon } from '@crm/features/shell/nav-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { LifeBuoy, ArrowRight, Boxes, Briefcase, Building2, Check, ChevronRight, Clock, Contact, MailPlus, Plus, RefreshCw, UserPlus, UsersRound, type LucideIcon } from 'lucide-react';
@@ -101,7 +102,7 @@ export function OwnerDashboardPage() {
 /** KPI tile (also used by the workspace dashboard). */
 export function KpiCard({ kpi }: { kpi: Kpi }) {
   const { t } = useTranslation();
-  const Icon = kpiIcons[kpi.key] ?? Boxes;
+  const Icon = kpiIcons[kpi.key] ?? (kpi.icon ? navIcon(kpi.icon) : Boxes);
   const body = (
     <>
       <div className="flex items-start justify-between gap-2">

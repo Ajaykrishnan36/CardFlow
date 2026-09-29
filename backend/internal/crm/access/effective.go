@@ -16,6 +16,19 @@ type EffectiveObject struct {
 	Scope         string   `json:"scope"`
 	Sources       []string `json:"sources"`
 	ModuleEnabled bool     `json:"moduleEnabled"`
+	// Fields lists restricted fields only ("read" or "hidden"); every other field is editable.
+	Fields map[string]string `json:"fields,omitempty"`
+}
+
+// FieldLevel is the access to one field of an object: edit, read or hidden.
+func (e *Effective) FieldLevel(obj, field string) string {
+	if e == nil {
+		return FieldEdit
+	}
+	if l, ok := e.Objects[obj].Fields[field]; ok {
+		return l
+	}
+	return FieldEdit
 }
 
 type CapabilityGrant struct {
@@ -113,6 +126,34 @@ func Combine(sources []grantSource, modules map[string]bool, products []ProductR
 		for _, a := range o.Actions {
 			if set[a] {
 				eo.Actions = append(eo.Actions, a)
+			}
+		}
+		// A field is restricted only when every source granting the object restricts it
+		// (grants add up, D-30); the most open level wins.
+		granting := []Rules{}
+		restricted := map[string]bool{}
+		for _, s := range sources {
+			r := Normalize(s.rules)
+			if len(r.Objects[o.Key]) == 0 {
+				continue
+			}
+			granting = append(granting, r)
+			for f := range r.Fields[o.Key] {
+				restricted[f] = true
+			}
+		}
+		for f := range restricted {
+			best := FieldHidden
+			for _, r := range granting {
+				if l := r.fieldLevel(o.Key, f); FieldRank(l) > FieldRank(best) {
+					best = l
+				}
+			}
+			if best != FieldEdit {
+				if eo.Fields == nil {
+					eo.Fields = map[string]string{}
+				}
+				eo.Fields[f] = best
 			}
 		}
 		e.Objects[o.Key] = eo

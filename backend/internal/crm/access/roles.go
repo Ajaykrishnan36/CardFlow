@@ -1,6 +1,9 @@
 package access
 
-import "sync"
+import (
+	"regexp"
+	"sync"
+)
 
 // Rules is the permission JSON stored in roles.base_rules and permission_sets.rules
 // (PRD §7). Objects are singular keys (lead, account, contact); a row scope is "own"
@@ -10,6 +13,36 @@ type Rules struct {
 	Objects      map[string][]string          `json:"objects"`
 	Rows         map[string]map[string]string `json:"rows"`
 	Capabilities []string                     `json:"capabilities"`
+	// Fields restricts single fields of a granted object (D-46): field key → "read"
+	// (visible, not editable) or "hidden" (left out of pages and API responses). Fields
+	// not listed are editable. Restrictions apply only to objects this rule set grants.
+	Fields map[string]map[string]string `json:"fields,omitempty"`
+}
+
+// Field access levels, lowest first.
+const (
+	FieldHidden = "hidden"
+	FieldRead   = "read"
+	FieldEdit   = "edit"
+)
+
+var fieldRank = map[string]int{FieldHidden: 0, FieldRead: 1, FieldEdit: 2}
+
+func FieldRank(level string) int {
+	if r, ok := fieldRank[level]; ok {
+		return r
+	}
+	return 2
+}
+
+var fieldKeyRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]{0,60}$`)
+
+// fieldLevel is the level a rule set gives one field of an object it grants.
+func (r Rules) fieldLevel(obj, field string) string {
+	if l := r.Fields[obj][field]; l == FieldHidden || l == FieldRead {
+		return l
+	}
+	return FieldEdit
 }
 
 type SystemRole struct {
@@ -237,6 +270,17 @@ func Normalize(in Rules) Rules {
 			scope = "workspace"
 		}
 		out.Rows[obj] = map[string]string{"scope": scope}
+		for field, level := range in.Fields[obj] {
+			if (level == FieldHidden || level == FieldRead) && fieldKeyRe.MatchString(field) {
+				if out.Fields == nil {
+					out.Fields = map[string]map[string]string{}
+				}
+				if out.Fields[obj] == nil {
+					out.Fields[obj] = map[string]string{}
+				}
+				out.Fields[obj][field] = level
+			}
+		}
 	}
 	seen := map[string]bool{}
 	for _, c := range in.Capabilities {
@@ -280,6 +324,15 @@ func (e *Effective) AsRules() Rules {
 		}
 		out.Objects[key] = append([]string{}, o.Actions...)
 		out.Rows[key] = map[string]string{"scope": o.Scope}
+		if len(o.Fields) > 0 {
+			if out.Fields == nil {
+				out.Fields = map[string]map[string]string{}
+			}
+			out.Fields[key] = map[string]string{}
+			for f, l := range o.Fields {
+				out.Fields[key][f] = l
+			}
+		}
 	}
 	for _, c := range e.Capabilities {
 		out.Capabilities = append(out.Capabilities, c.Key)
@@ -304,6 +357,18 @@ func Exceeds(r Rules, limit *Effective) []string {
 		}
 		if len(acts) > 0 && r.Rows[o.Key]["scope"] == "workspace" && limit.Can(o.Key, "read") && limit.Objects[o.Key].Scope != "workspace" {
 			out = append(out, o.Label+": all records")
+		}
+		// Field access: a delegated admin can't open up a field they can't see or edit themselves.
+		if len(acts) > 0 {
+			for field, lim := range limit.Objects[o.Key].Fields {
+				if FieldRank(r.fieldLevel(o.Key, field)) > FieldRank(lim) {
+					what := "edit"
+					if lim == FieldHidden {
+						what = "see"
+					}
+					out = append(out, o.Label+": "+what+" the "+field+" field")
+				}
+			}
 		}
 	}
 	for _, c := range r.Capabilities {

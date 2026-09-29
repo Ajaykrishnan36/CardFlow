@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode"
 
+	"cardflow-backend/internal/crm/access"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -69,13 +70,74 @@ func customFields(ctx context.Context, q querier, wsID uuid.UUID, object string)
 	return out, rows.Err()
 }
 
-// allFields returns standard + custom fields.
-func allFields(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSpec) ([]Field, error) {
+// allFieldsRaw returns standard + custom fields, whoever is asking.
+func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSpec) ([]Field, error) {
 	custom, err := customFields(ctx, q, wsID, spec.Key)
 	if err != nil {
 		return nil, err
 	}
 	return append(append([]Field{}, spec.Fields...), custom...), nil
+}
+
+// allFields returns the fields the requester may use (D-46): hidden fields are left out
+// — so they never reach a page or an API response — and read-only ones can't be written.
+func allFields(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSpec) ([]Field, error) {
+	fields, err := allFieldsRaw(ctx, q, wsID, spec)
+	if err != nil {
+		return nil, err
+	}
+	return restrictFields(ctx, spec, fields), nil
+}
+
+type unrestrictedKey struct{}
+
+// withAllFields marks a request that must see every field (page-layout editing by a customizer).
+func withAllFields(ctx context.Context) context.Context {
+	return context.WithValue(ctx, unrestrictedKey{}, true)
+}
+
+func restrictFields(ctx context.Context, spec *objectSpec, fields []Field) []Field {
+	sc := scopeFrom(ctx)
+	if sc == nil || sc.Owner || sc.Eff == nil || ctx.Value(unrestrictedKey{}) != nil {
+		return fields
+	}
+	perm := permKey(spec.Key)
+	if len(sc.Eff.Objects[perm].Fields) == 0 {
+		return fields
+	}
+	out := make([]Field, 0, len(fields))
+	for _, f := range fields {
+		// Required fields and the record ID are always available (records couldn't be saved otherwise).
+		if f.Required || f.Key == "code" {
+			out = append(out, f)
+			continue
+		}
+		switch sc.Eff.FieldLevel(perm, f.Key) {
+		case access.FieldHidden:
+			continue
+		case access.FieldRead:
+			f.ReadOnly = true
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// hiddenSearch reports whether a search expression reads a field the requester can't see.
+func hiddenSearch(expr string, visible []Field, spec *objectSpec) bool {
+	seen := map[string]bool{}
+	for _, f := range visible {
+		seen[f.Key] = true
+	}
+	for _, f := range spec.Fields {
+		if seen[f.Key] {
+			continue
+		}
+		if f.column != "" && strings.Contains(expr, "t."+f.column) || strings.Contains(expr, "'"+f.Key+"'") {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneLayout(l Layout) Layout {

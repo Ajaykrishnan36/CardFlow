@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { AccessCatalog, AccessRules, ObjectAction, RowScope } from '@crm/api/types';
+import type { AccessCatalog, AccessRules, FieldCatalogObject, ObjectAction, RowScope } from '@crm/api/types';
+import { FieldAccessEditor } from './field-access-editor';
 import { Checkbox, Select, Switch } from '@crm/components/ui/form-controls';
 import { AccessMatrix, TriCheckbox, type MatrixRow } from './access-matrix';
 import { DELEGATION_CAPABILITIES, normalizeRules, pluralLabel } from './use-access';
@@ -10,13 +11,16 @@ export interface PermissionSetEditorProps {
   onChange: (rules: AccessRules) => void;
   catalog: AccessCatalog;
   disabled?: boolean;
+  /** Fields of the workspace's objects, for field access (omit to hide that section). */
+  fieldCatalog?: FieldCatalogObject[];
+  fieldCatalogLoading?: boolean;
 }
 
 /**
  * Objects × actions checkboxes, a records scope per object and capability switches.
  * Checking any action checks Read; unchecking Read clears the row (server enforces the same).
  */
-export function PermissionSetEditor({ value, onChange, catalog, disabled }: PermissionSetEditorProps) {
+export function PermissionSetEditor({ value, onChange, catalog, disabled, fieldCatalog, fieldCatalogLoading }: PermissionSetEditorProps) {
   const { t } = useTranslation();
   const uid = useId();
   const rules = normalizeRules(value, catalog);
@@ -99,6 +103,10 @@ export function PermissionSetEditor({ value, onChange, catalog, disabled }: Perm
         />
         <p className="mt-1.5 text-xs text-muted-foreground">{t('access.editor.readImplied')}</p>
       </div>
+
+      {fieldCatalog || fieldCatalogLoading ? (
+        <FieldAccessEditor rules={rules} onChange={emit} catalog={fieldCatalog} loading={fieldCatalogLoading} disabled={disabled} />
+      ) : null}
 
       {catalog.capabilities.length > 0 ? (
         <fieldset className="rounded-lg border">
