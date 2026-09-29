@@ -54,7 +54,7 @@ const strings = {
   previewMeta_one: '{{count}} record · {{measure}}',
   previewMeta_other: '{{count}} records · {{measure}}',
   previewHint: 'The preview updates as you change the report.',
-  noObjects: 'You can’t read any objects in this project yet, so there’s nothing to report on.',
+  noObjects: 'You can’t read any objects in this product yet, so there’s nothing to report on.',
   noData: 'No records match.',
   recordsCount_one: '{{count}} record',
   recordsCount_other: '{{count}} records',

@@ -1,14 +1,14 @@
 // 'objects' i18n namespace: objects defined as data (standard + custom, D-45).
 const strings = {
   title: 'Objects',
-  subtitle: 'The records your products are built from. Standard objects come with the CRM; add your own for anything else — each gets list and detail pages, page layouts, custom fields, permissions and a REST API.',
+  subtitle: 'The records your setups are built from. Standard objects come with the CRM; add your own for anything else — each gets list and detail pages, page layouts, custom fields, permissions and a REST API.',
   new: 'Add custom object',
   loadError: 'Couldn’t load objects',
   notFound: 'This object doesn’t exist',
   yours: 'Custom objects',
-  yoursBody: 'Objects you created yourself. Switch one on for a product in Setup → Modules & data.',
+  yoursBody: 'Objects you created yourself. Switch one on for a setup in Setup → Modules & data.',
   standard: 'Standard objects',
-  standardBody: 'Behind the product modules (Opportunities, Tasks, Calendar…). You can add fields and change their statuses too.',
+  standardBody: 'Behind the setup modules (Opportunities, Tasks, Calendar…). You can add fields and change their statuses too.',
   noneTitle: 'No custom objects yet',
   noneBody: 'Create one for anything your customers track — projects, properties, vehicles, courses…',
   noDescription: 'No description',
@@ -35,11 +35,11 @@ const strings = {
   archive: 'Archive',
   restore: 'Restore',
   archiveTitle: 'Archive {{name}}?',
-  archiveBody: 'It disappears from every project and product. Its records are kept, and you can restore it any time.',
-  archivedBody: 'This object is archived: it doesn’t appear in any project. Restore it to use it again.',
+  archiveBody: 'It disappears from every product and setup. Its records are kept, and you can restore it any time.',
+  archivedBody: 'This object is archived: it doesn’t appear in any product. Restore it to use it again.',
   archivedToast: '{{name}} archived',
   restoredToast: '{{name}} restored',
-  savedToast: '{{name}} saved — projects see the change right away',
+  savedToast: '{{name}} saved — products see the change right away',
   details: 'Details',
   nameLabel: 'Name field label',
   nameLabelHint: 'Every record has a name; call it what fits (e.g. “Project name”, “Subject”).',
@@ -54,7 +54,7 @@ const strings = {
   saveStatuses: 'Save statuses',
   tones: { neutral: 'Grey', primary: 'Blue', success: 'Green', warning: 'Amber', danger: 'Red' },
   fields: 'Fields',
-  fieldsBody: 'Projects get these on every record. Each project can still add its own custom fields and arrange the page layout.',
+  fieldsBody: 'Products get these on every record. Each product can still add its own custom fields and arrange the page layout.',
   addField: 'Add field',
   editField: 'Edit field',
   applyField: 'Apply',
@@ -106,7 +106,7 @@ const strings = {
     update: 'Update: { "values": { … }, "expectedVersion": n }',
     delete: 'Delete a record',
     meta: 'Fields, layout and statuses',
-    enable: 'Available in a project once a product it uses has the “{{module}}” module switched on.'
+    enable: 'Available in a product once a setup it uses has the “{{module}}” module switched on.'
   }
 };
 

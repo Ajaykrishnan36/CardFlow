@@ -1,32 +1,28 @@
 import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, AtSign, Boxes, Check, CircleCheck, Layers, ShieldCheck, SkipForward } from 'lucide-react';
-import { productsApi, workspacesApi } from '@crm/api/endpoints';
+import { Link } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, ArrowRight, AtSign, Check, CircleCheck, ShieldCheck } from 'lucide-react';
+import { workspacesApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
-import type { ProductSummary, ProvisionBody, ProvisionResult } from '@crm/api/types';
+import type { ProvisionBody, ProvisionResult } from '@crm/api/types';
 import { Alert, Card } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
 import { Input } from '@crm/components/ui/input';
 import { Field } from '@crm/components/ui/field';
 import { Checkbox, Select } from '@crm/components/ui/form-controls';
-import { Skeleton } from '@crm/components/ui/spinner';
-import { ErrorState } from '@crm/components/states';
 import { DetailItem, DevLink, PageContainer, PageHeader } from '@crm/components/page';
 import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
-import { ProductIcon } from '@crm/features/products/product-icon';
 import { CURRENCIES, InviteStatusBadge, LOCALES, slugCode, TIMEZONES, WORKSPACE_CODE_RE } from './workspace-ui';
 
-const STEPS = ['details', 'products', 'admin', 'review'] as const;
+// The setup (modules, roles, pipeline, login) is created afterwards from the
+// product's Product setup tab and linked when published (D-53).
+const STEPS = ['details', 'admin', 'review'] as const;
 type Step = (typeof STEPS)[number];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Step 2: create the project's own product (then set it up), reuse existing ones, or skip for now. */
-type ProductMode = 'new' | 'existing' | 'skip';
-const PRODUCT_MODES: ProductMode[] = ['new', 'existing', 'skip'];
 
 function newKey(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -35,8 +31,7 @@ function newKey(): string {
 
 /** Which wizard step owns a server field error. */
 function stepOfField(field: string): number {
-  if (field === 'productIds' || field.startsWith('productIds')) return 1;
-  if (field.startsWith('superAdmin')) return 2;
+  if (field.startsWith('superAdmin')) return 1;
   return 0;
 }
 
@@ -60,7 +55,6 @@ export function ProvisionWorkspacePage() {
 function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const navigate = useNavigate();
   // PRD OWN-02: one key per wizard, reused on every retry so a double submit or a
   // retried timeout can never create a second workspace.
   const idempotencyKey = useRef(newKey());
@@ -73,9 +67,6 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [locale, setLocale] = useState('en');
   const [currency, setCurrency] = useState('INR');
-  const [productIds, setProductIds] = useState<string[]>([]);
-  const [productMode, setProductMode] = useState<ProductMode>('new');
-  const [productName, setProductName] = useState('');
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [inviteLater, setInviteLater] = useState(false);
@@ -83,9 +74,6 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
   const [formError, setFormError] = useState<{ message: string; requestId?: string } | null>(null);
   const [result, setResult] = useState<ProvisionResult | null>(null);
 
-  const products = useQuery({ queryKey: ['products', { q: '', status: 'active' }], queryFn: () => productsApi.list({ status: 'active' }) });
-  const activeProducts = products.data?.data ?? [];
-  const selectedProducts = activeProducts.filter((p) => productIds.includes(p.id));
 
   const clearError = (key: string) => setErrors((e) => (e[key] ? { ...e, [key]: '' } : e));
 
@@ -95,8 +83,7 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
       if (!name.trim()) e.name = t('workspaces.provision.nameRequired');
       if (!WORKSPACE_CODE_RE.test(code)) e.code = t('workspaces.provision.codeInvalid');
     }
-    if (s === 1 && productMode === 'existing' && productIds.length === 0) e.productIds = t('workspaces.provision.productsRequired');
-    if (s === 2 && !inviteLater) {
+    if (s === 1 && !inviteLater) {
       if (!adminName.trim()) e['superAdmin.name'] = t('workspaces.provision.adminNameRequired');
       if (!EMAIL_RE.test(adminEmail.trim())) e['superAdmin.email'] = t('workspaces.provision.adminEmailInvalid');
     }
@@ -117,12 +104,6 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
       void qc.invalidateQueries({ queryKey: ['products'] });
       void qc.invalidateQueries({ queryKey: ['product'] });
       void qc.invalidateQueries({ queryKey: ['platform', 'dashboard'] });
-      // "Create a new product": go straight to its 6-step setup (General → Review & publish).
-      const own = res.workspace.productList[0];
-      if (productMode === 'new' && own) {
-        navigate(`/crm/owner/products/${own.productId}?tab=setup&project=${encodeURIComponent(res.workspace.id)}`);
-        return;
-      }
       setResult(res);
     },
     onError: (e) => {
@@ -166,8 +147,8 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
       timezone,
       locale,
       currency,
-      productIds: productMode === 'existing' ? productIds : [],
-      productName: productMode === 'new' ? productName.trim() || name.trim() : undefined,
+      productIds: [],
+      withoutSetup: true,
       superAdmin: inviteLater ? undefined : { name: adminName.trim(), email: adminEmail.trim() }
     });
   };
@@ -242,61 +223,6 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
               </div>
             ) : null}
 
-            {current === 'products' ? (
-              <div className="space-y-3">
-                <div role="radiogroup" aria-label={t('workspaces.provision.steps.products.title')} className="grid gap-2.5">
-                  {PRODUCT_MODES.map((m) => {
-                    const Icon = m === 'new' ? Boxes : m === 'existing' ? Layers : SkipForward;
-                    const on = productMode === m;
-                    return (
-                      <label
-                        key={m}
-                        className={cn(
-                          'flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition-colors hover:bg-muted/40',
-                          on && 'border-primary bg-primary-soft/50 ring-1 ring-primary/30'
-                        )}
-                      >
-                        <input
-                          type="radio"
-                          name="productMode"
-                          className="mt-1 accent-[hsl(var(--primary))]"
-                          checked={on}
-                          onChange={() => {
-                            setProductMode(m);
-                            clearError('productIds');
-                          }}
-                        />
-                        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
-                          <Icon className="size-4" aria-hidden />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-[13px] font-semibold text-foreground">{t(`workspaces.provision.mode.${m}.title`)}</span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">{t(`workspaces.provision.mode.${m}.body`)}</span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-                {productMode === 'new' ? (
-                  <Field label={t('workspaces.provision.productName')} hint={t('workspaces.provision.productNameHint')}>
-                    <Input value={productName} onChange={(e) => setProductName(e.target.value)} placeholder={name.trim() || t('workspaces.provision.productNamePlaceholder')} maxLength={120} />
-                  </Field>
-                ) : null}
-                {productMode === 'existing' ? (
-                  <ProductPicker
-                    query={products}
-                    items={activeProducts}
-                    selected={productIds}
-                    error={errors.productIds}
-                    onToggle={(id, on) => {
-                      setProductIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
-                      clearError('productIds');
-                    }}
-                  />
-                ) : null}
-              </div>
-            ) : null}
-
             {current === 'admin' ? (
               <div className="space-y-4">
                 <div className={cn('grid gap-4 sm:grid-cols-2', inviteLater && 'pointer-events-none opacity-50')} aria-disabled={inviteLater || undefined}>
@@ -352,22 +278,7 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
                     <DetailItem label={t('workspaces.fields.currency')}>{currency}</DetailItem>
                   </dl>
                 </ReviewSection>
-                <ReviewSection title={t('workspaces.provision.steps.products.title')} onEdit={() => goTo(1)}>
-                  <ul className="flex flex-wrap gap-1.5">
-                    {productMode === 'new' ? (
-                      <li className="text-[13px]">
-                        {t('workspaces.provision.reviewNew', { name: productName.trim() || name.trim() })}
-                      </li>
-                    ) : null}
-                    {productMode === 'skip' ? <li className="text-[13px] text-muted-foreground">{t('workspaces.provision.ownSetupReview')}</li> : null}
-                    {(productMode === 'existing' ? selectedProducts : []).map((p) => (
-                      <li key={p.id} className="rounded-md border bg-muted/50 px-2 py-0.5 text-xs font-medium">
-                        {p.name} {p.currentVersion ? <span className="font-mono text-muted-foreground">v{p.currentVersion}</span> : null}
-                      </li>
-                    ))}
-                  </ul>
-                </ReviewSection>
-                <ReviewSection title={t('workspaces.provision.steps.admin.title')} onEdit={() => goTo(2)}>
+                <ReviewSection title={t('workspaces.provision.steps.admin.title')} onEdit={() => goTo(1)}>
                   {inviteLater ? (
                     <p className="text-[13px] text-muted-foreground">{t('workspaces.provision.inviteLaterReview')}</p>
                   ) : (
@@ -382,8 +293,8 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
                     <p className="font-semibold text-foreground">{t('workspaces.provision.previewTitle')}</p>
                     <p className="mt-0.5 text-muted-foreground">
                       {inviteLater
-                        ? t('workspaces.provision.previewLater', { workspace: name, products: selectedProducts.map((p) => p.name).join(', ') })
-                        : t('workspaces.provision.preview', { name: adminLabel, workspace: name, products: selectedProducts.map((p) => p.name).join(', ') })}
+                        ? t('workspaces.provision.previewLater', { workspace: name })
+                        : t('workspaces.provision.preview', { name: adminLabel, workspace: name })}
                     </p>
                   </div>
                 </div>
@@ -401,13 +312,11 @@ function ProvisionWizard({ onAnother }: { onAnother: () => void }) {
                 <Link to="/crm/owner/workspaces">{t('common.cancel')}</Link>
               </Button>
             )}
-            <Button type="submit" loading={provision.isPending} disabled={current === 'products' && products.isPending}>
+            <Button type="submit" loading={provision.isPending}>
               {current === 'review'
                 ? provision.isPending
                   ? t('workspaces.provision.submitting')
-                  : productMode === 'new'
-                    ? t('workspaces.provision.submitAndSetup')
-                    : t('workspaces.provision.submit')
+                  : t('workspaces.provision.submit')
                 : t('common.continue')}
               {current !== 'review' ? <ArrowRight /> : null}
             </Button>
@@ -457,80 +366,6 @@ function Stepper({ step, reached, onSelect }: { step: number; reached: number; o
   );
 }
 
-function ProductPicker({
-  query,
-  items,
-  selected,
-  error,
-  onToggle
-}: {
-  query: { isPending: boolean; isError: boolean; error: unknown; refetch: () => unknown };
-  items: ProductSummary[];
-  selected: string[];
-  error?: string;
-  onToggle: (id: string, on: boolean) => void;
-}) {
-  const { t } = useTranslation();
-  if (query.isError) {
-    return (
-      <ErrorState
-        title={t('workspaces.provision.productsError')}
-        message={isApiError(query.error) ? query.error.message : undefined}
-        onRetry={() => void query.refetch()}
-      />
-    );
-  }
-  if (query.isPending) {
-    return (
-      <div className="grid gap-2.5 sm:grid-cols-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-[66px] rounded-lg" />
-        ))}
-      </div>
-    );
-  }
-  if (items.length === 0) return null;
-  return (
-    <div className="space-y-3">
-      {error ? <Alert tone="danger">{error}</Alert> : null}
-      <div className="grid gap-2.5 sm:grid-cols-2" role="group" aria-label={t('workspaces.provision.steps.products.title')}>
-        {items.map((p) => {
-          const on = selected.includes(p.id);
-          return (
-            <label
-              key={p.id}
-              className={cn(
-                'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors focus-within:ring-2 focus-within:ring-ring',
-                on ? 'border-primary/50 bg-primary-soft/60' : 'hover:bg-muted/60'
-              )}
-            >
-              <input type="checkbox" className="sr-only" checked={on} onChange={(e) => onToggle(p.id, e.target.checked)} />
-              <ProductIcon icon={p.icon} size="sm" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium text-foreground">{p.name}</span>
-                <span className="block truncate font-mono text-xs text-muted-foreground">
-                  {p.key}
-                  {p.currentVersion ? ` · v${p.currentVersion}` : ''}
-                </span>
-              </span>
-              <span
-                className={cn(
-                  'grid size-5 shrink-0 place-items-center rounded-full border transition-colors',
-                  on ? 'border-primary bg-primary text-primary-foreground' : 'border-input bg-background'
-                )}
-                aria-hidden
-              >
-                {on ? <Check className="size-3" strokeWidth={3} /> : null}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-      <p className="text-xs text-muted-foreground">{t('workspaces.provision.selectedCount', { count: selected.length })}</p>
-    </div>
-  );
-}
-
 function ReviewSection({ title, onEdit, children }: { title: string; onEdit: () => void; children: ReactNode }) {
   const { t } = useTranslation();
   return (
@@ -571,14 +406,18 @@ function SuccessCard({ result, onAnother }: { result: ProvisionResult; onAnother
         )}
         {invitation?.status === 'delivery_failed' ? <Alert tone="warning">{t('workspaces.provision.deliveryFailed')}</Alert> : null}
         {invitation?.devAcceptUrl ? <DevLink url={invitation.devAcceptUrl} label={t('workspaces.devInviteLink')} /> : null}
+        <Alert tone="info">{t('workspaces.provision.setUpHint', { name: workspace.name })}</Alert>
       </div>
       <div className="flex flex-col-reverse gap-2 rounded-b-lg border-t bg-muted/30 px-5 py-3 sm:flex-row sm:justify-end sm:px-6">
         <Button variant="outline" onClick={onAnother}>
           {t('workspaces.provision.another')}
         </Button>
+        <Button asChild variant="outline">
+          <Link to={`/crm/owner/workspaces/${workspace.id}`}>{t('workspaces.provision.open')}</Link>
+        </Button>
         <Button asChild>
-          <Link to={`/crm/owner/workspaces/${workspace.id}`}>
-            {t('workspaces.provision.open')} <ArrowRight />
+          <Link to={`/crm/owner/workspaces/${workspace.id}?tab=products`}>
+            {t('workspaces.provision.setUpNow')} <ArrowRight />
           </Link>
         </Button>
       </div>

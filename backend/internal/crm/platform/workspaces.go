@@ -200,10 +200,10 @@ type ProvisionInput struct {
 	Locale     string      `json:"locale"`
 	Currency   string      `json:"currency"`
 	ProductIDs []uuid.UUID `json:"productIds"`
-	// ProductName names the project's own product when no existing one is
-	// picked (defaults to the project name); its setup is edited afterwards.
-	ProductName string           `json:"productName,omitempty"`
-	SuperAdmin  *SuperAdminInput `json:"superAdmin,omitempty"`
+	// WithoutSetup: create the product with no setup yet — its setup is created
+	// from the Product setup tab and linked when published (D-53).
+	WithoutSetup bool             `json:"withoutSetup,omitempty"`
+	SuperAdmin   *SuperAdminInput `json:"superAdmin,omitempty"`
 }
 
 var (
@@ -219,10 +219,6 @@ func (in *ProvisionInput) normalizeAndValidate(fieldPrefix string) map[string]st
 	in.Timezone = strings.TrimSpace(in.Timezone)
 	in.Locale = strings.TrimSpace(in.Locale)
 	in.Currency = strings.ToUpper(strings.TrimSpace(in.Currency))
-	in.ProductName = strings.TrimSpace(in.ProductName)
-	if len(in.ProductName) > 120 {
-		in.ProductName = in.ProductName[:120]
-	}
 	if in.Timezone == "" {
 		in.Timezone = "Asia/Kolkata"
 	}
@@ -307,12 +303,8 @@ func ProvisionTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in ProvisionIn
 		return uuid.Nil, err
 	}
 	// Each app is a project with its own setup (modules, pipeline…): without a product, make one.
-	if len(in.ProductIDs) == 0 {
-		name := strings.TrimSpace(in.ProductName)
-		if name == "" {
-			name = in.Name
-		}
-		pid, err := createProjectSetup(ctx, tx, actor, name, in.Code)
+	if len(in.ProductIDs) == 0 && !in.WithoutSetup {
+		pid, err := createProjectSetup(ctx, tx, actor, in.Name, in.Code)
 		if err != nil {
 			return uuid.Nil, err
 		}
@@ -633,7 +625,7 @@ func createProjectSetup(ctx context.Context, tx pgx.Tx, actor uuid.UUID, name, c
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO crm.products (key, name, description, icon, status, current_version, draft_config, created_by)
 		VALUES ($1, $2, $3, 'boxes', 'active', 1, $4, $5) RETURNING id`,
-		key, name, "Setup of the "+name+" project.", raw, actor).Scan(&id); err != nil {
+		key, name, "Setup of the "+name+" product.", raw, actor).Scan(&id); err != nil {
 		return uuid.Nil, err
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO crm.product_versions (product_id, version, config, published_by) VALUES ($1, 1, $2, $3)`, id, raw, actor); err != nil {

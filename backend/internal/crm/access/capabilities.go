@@ -28,10 +28,10 @@ func OwnerCapabilities() Capabilities {
 			{Key: "leads", Label: "Leads", Path: "/crm/owner/leads", Icon: "user-plus", Group: "Platform CRM", Available: true},
 			{Key: "accounts", Label: "Accounts", Path: "/crm/owner/accounts", Icon: "briefcase", Group: "Platform CRM", Available: true},
 			{Key: "contacts", Label: "Contacts", Path: "/crm/owner/contacts", Icon: "contact", Group: "Platform CRM", Available: true},
-			// Each app is a project (D-49); its setup (modules, pipeline…) lives inside the project.
-			{Key: "workspaces", Label: "Projects", Path: "/crm/owner/workspaces", Icon: "building-2", Group: "Projects", Available: true},
-			{Key: "objects", Label: "Objects", Path: "/crm/owner/objects", Icon: "box", Group: "Projects", Available: true},
-			{Key: "users", Label: "Users & Access", Path: "/crm/owner/users", Icon: "shield-check", Group: "Projects", Available: true},
+			// Each app is a product (shown as Products; D-49, D-53); its setup lives inside it.
+			{Key: "workspaces", Label: "Products", Path: "/crm/owner/workspaces", Icon: "building-2", Group: "Products", Available: true},
+			{Key: "objects", Label: "Objects", Path: "/crm/owner/objects", Icon: "box", Group: "Products", Available: true},
+			{Key: "users", Label: "Users & Access", Path: "/crm/owner/users", Icon: "shield-check", Group: "Products", Available: true},
 			{Key: "integrations", Label: "Integrations", Path: "/crm/owner/integrations", Icon: "plug", Group: "Settings", Available: true},
 			{Key: "audit", Label: "Audit log", Path: "/crm/owner/audit", Icon: "scroll-text", Group: "Settings", Available: true},
 			{Key: "settings", Label: "Profile & security", Path: "/crm/me", Icon: "settings", Group: "Settings", Available: true},

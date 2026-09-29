@@ -35,10 +35,10 @@ const en = {
   auth: {
     brand: {
       eyebrow: 'Configurable CRM platform',
-      headline: 'Run every customer, product and project from one place.',
+      headline: 'Run every customer and product from one place.',
       sub: 'Leads, pipelines, onboarding and support — isolated per customer, governed by you.',
-      f1Title: 'Projects & products',
-      f1Body: 'Provision isolated projects and switch on exactly the products they bought.',
+      f1Title: 'Products & setups',
+      f1Body: 'Add isolated products and switch on exactly the setups they need.',
       f2Title: 'From lead to login',
       f2Body: 'Saving a lead never grants access. Invitations do — with the role you previewed.',
       f3Title: 'Permissions that hold',
@@ -51,7 +51,7 @@ const en = {
     },
     login: {
       title: 'Welcome back',
-      subtitle: 'Sign in to continue to your project.',
+      subtitle: 'Sign in to continue to your product.',
       identifier: 'Email or phone',
       identifierPlaceholder: 'you@company.com',
       password: 'Password',
@@ -88,9 +88,9 @@ const en = {
     },
     owner: {
       title: 'Owner console',
-      subtitle: 'Manage products, projects and platform settings.',
+      subtitle: 'Manage setups, products and platform settings.',
       restricted: 'Restricted to the platform owner. Every sign-in is audited.',
-      workspaceLink: 'Project sign-in',
+      workspaceLink: 'Product sign-in',
       notOwner: 'This console is for the platform owner.'
     },
     mfa: {
@@ -164,7 +164,7 @@ const en = {
     expand: 'Expand sidebar',
     openMenu: 'Open navigation',
     closeMenu: 'Close navigation',
-    workspace: 'Project',
+    workspace: 'Product',
     profile: 'Profile & security',
     appearance: 'Appearance',
     light: 'Light',
@@ -191,16 +191,16 @@ const en = {
       stepDone: 'Done',
       stepStart: 'Start',
       stepUpcoming: 'Coming soon',
-      recentTitle: 'Recent projects',
-      recentEmpty: 'No projects yet. Provision your first customer to see them here.',
-      colWorkspace: 'Project',
+      recentTitle: 'Recent products',
+      recentEmpty: 'No products yet. Add your first product to see it here.',
+      colWorkspace: 'Product',
       colStatus: 'Status',
-      colProducts: 'Products',
+      colProducts: 'Setups',
       colMembers: 'Members',
       colCreated: 'Created',
       errorTitle: "Couldn't load the dashboard",
-      productsCount_one: '{{count}} product',
-      productsCount_other: '{{count}} products',
+      productsCount_one: '{{count}} setup',
+      productsCount_other: '{{count}} setups',
       membersCount_one: '{{count}} member',
       membersCount_other: '{{count}} members',
       keyMetrics: 'Key metrics',
@@ -208,8 +208,8 @@ const en = {
       viewAllOf: 'View all {{label}}',
       quickActions: 'Quick actions',
       newLead: 'New lead',
-      newProduct: 'New product',
-      provisionWorkspace: 'Provision project'
+      newProduct: 'New setup',
+      provisionWorkspace: 'Add new product'
     }
   },
   status: {
@@ -223,9 +223,9 @@ const en = {
   workspace: {
     home: {
       title: 'Welcome, {{name}}',
-      subtitle: 'Your projects',
+      subtitle: 'Your products',
       rollout: 'Leads, accounts and pipelines arrive in the next release. Your access is already set up.',
-      noWorkspaces: "You're not a member of any project yet.",
+      noWorkspaces: "You're not a member of any product yet.",
       role: 'Role'
     }
   },

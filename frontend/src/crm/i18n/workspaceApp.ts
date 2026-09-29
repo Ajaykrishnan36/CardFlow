@@ -2,16 +2,16 @@
 // The member-facing workspace app at /crm/w/:ws. Nav labels come from the API.
 const strings = {
   layout: {
-    errorTitle: "Couldn't open this project",
-    forbiddenTitle: "You can't open this project",
+    errorTitle: "Couldn't open this product",
+    forbiddenTitle: "You can't open this product",
     forbiddenBody: 'You’re not an active member of it. If you think this is a mistake, ask its administrator to check your access.',
-    notFoundTitle: 'Project not found',
-    notFoundBody: 'There’s no project with the code “{{code}}”. Check the link, or pick one of yours.',
-    yourWorkspaces: 'Your projects',
+    notFoundTitle: 'Product not found',
+    notFoundBody: 'There’s no product with the code “{{code}}”. Check the link, or pick one of yours.',
+    yourWorkspaces: 'Your products',
     profile: 'Profile & security'
   },
   home: {
-    noWorkspacesBody: 'When an administrator gives you access to a project, it will open here automatically.'
+    noWorkspacesBody: 'When an administrator gives you access to a product, it will open here automatically.'
   },
   dashboard: {
     docTitle: '{{workspace}} · Home',
@@ -35,7 +35,7 @@ const strings = {
   },
   noModules: {
     title: 'Your administrator hasn’t given you access to any modules yet',
-    body: 'Once they add you to a product or permission set, your leads, accounts and contacts will appear here.',
+    body: 'Once they add you to a setup or permission set, your leads, accounts and contacts will appear here.',
     hint: 'You can still manage your sign-in and security in',
     profile: 'Profile & security'
   },
@@ -46,7 +46,7 @@ const strings = {
     forbidden: 'You don’t have permission to do that.',
     yourAccess: 'Your access',
     yourAccessTitle: 'Your access',
-    yourAccessBody: 'This is the most you can give anyone else in this project.',
+    yourAccessBody: 'This is the most you can give anyone else in this product.',
     tabs: { users: 'Users', roles: 'Roles', sets: 'Permission sets' },
     notYours: 'You don’t have this yourself',
     moreThanYours: 'More than your access',
@@ -109,8 +109,8 @@ const strings = {
     },
     users: {
       title: 'Users',
-      count_one: '{{count}} person in this project',
-      count_other: '{{count}} people in this project',
+      count_one: '{{count}} person in this product',
+      count_other: '{{count}} people in this product',
       invite: 'Invite user',
       errorTitle: "Couldn't load users",
       emptyTitle: 'No users yet',
@@ -126,12 +126,12 @@ const strings = {
       role: 'Role',
       roleHint: 'Roles marked “More than your access” can’t be given by you.',
       chooseRole: 'Choose a role…',
-      products: 'Products',
-      noProducts: 'You have no products you can give.',
+      products: 'Setups',
+      noProducts: 'You have no setups you can give.',
       sets: 'Permission sets',
       noSets: 'No permission sets yet. Create one in the Permission sets tab.',
       active: 'Can sign in',
-      activeOn: 'Active — they can sign in to this project.',
+      activeOn: 'Active — they can sign in to this product.',
       activeOff: 'Suspended — they can’t sign in until reactivated.',
       effectiveSavedNote: 'Shows their saved access. Save to apply your changes.',
       saved: 'Access updated for {{name}}'
@@ -165,7 +165,7 @@ const strings = {
       donePasswordTitle: '{{name}} can sign in now',
       donePasswordBody: '{{name}} can sign in with {{email}} and the temporary password. They’ll be asked to change it.',
       doneExistingTitle: '{{name}} was added',
-      doneExistingBody: '{{name}} already had a login. They keep their current password and now see this project.',
+      doneExistingBody: '{{name}} already had a login. They keep their current password and now see this product.',
       another: 'Invite another',
       done: 'Done'
     }
@@ -401,10 +401,10 @@ const strings = {
     role: 'Platform owner'
   },
   shell: {
-    switchWorkspace: 'Switch project',
-    currentWorkspace: 'Current project',
+    switchWorkspace: 'Switch product',
+    currentWorkspace: 'Current product',
     switchTo: 'Switch to {{name}}',
-    workspaceMenu: 'Project menu for {{name}}',
+    workspaceMenu: 'Product menu for {{name}}',
     member: 'Member'
   }
 };

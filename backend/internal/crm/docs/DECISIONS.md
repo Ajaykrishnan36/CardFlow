@@ -249,7 +249,12 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   business = the contact's account). A card lead converts into that business account + the owner's contact. Records
   from before D-52 are kept: personal ("individual") accounts stay, contacts move to their business account.
   Provisioning step 2 is "Product setup": create a new product (opens its 6-step setup right after), use an existing
-  one, or skip (standard setup). "Projects" keep their name — an Opportunity Product is a deal line item, not a tenant.
+  one, or skip (standard setup). (Superseded by D-53.)
+- **D-53 Products and setups.** In the UI a project (workspace) is now a **Product** — each app you run (e.g.
+  Business Card Snap) — and what was called a product is its **Setup** (modules, roles, pipeline, login; shown under
+  "Product setup"). "Add new product" is Details → Super Admin → Review and creates the product with no setup
+  (`withoutSetup`); the setup is created from its Product setup tab ("New setup" / "Add existing setup") and linked when
+  published. Code and API names (workspaces, products) are unchanged.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

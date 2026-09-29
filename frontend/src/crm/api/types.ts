@@ -300,8 +300,8 @@ export interface ProvisionBody {
   locale: string;
   currency: string;
   productIds: string[];
-  /** Name of the project's own product when no existing product is picked. */
-  productName?: string;
+  /** Create the product with no setup; one is created from its Product setup tab (D-53). */
+  withoutSetup?: boolean;
   superAdmin?: { name: string; email: string };
 }
 

@@ -732,7 +732,7 @@ func (h *Handler) cleanWidgets(ctx context.Context, sc *Scope, list []Widget) ([
 			return nil, err
 		}
 		if !ok {
-			return nil, shared.Validation(map[string]string{"widgets": "Pick reports from this project."})
+			return nil, shared.Validation(map[string]string{"widgets": "Pick reports from this product."})
 		}
 		if !chartTypes[wd.Chart] {
 			wd.Chart = ""
