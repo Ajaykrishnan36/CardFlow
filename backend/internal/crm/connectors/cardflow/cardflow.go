@@ -239,7 +239,19 @@ var appFields = []fieldDef{
 	{"accounts", "app_free_scans_left", "Free scans left", "number", nil, ""},
 	{"accounts", "app_saved_cards", "Saved cards", "number", nil, ""},
 	{"accounts", "app_businesses", "Businesses owned", "number", nil, ""},
+	{"accounts", "app_business_id", "App business ID", "text", nil, "The business's ID in " + AppName + "."},
+	{"accounts", "app_gstin", "GSTIN", "text", nil, ""},
 	{"contacts", "app_user_id", "App user ID", "text", nil, "The user's ID in " + AppName + "."},
+	{"contacts", "app_role", "App role", "select", [][2]string{{"user", "User"}, {"admin", "Admin"}}, ""},
+	{"contacts", "app_status", "App status", "select", [][2]string{{"pending_profile", "Profile pending"}, {"active", "Active"}, {"suspended", "Suspended"}, {"deleted", "Deleted"}}, ""},
+	{"contacts", "app_plan", "Plan", "select", [][2]string{{"free", "Free"}, {"plus", "Plus"}, {"premium", "Premium"}}, ""},
+	{"contacts", "app_subscribed", "Subscribed", "boolean", nil, ""},
+	{"contacts", "app_subscription_expires", "Subscription expires", "datetime", nil, ""},
+	{"contacts", "app_signed_up_at", "Signed up", "datetime", nil, ""},
+	{"contacts", "app_last_login", "Last app sign-in", "datetime", nil, "Updated every time they sign in with phone + OTP."},
+	{"contacts", "app_free_scans_left", "Free scans left", "number", nil, ""},
+	{"contacts", "app_saved_cards", "Saved cards", "number", nil, ""},
+	{"contacts", "app_businesses", "Businesses owned", "number", nil, ""},
 	{"leads", "app_user_id", "App user ID", "text", nil, "The user's ID in " + AppName + "."},
 }
 
@@ -266,7 +278,7 @@ func ensureLayouts(ctx context.Context, tx pgx.Tx, wsID, ownerID uuid.UUID) erro
 		"accounts": {ID: "app_profile", Title: AppName + " profile", Columns: 2, Fields: []string{
 			"app_user_id", "app_status", "app_role", "app_plan", "app_subscribed", "app_subscription_expires",
 			"app_signed_up_at", "app_last_login", "app_free_scans_left", "app_saved_cards", "app_businesses"}},
-		"contacts": {ID: "app_profile", Title: AppName, Columns: 2, Fields: []string{"app_user_id"}},
+		"contacts": {ID: "app_profile", Title: AppName + " profile", Columns: 2, Fields: contactProfileFields},
 		"leads":    {ID: "app_profile", Title: AppName, Columns: 2, Fields: []string{"app_user_id"}},
 	}
 	for object, sec := range sections {
@@ -275,7 +287,11 @@ func ensureLayouts(ctx context.Context, tx pgx.Tx, wsID, ownerID uuid.UUID) erro
 			return err
 		}
 		if exists {
-			continue // the workspace has its own layout; leave it
+			// The workspace has its own layout; only widen the connector's own section (D-52).
+			if err := upgradeProfileSection(ctx, tx, wsID, object, sec); err != nil {
+				return err
+			}
+			continue
 		}
 		l := records.DefaultLayout(object)
 		out := []records.Section{}
@@ -296,6 +312,52 @@ func ensureLayouts(ctx context.Context, tx pgx.Tx, wsID, ownerID uuid.UUID) erro
 		}
 	}
 	return nil
+}
+
+var contactProfileFields = []string{
+	"app_user_id", "app_status", "app_role", "app_plan", "app_subscribed", "app_subscription_expires",
+	"app_signed_up_at", "app_last_login", "app_free_scans_left", "app_saved_cards", "app_businesses"}
+
+// upgradeProfileSection adds fields the connector now shows to its own
+// "app_profile" section of an existing layout (other sections untouched).
+func upgradeProfileSection(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, object string, sec records.Section) error {
+	if object != "contacts" {
+		return nil
+	}
+	var raw []byte
+	if err := tx.QueryRow(ctx, `SELECT definition FROM crm.layouts WHERE workspace_id = $1 AND object_key = $2`, wsID, object).Scan(&raw); err != nil {
+		return err
+	}
+	var l records.Layout
+	if err := json.Unmarshal(raw, &l); err != nil {
+		return nil
+	}
+	changed := false
+	for i, s := range l.Sections {
+		if s.ID != sec.ID {
+			continue
+		}
+		have := map[string]bool{}
+		for _, f := range s.Fields {
+			have[f] = true
+		}
+		for _, f := range sec.Fields {
+			if !have[f] {
+				l.Sections[i].Fields = append(l.Sections[i].Fields, f)
+				changed = true
+			}
+		}
+		if l.Sections[i].Title != sec.Title {
+			l.Sections[i].Title = sec.Title
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	out, _ := json.Marshal(l)
+	_, err := tx.Exec(ctx, `UPDATE crm.layouts SET definition = $3 WHERE workspace_id = $1 AND object_key = $2`, wsID, object, out)
+	return err
 }
 
 // ---- sync ----
@@ -389,9 +451,11 @@ func (u appUser) custom(savedCards, businesses bool) map[string]any {
 }
 
 type syncState struct {
-	UsersSince          time.Time `json:"usersSince"`
-	TicketsSince        time.Time `json:"ticketsSince"`
-	CardBusinessesSince time.Time `json:"cardBusinessesSince"`
+	UsersSince   time.Time `json:"usersSince"`
+	TicketsSince time.Time `json:"ticketsSince"`
+	// BusinessesSince covers every app business (D-52). A new key, so the
+	// first run after the upgrade also gives owner-registered businesses accounts.
+	BusinessesSince time.Time `json:"businessesSince"`
 }
 
 func (c *Connector) loadState(ctx context.Context) syncState {
@@ -505,9 +569,8 @@ func (c *Connector) Sync(ctx context.Context) error {
 		}
 		since = st.UsersSince
 	}
-	// Card-scanned businesses → leads (after users, so a claimed business's
-	// owner already has an account to convert into).
-	if err := c.syncCardBusinesses(ctx, wsID, &st); err != nil {
+	// Businesses → leads / accounts (after users, so an owner's contact exists).
+	if err := c.syncBusinesses(ctx, wsID, &st); err != nil {
 		return err
 	}
 	if err := c.saveState(ctx, st); err != nil {
@@ -525,9 +588,11 @@ func (c *Connector) Sync(ctx context.Context) error {
 }
 
 type link struct {
-	leadID, accountID, contactID uuid.UUID
-	identityID                   *uuid.UUID
-	lastLogin                    *time.Time
+	leadID, contactID uuid.UUID
+	// accountID is nil for a person without a business (D-52: contact first).
+	accountID  *uuid.UUID
+	identityID *uuid.UUID
+	lastLogin  *time.Time
 }
 
 func (c *Connector) upsertUser(ctx context.Context, wsID uuid.UUID, u appUser) error {
@@ -552,7 +617,8 @@ func (c *Connector) upsertUser(ctx context.Context, wsID uuid.UUID, u appUser) e
 		}
 
 		if errors.Is(err, pgx.ErrNoRows) {
-			// New app user → lead, converted at once into account + contact (PRD §6.2 lead → account).
+			// New app user → lead, converted into a contact (D-52). An account is
+			// created only when they have a business (see syncBusinesses).
 			codeL, err := records.NextCode(ctx, tx, wsID, "L")
 			if err != nil {
 				return err
@@ -566,44 +632,30 @@ func (c *Connector) upsertUser(ctx context.Context, wsID uuid.UUID, u appUser) e
 				"Signed up in "+AppName+" with phone + OTP.", owner, customRef, u.CreatedAt).Scan(&l.leadID); err != nil {
 				return err
 			}
-			codeA, err := records.NextCode(ctx, tx, wsID, "A")
-			if err != nil {
-				return err
-			}
-			if err := tx.QueryRow(ctx, `
-				INSERT INTO crm.accounts (workspace_id, code, kind, name, type, lifecycle, email, phone, billing_city, billing_state, billing_country,
-				                          description, owner_id, created_by, updated_by, custom, created_at)
-				VALUES ($1, $2, 'individual', $3, 'customer', $4, NULLIF($5, ''), $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''),
-				        $10, $11, $11, $11, $12, $13)
-				RETURNING id`, wsID, codeA, u.displayName(), u.lifecycle(), email, u.Phone, str(u.City), str(u.State), country,
-				AppName+" user.", owner, customAcc, u.CreatedAt).Scan(&l.accountID); err != nil {
-				return err
-			}
 			codeC, err := records.NextCode(ctx, tx, wsID, "C")
 			if err != nil {
 				return err
 			}
 			if err := tx.QueryRow(ctx, `
-				INSERT INTO crm.contacts (workspace_id, code, account_id, first_name, last_name, email, phone, mobile, lead_source,
+				INSERT INTO crm.contacts (workspace_id, code, first_name, last_name, email, phone, mobile, lead_source,
 				                          mailing_city, mailing_state, mailing_country, owner_id, created_by, updated_by, custom, created_at)
-				VALUES ($1, $2, $3, NULLIF($4, ''), $5, NULLIF($6, ''), $7, $7, 'app_signup', NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''),
-				        $11, $11, $11, $12, $13)
-				RETURNING id`, wsID, codeC, l.accountID, first, last, email, u.Phone, str(u.City), str(u.State), country,
-				owner, customRef, u.CreatedAt).Scan(&l.contactID); err != nil {
+				VALUES ($1, $2, NULLIF($3, ''), $4, NULLIF($5, ''), $6, $6, 'app_signup', NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''),
+				        $10, $10, $10, $11, $12)
+				RETURNING id`, wsID, codeC, first, last, email, u.Phone, str(u.City), str(u.State), country,
+				owner, customAcc, u.CreatedAt).Scan(&l.contactID); err != nil {
 				return err
 			}
-			if _, err := tx.Exec(ctx, `UPDATE crm.leads SET converted_account_id = $2, converted_contact_id = $3 WHERE id = $1`,
-				l.leadID, l.accountID, l.contactID); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO crm.lead_conversions (workspace_id, lead_id, account_id, contact_id, trigger, converted_by)
-				VALUES ($1, $2, $3, $4, 'app_signup', $5)`, wsID, l.leadID, l.accountID, l.contactID, owner); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE crm.leads SET converted_contact_id = $2 WHERE id = $1`, l.leadID, l.contactID); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO crm.external_links (workspace_id, system, external_type, external_id, lead_id, account_id, contact_id)
-				VALUES ($1, $2, 'user', $3, $4, $5, $6)`, wsID, System, u.ID, l.leadID, l.accountID, l.contactID); err != nil {
+				INSERT INTO crm.lead_conversions (workspace_id, lead_id, contact_id, trigger, converted_by)
+				VALUES ($1, $2, $3, 'app_signup', $4)`, wsID, l.leadID, l.contactID, owner); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO crm.external_links (workspace_id, system, external_type, external_id, lead_id, contact_id)
+				VALUES ($1, $2, 'user', $3, $4, $5)`, wsID, System, u.ID, l.leadID, l.contactID); err != nil {
 				return err
 			}
 			if err := addActivity(ctx, tx, wsID, l, "app.signed_up", "Signed up in "+AppName, u.CreatedAt,
@@ -611,7 +663,7 @@ func (c *Connector) upsertUser(ctx context.Context, wsID uuid.UUID, u appUser) e
 				return err
 			}
 			if err := shared.WriteAudit(ctx, tx, shared.AuditEvent{WorkspaceID: &wsID, ActorKind: "system", Action: "connector.user_imported",
-				EntityType: "account", EntityID: &l.accountID, After: map[string]any{"app": AppName, "appUserId": u.ID}}); err != nil {
+				EntityType: "contact", EntityID: &l.contactID, After: map[string]any{"app": AppName, "appUserId": u.ID}}); err != nil {
 				return err
 			}
 		} else if err != nil {
@@ -622,17 +674,18 @@ func (c *Connector) upsertUser(ctx context.Context, wsID uuid.UUID, u appUser) e
 				UPDATE crm.accounts SET name = $2, email = COALESCE(NULLIF($3, ''), email), phone = $4,
 				       billing_city = COALESCE(NULLIF($5, ''), billing_city), billing_state = COALESCE(NULLIF($6, ''), billing_state),
 				       lifecycle = $7, custom = custom || $8::jsonb, updated_at = now()
-				WHERE id = $1 AND (name, COALESCE(email, ''), phone, lifecycle, custom) IS DISTINCT FROM
+				WHERE id = $1 AND kind = 'individual' AND (name, COALESCE(email, ''), phone, lifecycle, custom) IS DISTINCT FROM
 				      ($2, COALESCE(NULLIF($3, ''), email, ''), $4, $7, custom || $8::jsonb)`,
 				l.accountID, u.displayName(), email, u.Phone, str(u.City), str(u.State), u.lifecycle(), customAcc); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(ctx, `
 				UPDATE crm.contacts SET first_name = NULLIF($2, ''), last_name = $3, email = COALESCE(NULLIF($4, ''), email), phone = $5, mobile = $5,
-				       mailing_city = COALESCE(NULLIF($6, ''), mailing_city), mailing_state = COALESCE(NULLIF($7, ''), mailing_state), updated_at = now()
-				WHERE id = $1 AND (COALESCE(first_name, ''), last_name, COALESCE(email, ''), COALESCE(phone, '')) IS DISTINCT FROM
-				      ($2, $3, COALESCE(NULLIF($4, ''), email, ''), $5)`,
-				l.contactID, first, last, email, u.Phone, str(u.City), str(u.State)); err != nil {
+				       mailing_city = COALESCE(NULLIF($6, ''), mailing_city), mailing_state = COALESCE(NULLIF($7, ''), mailing_state),
+				       custom = custom || $8::jsonb, updated_at = now()
+				WHERE id = $1 AND (COALESCE(first_name, ''), last_name, COALESCE(email, ''), COALESCE(phone, ''), custom) IS DISTINCT FROM
+				      ($2, $3, COALESCE(NULLIF($4, ''), email, ''), $5, custom || $8::jsonb)`,
+				l.contactID, first, last, email, u.Phone, str(u.City), str(u.State), customAcc); err != nil {
 				return err
 			}
 		}
@@ -675,8 +728,10 @@ func (c *Connector) upsertUser(ctx context.Context, wsID uuid.UUID, u appUser) e
 					System, u.ID, wsID, identityID); err != nil {
 					return err
 				}
-				if _, err := tx.Exec(ctx, `UPDATE crm.accounts SET identity_id = $2 WHERE id = $1`, l.accountID, identityID); err != nil {
-					return err
+				if l.accountID != nil {
+					if _, err := tx.Exec(ctx, `UPDATE crm.accounts SET identity_id = $2 WHERE id = $1`, *l.accountID, identityID); err != nil {
+						return err
+					}
 				}
 				if _, err := tx.Exec(ctx, `UPDATE crm.contacts SET identity_id = $2 WHERE id = $1`, l.contactID, identityID); err != nil {
 					return err

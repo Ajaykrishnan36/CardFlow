@@ -300,6 +300,8 @@ export interface ProvisionBody {
   locale: string;
   currency: string;
   productIds: string[];
+  /** Name of the project's own product when no existing product is picked. */
+  productName?: string;
   superAdmin?: { name: string; email: string };
 }
 

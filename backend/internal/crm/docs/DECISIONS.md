@@ -243,6 +243,13 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   card verifies it by OTP, the app assigns them the business (My Business, name pre-filled at onboarding) and the
   connector converts the lead into their account + contact (`lead_conversions.trigger = 'app_claim'`). An owner
   registering the same GSTIN also claims it. The Businesses page shows lead status, saved-by (with who) and card images.
+- **D-52 Contact first; accounts are businesses (Salesforce model).** An app sign-up is a lead converted into a
+  **contact only** (app profile fields live on the contact). An **account** (kind business) is created when that person
+  has a business — registered in the app or claimed from a scanned card — and their contact is linked to it (first
+  business = the contact's account). A card lead converts into that business account + the owner's contact. Records
+  from before D-52 are kept: personal ("individual") accounts stay, contacts move to their business account.
+  Provisioning step 2 is "Product setup": create a new product (opens its 6-step setup right after), use an existing
+  one, or skip (standard setup). "Projects" keep their name — an Opportunity Product is a deal line item, not a tenant.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

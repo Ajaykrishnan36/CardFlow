@@ -80,7 +80,11 @@ const strings = {
     stepsLabel: 'Provisioning steps',
     steps: {
       details: { short: 'Details', title: 'Project details', description: 'Name the project and set its regional defaults.' },
-      products: { short: 'Setup', title: 'Setup', description: 'The project gets its own setup (modules, pipeline, roles). Optionally reuse an existing one.' },
+      products: {
+        short: 'Product setup',
+        title: 'Product setup',
+        description: 'The product decides what the project’s users get: modules, roles, pipeline and login. Create one now, reuse an existing one, or skip.'
+      },
       admin: { short: 'Super Admin', title: 'Super Admin', description: 'The person who will run this project. They get an invitation email.' },
       review: { short: 'Review', title: 'Review & provision', description: 'Check the details. Nothing is created until you confirm.' }
     },
@@ -92,7 +96,20 @@ const strings = {
     codeInvalid: 'Use 3–40 lowercase letters, numbers or hyphens.',
     productsRequired: 'Select at least one product.',
     ownSetupHint: 'Leave this empty and the project gets its own setup with the standard modules — you can change it any time in the project’s Setup tab. Or pick an existing setup to share it.',
-    ownSetupReview: 'Its own setup (standard modules)',
+    ownSetupReview: 'Skipped — starts with the standard setup (change it any time in Product setup)',
+    mode: {
+      new: {
+        title: 'Create a new product',
+        body: 'Right after the project is created you set it up in 6 steps: General, Modules & data, Roles & user types, Pipeline & conversion, Login & integrations, Review & publish.'
+      },
+      existing: { title: 'Use an existing product', body: 'Share a product you already published with this project.' },
+      skip: { title: 'Skip for now', body: 'The project starts with the standard modules. Add or change products later from its Product setup tab.' }
+    },
+    productName: 'Product name',
+    productNameHint: 'Defaults to the project name. You can rename it in the product setup.',
+    productNamePlaceholder: 'e.g. Acme Realty CRM',
+    reviewNew: 'New product “{{name}}” — you’ll set it up right after this',
+    submitAndSetup: 'Provision & set up product',
     productsError: "Couldn't load products",
     noProductsTitle: 'No active products',
     noProductsBody: 'Publish a product first. Only active products can be assigned to projects.',
@@ -139,7 +156,7 @@ const strings = {
   },
   tabs: {
     overview: 'Overview',
-    products: 'Setup',
+    products: 'Product setup',
     people: 'People',
     permissions: 'Roles & permission sets',
     settings: 'Settings'
@@ -156,11 +173,11 @@ const strings = {
     noAccount: 'Not linked to an account. Projects created from a converted lead link automatically.'
   },
   products: {
-    title: 'Project setup',
-    description: 'Modules, objects, pipeline and roles of this project. Publishing a change applies it here right away.',
-    editSetup: 'Edit setup',
-    createNew: 'New setup',
-      assign: 'Share an existing setup',
+    title: 'Product setup',
+    description: 'The products this project uses: modules, objects, pipeline and roles. Publishing a change applies it here right away.',
+    editSetup: 'Edit product',
+    createNew: 'New product',
+      assign: 'Add existing product',
     assignOne: 'Assign',
     assigned: 'Product assigned.',
     assignTitle: 'Assign a product',
