@@ -40,7 +40,6 @@ import {
   Plug,
   ScrollText,
   Settings,
-  Share2,
   Smartphone,
   Store,
   ShieldCheck,
@@ -100,8 +99,7 @@ const icons: Record<string, LucideIcon> = {
   car: Car,
   stethoscope: Stethoscope,
   book: Book,
-  zap: Zap,
-  'share-2': Share2
+  zap: Zap
 };
 
 export function navIcon(key: string): LucideIcon {

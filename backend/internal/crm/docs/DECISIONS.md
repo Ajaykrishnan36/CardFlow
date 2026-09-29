@@ -217,11 +217,6 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   from `/platform/workspaces/{id}/fields` and `/w/{code}/access/fields`. Each product has an API tab listing the
   endpoints and fields of every object its modules switch on. Connected-app pages (app users, businesses, support)
   are no longer in the owner sidebar; they live in that app's workspace, with tiles on its dashboard.
-- **D-47 API & sharing.** One page per workspace (owner console: workspace → API & sharing; inside the workspace:
-  Settings → API & sharing for anyone with `access.manage`, which Super Admin always has) lists every API, shows a
-  live record response with all its keys and values ("view as" a role applies that role's field access), and a
-  key × role matrix (Edit / Read only / Hidden). Owner and Super Admin are always full; saving writes each role's
-  `rules.fields` (D-46), checked against the editor's own access. Permission sets keep their own field access.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

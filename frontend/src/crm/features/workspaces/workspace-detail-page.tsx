@@ -18,12 +18,11 @@ import { isOpenInvite, WorkspaceStatusBadge, WorkspaceTile } from './workspace-u
 import { WorkspaceProductsTab } from './workspace-products-tab';
 import { WorkspacePeopleTab } from './workspace-people-tab';
 import { WorkspaceSettingsTab } from './workspace-settings-tab';
-import { ApiSharing } from '@crm/features/access/api-sharing';
 import { PermissionSetsPanel } from '@crm/features/access/permission-sets-panel';
 import { useIntegrations } from '@crm/features/integrations/use-integrations';
 
-type Tab = 'overview' | 'products' | 'people' | 'permissions' | 'api' | 'settings';
-const TABS: Tab[] = ['overview', 'products', 'people', 'permissions', 'api', 'settings'];
+type Tab = 'overview' | 'products' | 'people' | 'permissions' | 'settings';
+const TABS: Tab[] = ['overview', 'products', 'people', 'permissions', 'settings'];
 
 export function WorkspaceDetailPage() {
   const { t } = useTranslation();
@@ -158,7 +157,6 @@ function WorkspaceDetailView({ workspace }: { workspace: WorkspaceDetail }) {
           { value: 'products', label: <TabLabel label={t('workspaces.tabs.products')} count={workspace.productList.length} /> },
           { value: 'people', label: <TabLabel label={t('workspaces.tabs.people')} count={workspace.memberList.length} /> },
           { value: 'permissions', label: t('workspaces.tabs.permissions') },
-          { value: 'api', label: t('workspaces.tabs.api') },
           { value: 'settings', label: t('workspaces.tabs.settings') }
         ]}
       />
@@ -167,7 +165,6 @@ function WorkspaceDetailView({ workspace }: { workspace: WorkspaceDetail }) {
       {tab === 'products' ? <WorkspaceProductsTab workspace={workspace} /> : null}
       {tab === 'people' ? <WorkspacePeopleTab workspace={workspace} /> : null}
       {tab === 'permissions' ? <PermissionSetsPanel lockedWorkspaceId={workspace.id} /> : null}
-      {tab === 'api' ? <ApiSharing code={workspace.code} source={{ kind: 'owner', workspaceId: workspace.id }} /> : null}
       {tab === 'settings' ? <WorkspaceSettingsTab workspace={workspace} /> : null}
 
       <ConfirmDialog

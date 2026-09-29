@@ -26,7 +26,6 @@ const WorkspaceIndexRedirect = lazy(() => import('@crm/features/workspace/worksp
 const WorkspaceAccessPage = lazy(() => import('@crm/features/workspace/admin/access-page').then((m) => ({ default: m.WorkspaceAccessPage })));
 const SupportListPage = lazy(() => import('@crm/features/workspace/support/support-list-page').then((m) => ({ default: m.SupportListPage })));
 const TicketDetailPage = lazy(() => import('@crm/features/workspace/support/ticket-detail-page').then((m) => ({ default: m.TicketDetailPage })));
-const ApiSharingPage = lazy(() => import('@crm/features/workspace/admin/api-sharing-page').then((m) => ({ default: m.ApiSharingPage })));
 const ObjectsPage = lazy(() => import('@crm/features/objects/objects-page').then((m) => ({ default: m.ObjectsPage })));
 const ObjectDetailPage = lazy(() => import('@crm/features/objects/object-detail-page').then((m) => ({ default: m.ObjectDetailPage })));
 const AppUsersPage = lazy(() => import('@crm/features/workspace/app/app-users-page').then((m) => ({ default: m.AppUsersPage })));
@@ -126,7 +125,6 @@ function AppRoutes() {
               <Route index element={<WorkspaceIndexRedirect />} />
               <Route path="home" element={<WorkspaceDashboardPage />} />
               <Route path="settings/access" element={<WorkspaceAccessPage />} />
-              <Route path="settings/api" element={<ApiSharingPage />} />
               <Route path="support" element={<SupportListPage />} />
               <Route path="support/:id" element={<TicketDetailPage />} />
               <Route path="app-users" element={<AppUsersPage />} />
