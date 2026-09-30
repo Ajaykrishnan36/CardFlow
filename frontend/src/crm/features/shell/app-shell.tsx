@@ -12,6 +12,7 @@ import type { NavItem } from '@crm/api/types';
 import { useWorkspaceContextQuery } from '@crm/features/workspace/workspace-context';
 import { SidebarContent } from './sidebar';
 import { CommandMenu } from './command-menu';
+import { Shortcuts } from './shortcuts';
 import { ThemeToggle } from './theme-toggle';
 import { NotificationsBell, useLiveUpdates } from './live';
 
@@ -127,6 +128,7 @@ export function AppShell() {
         </main>
       </div>
 
+      <Shortcuts navigation={navigation ?? []} />
       <CommandMenu navigation={navigation ?? []} workspaces={workspace?.workspaces} currentWorkspace={wsCode} apiPrefix={apiPrefix} routeBase={routeBase} />
     </div>
   );

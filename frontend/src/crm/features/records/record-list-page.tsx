@@ -20,7 +20,8 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { FieldValue } from './field-value';
 import { NewRecordDialog } from './new-record-dialog';
 import { fieldIndex, objectIcon, recordKeys, statusOption, useObjectMeta } from './use-object-meta';
-import { layoutHref, useRecordScope } from './record-scope';
+import { layoutHref, listHref, useRecordScope } from './record-scope';
+import { rememberRecordList } from '@crm/features/shell/shortcuts';
 import { isForbidden, RecordNoAccess } from './record-states';
 import { ALL_VIEW, BIN_VIEW, ViewDialog, ViewsBar } from './list/views-bar';
 import { ColumnsButton, DensityButton, FilterButton, SortButton } from './list/list-controls';
@@ -200,6 +201,11 @@ function RecordListView({ object }: { object: ObjectKey }) {
   });
   const runWorkflow = useRunWorkflow(manualWf.code, () => [...selected], () => setSelected(new Set()));
 
+  // Record pages step through these rows with j / k (D-81).
+  const rowIds = listQ.data?.data.map((r) => r.id).join(',');
+  useEffect(() => {
+    if (rowIds) rememberRecordList(listHref(scope, object), rowIds.split(','), window.location.pathname + window.location.search);
+  }, [rowIds, scope, object]);
   if (isForbidden(metaQ.error) || isForbidden(listQ.error)) return <RecordNoAccess />;
   if (metaQ.isError) {
     return (

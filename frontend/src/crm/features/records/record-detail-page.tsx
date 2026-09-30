@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Activity, ArrowRightLeft, ChevronDown, Copy, Ellipsis, GitMerge, KeyRound, LayoutTemplate, Lock, Mail, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
+import { Activity, ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, Ellipsis, GitMerge, KeyRound, LayoutTemplate, Lock, Mail, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordDetail, RecordRow, RelatedList } from '@crm/api/types';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -14,6 +14,7 @@ import { Breadcrumbs, ConfirmDialog, DevLink, PageContainer, Tabs } from '@crm/c
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { cn, relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
+import { plainKey, recordNeighbours } from '@crm/features/shell/shortcuts';
 import { GiveLoginDialog } from '@crm/features/access/give-login-dialog';
 import { ConvertLeadDialog } from './convert-dialog';
 import { RecordTimeline } from './record-timeline';
@@ -22,7 +23,7 @@ import { EmailDialog, MergeDialog, RecordFiles, useDuplicates } from './record-e
 import { FieldEditor } from './field-input';
 import { FieldLabel, FieldValue } from './field-value';
 import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys, sameValue, statusOption, useObjectMeta } from './use-object-meta';
-import { layoutHref, listHref, scopedLookupHref, useRecordScope } from './record-scope';
+import { layoutHref, listHref, recordHref, scopedLookupHref, useRecordScope } from './record-scope';
 import { RunWorkflowButton } from './run-workflow';
 import { isForbidden, RecordNoAccess } from './record-states';
 
@@ -178,6 +179,25 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
     save.mutate({ values: changes, version: record.version });
   }, [record, changeCount, changes, byKey, save, cancelEdit, t]);
 
+  // j / k step to the next / previous record of the list you came from; e edits (D-81).
+  const neighbours = useMemo(() => recordNeighbours(listHref(scope, object), id), [scope, object, id]);
+  useEffect(() => {
+    if (editing) return;
+    const h = (e: KeyboardEvent) => {
+      if (!plainKey(e)) return;
+      const to = e.key === 'j' ? neighbours.next : e.key === 'k' ? neighbours.prev : undefined;
+      if (to) {
+        e.preventDefault();
+        navigate(recordHref(scope, object, to) + (tab !== 'details' ? `?tab=${tab}` : ''));
+      } else if (e.key === 'e' && canEdit) {
+        e.preventDefault();
+        startEdit();
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [editing, neighbours, navigate, scope, object, tab, canEdit, startEdit]);
+
   // ⌘/Ctrl+S saves, Esc cancels while editing.
   useEffect(() => {
     if (!editing) return;
@@ -275,7 +295,22 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
   return (
     <PageContainer wide className={cn(editing && 'pb-0 lg:pb-0')}>
-      <Breadcrumbs items={[{ label: meta.labelPlural, to: listPath }, { label: record.title || record.code }]} />
+      <div className="flex items-start justify-between gap-2">
+        <Breadcrumbs items={[{ label: meta.labelPlural, to: neighbours.listUrl ?? listPath }, { label: record.title || record.code }]} />
+        {neighbours.index >= 0 && neighbours.total > 1 ? (
+          <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+            <span className="tabular-nums">{t('records.detail.position', { n: neighbours.index + 1, total: neighbours.total })}</span>
+            <Button variant="ghost" size="icon-sm" disabled={!neighbours.prev || editing} aria-label={t('records.detail.previous')} title={t('records.detail.previous') + ' (k)'}
+              onClick={() => neighbours.prev && navigate(recordHref(scope, object, neighbours.prev))}>
+              <ChevronLeft />
+            </Button>
+            <Button variant="ghost" size="icon-sm" disabled={!neighbours.next || editing} aria-label={t('records.detail.next')} title={t('records.detail.next') + ' (j)'}
+              onClick={() => neighbours.next && navigate(recordHref(scope, object, neighbours.next))}>
+              <ChevronRight />
+            </Button>
+          </div>
+        ) : null}
+      </div>
 
       {/* Header / highlights panel */}
       <Card className="mb-4 overflow-hidden">

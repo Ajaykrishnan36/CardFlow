@@ -61,6 +61,18 @@ const strings = {
     send: 'Send email',
     sent: 'Email sent.'
   },
+  shortcuts: {
+    title: 'Keyboard shortcuts',
+    subtitle: 'Press ? anywhere to see this list. Shortcuts don’t fire while you type in a field.',
+    search: 'Search and jump to anything',
+    help: 'Show keyboard shortcuts',
+    goTo: 'Go to {{page}}',
+    nextRecord: 'Next record (on a record page)',
+    previousRecord: 'Previous record (on a record page)',
+    editRecord: 'Edit the record',
+    save: 'Save changes',
+    cancel: 'Cancel editing'
+  },
   emails: {
     loadError: 'Couldn’t load the emails',
     count_one: '{{count}} conversation',

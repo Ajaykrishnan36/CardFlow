@@ -352,6 +352,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   thread, gets "Re: subject", carries In-Reply-To/References, goes into the same Gmail thread or uses Outlook's reply
   when sent from the mailbox that received it. Mailbox sharing rules still apply (subject-only / metadata-only).
   Compose and reply use the rich-text editor; the HTML is sanitized on the server. Additive migration 0013.
+- **D-81 Keyboard shortcuts.** "g" then a letter goes to a page (d Dashboard, l Leads, a Accounts, c Contacts,
+  o Opportunities, t Tasks, e Calendar, n Notes, s Cases, r Reports, b Dashboards, w Workflows, m Campaigns, p Profile)
+  when that page is in the person's menu; "/" opens search, "?" lists the shortcuts. On a record page j / k step to the
+  next / previous record of the list the person came from (the list remembers its visible rows for the browser tab),
+  with "3 of 25" and arrows beside the breadcrumbs; e starts editing. Shortcuts never fire while typing or in a dialog.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed
