@@ -392,6 +392,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   lists only the chosen product's apps. Leads, Accounts and Contacts show Product only (records belong to a product,
   not an app) and keep their "Platform CRM" option and per-product counts. The choice is shared: picking a product on
   one page carries to the others. The workspace app (Super Admin, Admin, Staff) is unchanged.
+- **D-87 Overview cards open the same filtered list.** Every Overview card now opens a page that shows exactly the
+  rows it counted, for the chosen product and app. The Users page follows the Product filter (people with a membership
+  in the chosen products) and gains an "Invited" tab (people with a pending, unexpired invitation); the Invitations
+  card opens that tab. The Users card counts everyone the Users page lists, the owner included. Checked for all seven
+  cards with no filter, one product, a product plus app, and three different products.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

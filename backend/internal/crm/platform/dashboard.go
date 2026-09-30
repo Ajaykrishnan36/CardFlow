@@ -2,6 +2,7 @@ package platform
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -78,6 +79,11 @@ const filteredWorkspaces = `SELECT w.id FROM crm.workspaces w WHERE NOT w.is_pla
 	AND ($1::uuid IS NULL OR w.id = $1::uuid)
 	AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM crm.workspace_products wp WHERE wp.workspace_id = w.id AND wp.product_id = $2::uuid AND wp.status = 'active'))`
 
+// filteredWorkspacesAt is filteredWorkspaces with the product and app at other placeholders.
+func filteredWorkspacesAt(product, app int) string {
+	return strings.NewReplacer("$1", fmt.Sprintf("$%d", product), "$2", fmt.Sprintf("$%d", app)).Replace(filteredWorkspaces)
+}
+
 func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, error) {
 	var (
 		activeProducts, draftProducts         int
@@ -95,7 +101,7 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 		  (SELECT count(*) FROM crm.products WHERE status = 'draft'),
 		  (SELECT count(*) FROM crm.workspaces WHERE NOT is_platform AND status = 'active'),
 		  (SELECT count(*) FROM crm.workspaces WHERE NOT is_platform),
-		  (SELECT count(*) FROM crm.identities WHERE status = 'active' AND NOT is_platform_owner),
+		  (SELECT count(*) FROM crm.identities WHERE status = 'active'), -- the Users page lists the owner too
 		  (SELECT count(*) FROM crm.identities WHERE status = 'suspended'),
 		  (SELECT count(*) FROM crm.memberships WHERE status = 'invited'),
 		  (SELECT count(*) FROM crm.invitations WHERE status IN ('pending', 'delivered') AND expires_at > now()),
@@ -110,7 +116,7 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 		  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL),
 		  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.status NOT IN ('converted', 'lost')),
 		  (SELECT count(*) FROM crm.accounts a WHERE a.deleted_at IS NULL),
-		  (SELECT count(*) FROM crm.identities WHERE status <> 'deleted' AND NOT is_platform_owner),
+		  (SELECT count(*) FROM crm.identities WHERE status <> 'deleted'),
 		  (SELECT count(*) FROM crm.contacts c WHERE c.deleted_at IS NULL),
 		  (SELECT count(*) FROM crm.workspace_products wp JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform WHERE wp.status = 'active'),
 		  (SELECT count(DISTINCT wp.workspace_id) FROM crm.workspace_products wp JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform WHERE wp.status = 'active')`).Scan(
@@ -158,7 +164,7 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 			{Key: "accounts", Label: "Accounts", Value: accounts, Path: "/crm/owner/accounts"},
 			{Key: "contacts", Label: "Contacts", Value: contacts, Path: "/crm/owner/contacts"},
 			{Key: "users", Label: "Users", Value: totalUsers, Hint: activeHint(activeIdentities, suspendedIdentities), Path: "/crm/owner/users"},
-			{Key: "invites", Label: "Invitations", Value: pendingInvites, Hint: "pending", Path: "/crm/owner/users"},
+			{Key: "invites", Label: "Invitations", Value: pendingInvites, Hint: "pending", Path: "/crm/owner/users?status=invited"},
 		},
 		Checklist: []ChecklistStep{
 			step("lead", "Add a customer lead", "Capture the customer you're onboarding in Platform CRM.", allLeads > 0, false, "/crm/owner/leads"),

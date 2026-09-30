@@ -92,24 +92,32 @@ func scanUserSummary(row pgx.Row) (UserSummary, error) {
 func (h *Handler) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	q := likePattern(r.URL.Query().Get("q"))
 	status := r.URL.Query().Get("status")
-	if status != "active" && status != "suspended" {
+	if status != "active" && status != "suspended" && status != "invited" {
 		status = ""
 	}
 	limit := queryInt(r, "limit", 50, 1, 200)
 	offset := queryInt(r, "offset", 0, 0, 1_000_000)
+	// The owner's Product / App filter (D-74, D-86): only people in the chosen products,
+	// the same set the Overview's Users and Invitations cards count.
+	f := ownerFilterFrom(r)
+	on := f.on()
 	where := `
 		WHERE i.status <> 'deleted' AND ($1 = '' OR i.display_name ILIKE $1 OR e.value_normalized ILIKE $1 OR p.value_normalized ILIKE $1)
-		  AND ($2 = '' OR i.status = $2)`
+		  AND ($2 = '' OR $2 = 'invited' OR i.status = $2)
+		  AND (NOT $5 OR EXISTS (SELECT 1 FROM crm.memberships fm WHERE fm.identity_id = i.id AND fm.status <> 'revoked' AND fm.workspace_id IN (` + filteredWorkspacesAt(3, 4) + `)))
+		  AND ($2 <> 'invited' OR EXISTS (SELECT 1 FROM crm.invitations iv JOIN crm.memberships im ON im.id = iv.membership_id
+		        WHERE im.identity_id = i.id AND iv.status IN ('pending', 'delivered') AND iv.expires_at > now()
+		          AND (NOT $5 OR iv.workspace_id IN (` + filteredWorkspacesAt(3, 4) + `))))`
 	var total int
 	if err := h.store.Pool.QueryRow(r.Context(), `
 		SELECT count(*) FROM crm.identities i
 		LEFT JOIN crm.verified_identifiers e ON e.identity_id = i.id AND e.kind = 'email' AND e.namespace = 'global'
-		LEFT JOIN crm.verified_identifiers p ON p.identity_id = i.id AND p.kind = 'phone' AND p.namespace = 'global'`+where, q, status).Scan(&total); err != nil {
+		LEFT JOIN crm.verified_identifiers p ON p.identity_id = i.id AND p.kind = 'phone' AND p.namespace = 'global'`+where, q, status, f.Workspace, f.App, on).Scan(&total); err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
 	rows, err := h.store.Pool.Query(r.Context(), userSummarySelect+where+`
-		ORDER BY i.is_platform_owner DESC, i.created_at DESC LIMIT $3 OFFSET $4`, q, status, limit, offset)
+		ORDER BY i.is_platform_owner DESC, i.created_at DESC LIMIT $6 OFFSET $7`, q, status, f.Workspace, f.App, on, limit, offset)
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return

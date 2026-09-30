@@ -176,7 +176,7 @@ export const invitationsApi = {
 };
 
 export const usersApi = {
-  list: (params: { q?: string; status?: string; limit?: number; offset?: number } = {}) => api<Page<UserSummary>>(`/platform/users${qs(params)}`),
+  list: (params: { q?: string; status?: string; limit?: number; offset?: number; product?: string; app?: string } = {}) => api<Page<UserSummary>>(`/platform/users${qs(params)}`),
   get: (id: string) => api<UserDetail>(`/platform/users/${enc(id)}`),
   update: (id: string, body: UserUpdateBody) => api<UserDetail>(`/platform/users/${enc(id)}`, { method: 'PATCH', body }),
   sendPasswordReset: (id: string) =>

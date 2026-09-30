@@ -6,6 +6,7 @@ const strings = {
     search: 'Search name, email or phone',
     filterAll: 'All',
     filterActive: 'Active',
+    filterInvited: 'Invited',
     filterSuspended: 'Suspended',
     colUser: 'User',
     colPhone: 'Phone',
