@@ -35,6 +35,7 @@ func (h *Handler) Routes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(identity.RequireOwner)
 		r.Get("/platform/dashboard", h.handleDashboard)
+		r.Get("/platform/apps", h.handleListApps)
 
 		r.Get("/platform/products", h.handleListProducts)
 		r.Post("/platform/products", h.handleCreateProduct)

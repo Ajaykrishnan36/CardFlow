@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { workspaceApi } from '@crm/api/endpoints';
 import type { ObjectKey, WorkspaceContext } from '@crm/api/types';
 import { permissionObject } from '@crm/features/records/record-scope';
+import { useSelectedApp } from './selected-app';
 
 // GET /w/{code}/context, shared by the shell (navigation, switcher) and the
 // workspace routes (record scope, dashboard). One query per workspace code.
@@ -10,9 +11,11 @@ import { permissionObject } from '@crm/features/records/record-scope';
 export const workspaceContextKey = (code: string) => ['workspace', code, 'context'] as const;
 
 export function useWorkspaceContextQuery(code: string | undefined) {
+  const app = useSelectedApp(code);
   return useQuery({
-    queryKey: workspaceContextKey(code ?? ''),
-    queryFn: () => workspaceApi.context(code!),
+    queryKey: [...workspaceContextKey(code ?? ''), app],
+    queryFn: () => workspaceApi.context(code!, app || undefined),
+    placeholderData: (prev) => prev,
     enabled: Boolean(code),
     staleTime: 60_000
   });

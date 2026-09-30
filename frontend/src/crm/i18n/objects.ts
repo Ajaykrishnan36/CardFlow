@@ -6,7 +6,7 @@ const strings = {
   loadError: 'Couldn’t load objects',
   notFound: 'This object doesn’t exist',
   yours: 'Custom objects',
-  yoursBody: 'Objects you created yourself. Switch one on for a product in Product setup → Objects.',
+  yoursBody: 'Objects you created yourself. Switch one on in an app’s setup → Objects.',
   standard: 'Standard objects',
   standardBody: 'Behind the setup modules (Opportunities, Tasks, Calendar…). You can add fields and change their statuses too.',
   noneTitle: 'No custom objects yet',

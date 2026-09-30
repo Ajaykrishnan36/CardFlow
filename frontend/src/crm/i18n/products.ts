@@ -3,7 +3,7 @@ const strings = {
   setupCrumb: 'Setup',
   api: {
     emptyTitle: 'No objects switched on yet',
-    emptyBody: 'Switch on objects in Product setup → Objects and their APIs appear here.',
+    emptyBody: 'Switch on objects in the app’s setup → Objects and their APIs appear here.',
     onBody: 'API access is on: every product on this setup can use these endpoints (with a signed-in session). What each user gets depends on their role, permission sets and field access.',
     offBody: 'API access is off for this setup. The web app still uses these endpoints; switch API access on to offer them to integrations.',
     changeSetting: 'Change in Sign-in & integrations →',

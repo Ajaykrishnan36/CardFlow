@@ -323,7 +323,7 @@ func (h *Handler) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !setup.Integrations.Webhooks {
-		shared.WriteError(w, r, shared.NewError(http.StatusConflict, "webhooks_off", "Turn on webhooks in this product's setup first (Product setup → Sign-in & integrations)."))
+		shared.WriteError(w, r, shared.NewError(http.StatusConflict, "webhooks_off", "Turn on webhooks in the app's setup first (Products → Apps → Edit app setup → Sign-in & integrations)."))
 		return
 	}
 	var in webhookInput

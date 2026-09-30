@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Check, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, Search } from 'lucide-react';
+import { Check, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Search } from 'lucide-react';
 import type { Me, NavItem, WorkspaceContext } from '@crm/api/types';
 import { isOwnerSession, workspaceHomePath } from '@crm/auth/session';
 import { LogoMark } from '@crm/components/brand';
@@ -10,6 +10,7 @@ import { cn, initials } from '@crm/lib/utils';
 import { useUI } from '@crm/lib/ui-store';
 import { navIcon } from './nav-icons';
 import { UserMenu } from './user-menu';
+import { setSelectedApp } from '@crm/features/workspace/selected-app';
 import { FavoritesNav } from './live';
 
 function groupNav(items: NavItem[]) {
@@ -53,7 +54,10 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
     <div className={cn('flex h-full flex-col bg-sidebar', className)}>
       {/* Context header */}
       {inWorkspace ? (
-        <WorkspaceHeader workspace={workspace} code={workspaceCode!} collapsed={collapsed} onNavigate={onNavigate} />
+        <>
+          <WorkspaceHeader workspace={workspace} code={workspaceCode!} collapsed={collapsed} onNavigate={onNavigate} />
+          <AppSwitcher workspace={workspace} code={workspaceCode!} collapsed={collapsed} onNavigate={onNavigate} />
+        </>
       ) : (
         <div className={cn('flex h-14 shrink-0 items-center gap-2.5 border-b px-3', collapsed && 'justify-center px-2')}>
           <div className="relative">
@@ -297,4 +301,66 @@ function OwnerConsoleLink({ workspaceId, collapsed, onNavigate }: { workspaceId:
     </Link>
   );
   return collapsed ? <Tooltip content={t('workspaceApp.owner.console')}>{link}</Tooltip> : link;
+}
+
+/** Apps of a product (D-73), like Salesforce's App Launcher: switching changes the menu, records are shared. */
+function AppSwitcher({ workspace, code, collapsed, onNavigate }: { workspace?: WorkspaceContext; code: string; collapsed: boolean; onNavigate?: () => void }) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const apps = workspace?.apps ?? [];
+  if (apps.length < 2) return null;
+  const current = apps.find((a) => a.key === workspace?.app) ?? apps[0]!;
+  const trigger = (
+    <button
+      type="button"
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-left shadow-sm transition-colors hover:bg-muted data-[state=open]:bg-muted',
+        collapsed && 'justify-center px-0'
+      )}
+      aria-label={t('shell.apps.switch', { name: current.name })}
+    >
+      <LayoutGrid className="size-4 shrink-0 text-primary" aria-hidden />
+      {!collapsed ? (
+        <>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('shell.apps.label')}</span>
+            <span className="block truncate text-[13px] font-medium text-foreground">{current.name}</span>
+          </span>
+          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        </>
+      ) : null}
+    </button>
+  );
+  return (
+    <div className={cn('px-3 pt-3', collapsed && 'px-2')}>
+      <Menu>
+        <MenuTrigger asChild>{trigger}</MenuTrigger>
+        <MenuContent align="start" className="w-64">
+          <MenuLabel>{t('shell.apps.title')}</MenuLabel>
+          {apps.map((a) => {
+            const on = a.key === current.key;
+            return (
+              <MenuItem
+                key={a.key}
+                aria-current={on ? 'true' : undefined}
+                onSelect={() => {
+                  if (on) return;
+                  setSelectedApp(code, a.key);
+                  onNavigate?.();
+                  navigate(workspaceHomePath(code));
+                }}
+              >
+                <span className="grid size-6 place-items-center rounded-md text-[10px] font-semibold text-white" style={{ background: a.accentColor || 'hsl(var(--primary))' }}>
+                  {initials(a.name)}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{a.name}</span>
+                {on ? <Check className="!text-primary" aria-label={t('shell.apps.current')} /> : null}
+              </MenuItem>
+            );
+          })}
+          <p className="px-2 pb-1.5 pt-1 text-[11px] text-muted-foreground">{t('shell.apps.hint')}</p>
+        </MenuContent>
+      </Menu>
+    </div>
+  );
 }

@@ -2,7 +2,7 @@
 const strings = {
   providers: {
     title: 'Sign-in & mailbox providers',
-    body: 'Connect Google, Microsoft and LinkedIn once for the whole platform. Each product then chooses which to allow in Product setup → Sign-in & integrations.',
+    body: 'Connect Google, Microsoft and LinkedIn once for the whole platform. Each product then chooses which to allow in the app’s setup → Sign-in & integrations.',
     google: 'Google',
     microsoft: 'Microsoft 365',
     linkedin: 'LinkedIn',

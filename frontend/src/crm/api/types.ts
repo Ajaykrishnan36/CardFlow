@@ -764,6 +764,35 @@ export interface WorkspaceContext {
   viewerIsOwner: boolean;
   /** The product's setup, where the app needs it. */
   setup?: { createContact: boolean; createOpportunity: boolean; requireQualified: boolean; accentColor?: string; apiAccess: boolean; webhooks: boolean };
+  /** Apps installed in this product that the viewer may use; switching changes the menu (records are shared). */
+  apps?: WorkspaceAppRef[];
+  /** The selected app's key. */
+  app?: string;
+}
+
+/** One app (setup) installed in one product — owner console Apps page. */
+export interface InstalledApp {
+  workspaceId: string;
+  workspaceCode: string;
+  workspaceName: string;
+  productId: string;
+  key: string;
+  name: string;
+  icon?: string;
+  version: number;
+  latestVersion: number;
+  status: 'active' | 'suspended';
+  modules: number;
+  installedAt: string;
+}
+
+export interface WorkspaceAppRef {
+  id: string;
+  key: string;
+  name: string;
+  icon?: string;
+  accentColor?: string;
+  version: number;
 }
 
 export interface WorkspaceDashboard {

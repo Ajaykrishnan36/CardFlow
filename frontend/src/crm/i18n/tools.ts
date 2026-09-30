@@ -54,7 +54,7 @@ const strings = {
     off: {
       apiTitle: 'API access is off for this product',
       webhooksTitle: 'Webhooks are off for this product',
-      body: 'The platform owner turns it on in Products → this product → Product setup → Sign-in & integrations. Existing keys and webhooks stop working while it’s off.'
+      body: 'The platform owner turns it on in Products → this product → Apps → Edit app setup → Sign-in & integrations. Existing keys and webhooks stop working while it’s off.'
     },
     keys: {
       title: 'API keys',
@@ -186,7 +186,7 @@ const strings = {
     on: 'On',
     off: 'Off',
     methodOffTitle: 'SSO isn’t allowed for this product yet',
-    methodOffBody: 'The platform owner must tick “Single sign-on (SAML)” in Product setup → Sign-in & integrations before the SSO button appears on the sign-in page.',
+    methodOffBody: 'The platform owner must tick “Single sign-on (SAML)” in the app’s setup → Sign-in & integrations before the SSO button appears on the sign-in page.',
     buttonName: 'Button label',
     buttonNameHint: 'Shown on the sign-in page, e.g. “Sign in with Acme”.',
     metadata: 'Identity provider metadata',

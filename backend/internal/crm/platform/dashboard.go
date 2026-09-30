@@ -63,6 +63,7 @@ func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
 		customPermissionSets, testedCustomers int
 		totalLeads, openLeads, accounts       int
 		totalUsers, contacts                  int
+		installedApps, appProducts            int
 	)
 	err := h.store.Pool.QueryRow(ctx, `
 		SELECT
@@ -86,10 +87,12 @@ func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
 		  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.status NOT IN ('converted', 'lost')),
 		  (SELECT count(*) FROM crm.accounts a WHERE a.deleted_at IS NULL),
 		  (SELECT count(*) FROM crm.identities WHERE status <> 'deleted' AND NOT is_platform_owner),
-		  (SELECT count(*) FROM crm.contacts c WHERE c.deleted_at IS NULL)`).Scan(
+		  (SELECT count(*) FROM crm.contacts c WHERE c.deleted_at IS NULL),
+		  (SELECT count(*) FROM crm.workspace_products wp JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform WHERE wp.status = 'active'),
+		  (SELECT count(DISTINCT wp.workspace_id) FROM crm.workspace_products wp JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform WHERE wp.status = 'active')`).Scan(
 		&activeProducts, &draftProducts, &activeWorkspaces, &totalWorkspaces,
 		&activeIdentities, &suspendedIdentities, &invitedMembers, &pendingInvites,
-		&customPermissionSets, &testedCustomers, &totalLeads, &openLeads, &accounts, &totalUsers, &contacts)
+		&customPermissionSets, &testedCustomers, &totalLeads, &openLeads, &accounts, &totalUsers, &contacts, &installedApps, &appProducts)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +101,8 @@ func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
 		KPIs: []KPI{
 			// "Products" counts the same rows as the Products page (every customer product).
 			{Key: "workspaces", Label: "Products", Value: totalWorkspaces, Hint: productsHint(activeWorkspaces, totalWorkspaces-activeWorkspaces), Path: "/crm/owner/workspaces"},
+			// Apps installed across products (a product can have several, D-73).
+			{Key: "apps", Label: "Apps", Value: installedApps, Hint: plural(appProducts, "products"), Path: "/crm/owner/apps"},
 			{Key: "leads", Label: "Leads", Value: totalLeads, Hint: plural(openLeads, "open"), Path: "/crm/owner/leads"},
 			{Key: "accounts", Label: "Accounts", Value: accounts, Path: "/crm/owner/accounts"},
 			{Key: "contacts", Label: "Contacts", Value: contacts, Path: "/crm/owner/contacts"},
@@ -106,8 +111,8 @@ func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
 		},
 		Checklist: []ChecklistStep{
 			step("lead", "Add a customer lead", "Capture the customer you're onboarding in Platform CRM.", totalLeads > 0, false, "/crm/owner/leads"),
-			step("provision", "Add a product for the customer", "Name it, invite its Super Admin, then pick objects, roles, sales process and sign-in in its Product setup.", activeWorkspaces > 0, false, "/crm/owner/workspaces/new"),
-			step("product", "Publish the product setup", "Publishing makes the setup live for the product's users.", activeProducts > 0, false, "/crm/owner/workspaces"),
+			step("provision", "Add a product for the customer", "Name it, invite its Super Admin, then add its first app (objects, roles, sales process, sign-in) from the Apps tab.", activeWorkspaces > 0, false, "/crm/owner/workspaces/new"),
+			step("product", "Publish the app", "Publishing makes the app live for the product's users.", activeProducts > 0, false, "/crm/owner/workspaces"),
 			step("permissions", "Set up permissions", "Create permission sets and give users exactly the access they need.", customPermissionSets > 0, false, "/crm/owner/users?tab=permissions"),
 			step("test", "First sign-in", "The customer's Super Admin signs in for the first time.", testedCustomers > 0, false, "/crm/owner/workspaces"),
 		},
@@ -178,4 +183,48 @@ func plural(n int, label string) string {
 		return ""
 	}
 	return strconv.Itoa(n) + " " + label
+}
+
+// InstalledApp is one app (a setup) installed in one product.
+type InstalledApp struct {
+	WorkspaceID   uuid.UUID `json:"workspaceId"`
+	WorkspaceCode string    `json:"workspaceCode"`
+	WorkspaceName string    `json:"workspaceName"`
+	ProductID     uuid.UUID `json:"productId"`
+	Key           string    `json:"key"`
+	Name          string    `json:"name"`
+	Icon          string    `json:"icon,omitempty"`
+	Version       int       `json:"version"`
+	LatestVersion int       `json:"latestVersion"`
+	Status        string    `json:"status"`
+	Modules       int       `json:"modules"`
+	InstalledAt   time.Time `json:"installedAt"`
+}
+
+// GET /platform/apps — every app installed in every product (D-73).
+func (h *Handler) handleListApps(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.store.Pool.Query(r.Context(), `
+		SELECT w.id, w.code, w.name, p.id, p.key, p.name, COALESCE(p.icon, ''), wp.config_version, COALESCE(p.current_version, wp.config_version),
+		       wp.status, COALESCE(jsonb_array_length(v.config->'modules'), 0), wp.created_at
+		FROM crm.workspace_products wp
+		JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform
+		JOIN crm.products p ON p.id = wp.product_id
+		LEFT JOIN crm.product_versions v ON v.product_id = wp.product_id AND v.version = wp.config_version
+		ORDER BY w.name, wp.created_at`)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	defer rows.Close()
+	out := []InstalledApp{}
+	for rows.Next() {
+		var a InstalledApp
+		if err := rows.Scan(&a.WorkspaceID, &a.WorkspaceCode, &a.WorkspaceName, &a.ProductID, &a.Key, &a.Name, &a.Icon, &a.Version,
+			&a.LatestVersion, &a.Status, &a.Modules, &a.InstalledAt); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+		out = append(out, a)
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
 }

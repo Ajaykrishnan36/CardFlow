@@ -82,7 +82,7 @@ import type {
   NextStep,
   OwnerDashboard,
   SessionInfo
-} from './types';
+, InstalledApp } from './types';
 
 export interface LoginBody {
   identifier: string;
@@ -134,7 +134,9 @@ function qs(params: object = {}): string {
 const enc = encodeURIComponent;
 
 export const platformApi = {
-  dashboard: () => api<OwnerDashboard>('/platform/dashboard')
+  dashboard: () => api<OwnerDashboard>('/platform/dashboard'),
+  /** Every app installed in every product (D-73). */
+  apps: () => api<{ data: InstalledApp[] }>('/platform/apps').then((r) => r.data)
 };
 
 export const productsApi = {
@@ -214,7 +216,7 @@ export const accessApi = {
 
 /** The member-facing workspace app at /crm/w/:ws. */
 export const workspaceApi = {
-  context: (code: string) => api<WorkspaceContext>(`/w/${enc(code)}/context`),
+  context: (code: string, app?: string) => api<WorkspaceContext>(`/w/${enc(code)}/context${qs({ app })}`),
   dashboard: (code: string) => api<WorkspaceDashboard>(`/w/${enc(code)}/dashboard`)
 };
 

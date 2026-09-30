@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { navIcon } from '@crm/features/shell/nav-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { LifeBuoy, ArrowRight, Boxes, Briefcase, Building2, Check, ChevronRight, Clock, Contact, MailPlus, Plus, RefreshCw, UserPlus, UsersRound, type LucideIcon } from 'lucide-react';
+import { LifeBuoy, ArrowRight, Boxes, Briefcase, Building2, Check, ChevronRight, Clock, Contact, LayoutGrid, MailPlus, Plus, RefreshCw, UserPlus, UsersRound, type LucideIcon } from 'lucide-react';
 import { platformApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { ChecklistStep, Kpi, RecentWorkspace } from '@crm/api/types';
@@ -16,6 +16,7 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 
 const kpiIcons: Record<string, LucideIcon> = {
   products: Boxes,
+  apps: LayoutGrid,
   leads: UserPlus,
   accounts: Briefcase,
   contacts: Contact,

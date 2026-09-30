@@ -199,11 +199,36 @@ const en = {
     commandPlaceholder: 'Search records, pages and actions…',
     commandEmpty: 'Nothing matches. Try another word.',
     searching: 'Searching…',
+    apps: {
+      label: 'App',
+      title: 'Switch app',
+      switch: 'App: {{name}} — switch app',
+      current: 'Current app',
+      hint: 'Each app has its own menu. Records are shared across the product.'
+    },
     favorites: 'Favorites',
     commandGroup: 'Pages',
     idleWarning: 'For security, privileged sessions end after 30 minutes of inactivity.'
   },
   owner: {
+    apps: {
+      title: 'Apps',
+      subtitle: 'Every app installed in a product. A product can have several apps — each with its own menu, objects and setup — and they share the product’s records.',
+      search: 'Search by app or product…',
+      count_one: '{{count}} app in {{products}} products',
+      count_other: '{{count}} apps in {{products}} products',
+      error: 'Couldn’t load apps',
+      emptyTitle: 'No apps installed yet',
+      emptyBody: 'Open a product and add an app from its Apps tab.',
+      colApp: 'App',
+      colProduct: 'Product',
+      colVersion: 'Version',
+      colObjects: 'Objects',
+      colStatus: 'Status',
+      colInstalled: 'Installed',
+      newer: 'v{{version}} available',
+      status: { active: 'Active', suspended: 'Suspended' }
+    },
     dashboard: {
       greetingMorning: 'Good morning, {{name}}',
       greetingAfternoon: 'Good afternoon, {{name}}',
@@ -220,7 +245,7 @@ const en = {
       recentEmpty: 'No products yet. Add your first product to see it here.',
       colWorkspace: 'Product',
       colStatus: 'Status',
-      colProducts: 'Setup (version)',
+      colProducts: 'Apps',
       colMembers: 'Members',
       colCreated: 'Created',
       errorTitle: "Couldn't load the dashboard",

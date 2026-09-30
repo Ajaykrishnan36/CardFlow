@@ -3,19 +3,19 @@ const strings = {
   devInviteLink: 'Invitation link (shown in local development only)',
   list: {
     title: 'Products',
-    description: 'Each app you run is a product — its users, records, setup and reports in one place.',
+    description: 'One product per customer or business — its users, records and apps in one place.',
     provision: 'Add new product',
     search: 'Search by name or code…',
     filterAll: 'All',
     colWorkspace: 'Product',
     colStatus: 'Status',
-    colProducts: 'Setup (version)',
-    noSetup: 'No setup yet',
+    colProducts: 'Apps',
+    noSetup: 'No app yet',
     colMembers: 'Members',
     colInvites: 'Pending invites',
     colCreated: 'Created',
     emptyTitle: 'No products yet',
-    emptyBody: 'Add a product and invite its Super Admin, then create its setup from the Product setup tab.',
+    emptyBody: 'Add a product and invite its Super Admin, then add its first app from the Apps tab.',
     noMatchTitle: 'No matching products',
     noMatchBody: 'Try a different search or status filter.',
     clearFilters: 'Clear filters',
@@ -77,13 +77,13 @@ const strings = {
   },
   provision: {
     title: 'Add new product',
-    description: 'Create an isolated product and invite its Super Admin. You create its setup right after, from the Product setup tab.',
+    description: 'Create an isolated product and invite its Super Admin. You add its first app right after, from the Apps tab.',
     stepsLabel: 'Steps',
     steps: {
       details: { short: 'Details', title: 'Product details', description: 'Name the product and set its regional defaults.' },
       products: {
-        short: 'Product setup',
-        title: 'Product setup',
+        short: 'First app',
+        title: 'First app',
         description: 'The setup decides what the product’s users get: objects, roles, sales process and sign-in. Create one now, reuse an existing one, or skip.'
       },
       admin: { short: 'Super Admin', title: 'Super Admin', description: 'The person who will run this product. They get an invitation email.' },
@@ -97,14 +97,14 @@ const strings = {
     codeInvalid: 'Use 3–40 lowercase letters, numbers or hyphens.',
     productsRequired: 'Select at least one setup.',
     ownSetupHint: 'Leave this empty and the product gets its own setup with the standard modules — you can change it any time in the product’s Setup tab. Or pick an existing setup to share it.',
-    ownSetupReview: 'Skipped — starts with the standard setup (change it any time in Product setup)',
+    ownSetupReview: 'Skipped — starts with the standard setup (change it any time in the Apps tab)',
     mode: {
       new: {
         title: 'Create a new setup',
         body: 'Right after the product is created you set it up in 6 steps: Details & branding, Objects, Roles & user types, Sales process, Sign-in & integrations, Review & publish.'
       },
       existing: { title: 'Use an existing setup', body: 'Share a setup you already published with this product.' },
-      skip: { title: 'Skip for now', body: 'The product starts with the standard modules. Add or change setups later from its Product setup tab.' }
+      skip: { title: 'Skip for now', body: 'The product starts with the standard modules. Add or change apps later from its Apps tab.' }
     },
     productName: 'Setup name',
     productNameHint: 'Defaults to the product name. You can rename it in the product setup.',
@@ -128,8 +128,8 @@ const strings = {
     nobodyYet: 'Nobody',
     edit: 'Edit',
     previewTitle: 'Preview of access',
-    preview: '{{name}} becomes Super Admin of {{workspace}}. Next you create its setup from the Product setup tab.',
-    previewLater: '{{workspace}} is created. Next you create its setup from the Product setup tab; no one can sign in until you invite a Super Admin.',
+    preview: '{{name}} becomes Super Admin of {{workspace}}. Next you add its first app from the Apps tab.',
+    previewLater: '{{workspace}} is created. Next you add its first app from the Apps tab; no one can sign in until you invite a Super Admin.',
     submit: 'Create product',
     submitting: 'Creating…',
     successTitle: '{{name}} is ready',
@@ -138,7 +138,7 @@ const strings = {
     deliveryFailed: "The invitation email couldn't be delivered. Resend it from the People tab.",
     open: 'Open product',
     setUpNow: 'Create its setup',
-    setUpHint: 'Next: create the Product setup (objects, roles, sales process, sign-in) for {{name}} — it goes live when you publish it.',
+    setUpHint: 'Next: create the first app (objects, roles, sales process, sign-in) for {{name}} — it goes live when you publish it.',
     another: 'Add another product'
   },
   detail: {
@@ -159,14 +159,14 @@ const strings = {
   },
   tabs: {
     overview: 'Overview',
-    products: 'Product setup',
+    products: 'Apps',
     people: 'People',
     permissions: 'Roles & permission sets',
     settings: 'Settings'
   },
   overview: {
     summary: 'Product summary',
-    products: 'Product setups',
+    products: 'Apps',
     members: 'Members',
     pendingInvites: 'Pending invites',
     details: 'Details',
@@ -176,21 +176,21 @@ const strings = {
     noAccount: 'Not linked to an account. Products created from a converted lead link automatically.'
   },
   products: {
-    title: 'Product setup',
-    description: 'What this product’s users get: objects, roles, sales process and sign-in. Publishing a change applies it here right away.',
-    editSetup: 'Edit setup',
-    createNew: 'New setup',
-      assign: 'Add existing setup',
+    title: 'Apps',
+    description: 'Each app has its own menu, objects, roles, sales process and sign-in; people switch between apps in the product’s sidebar. All apps share the product’s records. Publishing an app’s setup applies it here right away.',
+    editSetup: 'Edit app setup',
+    createNew: 'New app',
+      assign: 'Add existing app',
     assignOne: 'Assign',
-    assigned: 'Setup assigned.',
-    assignTitle: 'Assign a setup',
-    assignBody: 'Active setups not yet assigned to {{workspace}}. It starts on the latest published version.',
+    assigned: 'App added.',
+    assignTitle: 'Add an existing app',
+    assignBody: 'Published apps not yet in {{workspace}}. It starts on the latest published version.',
     noneAvailable: 'Nothing left to assign',
     noneAvailableBody: 'Every active setup is already assigned, or none are published yet.',
-    emptyTitle: 'No setups assigned',
-    emptyBody: 'Assign at least one setup so members have something to use.',
+    emptyTitle: 'No apps yet',
+    emptyBody: 'Add an app so members have something to use.',
     behind: 'v{{version}} available',
-    productArchived: 'Setup archived',
+    productArchived: 'App archived',
     assignedAt: 'assigned {{time}}',
     upgrade: 'Upgrade to v{{version}}',
     upgraded: 'Upgraded to v{{version}}.',
@@ -201,9 +201,9 @@ const strings = {
     toggle: 'Access to {{name}}',
     suspend: 'Suspend access',
     suspendTitle: 'Suspend access to {{name}}?',
-    suspendBody: 'Members of {{workspace}} lose access to this setup until you turn it back on. Data is kept.',
-    suspendedToast: 'Setup access suspended.',
-    resumedToast: 'Setup access restored.'
+    suspendBody: 'Members of {{workspace}} lose access to this app until you turn it back on. Data is kept.',
+    suspendedToast: 'App suspended.',
+    resumedToast: 'App turned back on.'
   },
   people: {
     invite: 'Invite admin',

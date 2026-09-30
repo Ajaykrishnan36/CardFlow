@@ -266,7 +266,7 @@ func (h *Handler) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !setup.Integrations.APIAccess {
-		shared.WriteError(w, r, shared.NewError(http.StatusConflict, "api_access_off", "Turn on API access in this product's setup first (Product setup → Sign-in & integrations)."))
+		shared.WriteError(w, r, shared.NewError(http.StatusConflict, "api_access_off", "Turn on API access in the app's setup first (Products → Apps → Edit app setup → Sign-in & integrations)."))
 		return
 	}
 	var in struct {

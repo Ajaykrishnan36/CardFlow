@@ -2,6 +2,7 @@ package records
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -200,6 +201,87 @@ type workspaceContext struct {
 		APIAccess         bool   `json:"apiAccess"`
 		Webhooks          bool   `json:"webhooks"`
 	} `json:"setup"`
+	// Apps are the setups installed in this product that the viewer may use (D-73).
+	// Switching app changes the menu and colour; the records are shared.
+	Apps []workspaceApp `json:"apps"`
+	App  string         `json:"app,omitempty"` // the selected app's key
+}
+
+type workspaceApp struct {
+	ID          uuid.UUID `json:"id"`
+	Key         string    `json:"key"`
+	Name        string    `json:"name"`
+	Icon        string    `json:"icon,omitempty"`
+	AccentColor string    `json:"accentColor,omitempty"`
+	Version     int       `json:"version"`
+	modules     map[string]bool
+}
+
+// appsFor lists the product's active apps the viewer may use (owner: all).
+func (h *Handler) appsFor(ctx context.Context, sc *Scope) []workspaceApp {
+	out := []workspaceApp{}
+	if sc.IsPlatformWS {
+		return out
+	}
+	allowed := map[uuid.UUID]bool{}
+	for _, p := range sc.Eff.Products {
+		allowed[p.ID] = true
+	}
+	rows, err := h.store.Pool.Query(ctx, `
+		SELECT p.id, p.key, p.name, COALESCE(p.icon, ''), wp.config_version, v.config
+		FROM crm.workspace_products wp
+		JOIN crm.products p ON p.id = wp.product_id AND p.status <> 'archived'
+		JOIN crm.product_versions v ON v.product_id = wp.product_id AND v.version = wp.config_version
+		WHERE wp.workspace_id = $1 AND wp.status = 'active' ORDER BY wp.created_at, p.name`, sc.WS)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a workspaceApp
+		var raw []byte
+		if rows.Scan(&a.ID, &a.Key, &a.Name, &a.Icon, &a.Version, &raw) != nil {
+			continue
+		}
+		if !sc.Owner && !allowed[a.ID] {
+			continue
+		}
+		var cfg struct {
+			AccentColor string   `json:"accentColor"`
+			Modules     []string `json:"modules"`
+		}
+		_ = json.Unmarshal(raw, &cfg)
+		a.AccentColor, a.modules = cfg.AccentColor, map[string]bool{}
+		for _, m := range cfg.Modules {
+			a.modules[m] = true
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// navForApp keeps the record objects the selected app switches on; dashboard,
+// reports, automation and settings stay.
+func navForApp(nav []access.NavItem, app workspaceApp) []access.NavItem {
+	keys := map[string]bool{"app-users": app.modules["app_users"], "businesses": app.modules["directory"]}
+	for _, o := range access.CatalogObjects() {
+		if o.App {
+			continue
+		}
+		on := app.modules[o.Module]
+		keys[o.Module] = keys[o.Module] || on
+		keys[o.Key] = keys[o.Key] || on
+	}
+	out := make([]access.NavItem, 0, len(nav))
+	for _, n := range nav {
+		if n.Group == "CRM" || n.Group == "App" {
+			if on, known := keys[n.Key]; known && !on {
+				continue
+			}
+		}
+		out = append(out, n)
+	}
+	return out
 }
 
 func displayWorkspaceName(name string, isPlatform bool) string {
@@ -228,6 +310,23 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 	if cfg, ok := cachedSetup(r.Context(), h.store.Pool, sc.WS); ok {
 		out.Setup.CreateContact, out.Setup.CreateOpportunity, out.Setup.RequireQualified = cfg.Conversion.CreateContact, cfg.Conversion.CreateOpportunity, cfg.Conversion.RequireQualified
 		out.Setup.AccentColor, out.Setup.APIAccess, out.Setup.Webhooks = cfg.AccentColor, cfg.Integrations.APIAccess, cfg.Integrations.Webhooks
+	}
+	out.Apps = h.appsFor(r.Context(), sc)
+	if len(out.Apps) > 0 {
+		sel := out.Apps[0]
+		want := r.URL.Query().Get("app")
+		for _, a := range out.Apps {
+			if a.Key == want {
+				sel = a
+			}
+		}
+		out.App = sel.Key
+		if len(out.Apps) > 1 {
+			out.Navigation = navForApp(out.Navigation, sel)
+		}
+		if sel.AccentColor != "" {
+			out.Setup.AccentColor = sel.AccentColor
+		}
 	}
 	out.Workspaces = []struct {
 		Code string `json:"code"`

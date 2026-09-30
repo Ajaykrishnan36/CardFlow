@@ -33,7 +33,8 @@ const strings = {
       leads: 'New lead',
       accounts: 'New account',
       contacts: 'New contact'
-    }
+    },
+    newRecord: 'New {{label}}'
   },
   noModules: {
     title: 'Your administrator hasn’t given you access to any modules yet',
