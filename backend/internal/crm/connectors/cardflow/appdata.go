@@ -1033,21 +1033,52 @@ func (c *Connector) appRoutes(r chi.Router) {
 	r.Get("/app/categories", c.handleCategories)
 }
 
-// appRelated adds the app user's profile, businesses and saved cards to their account
-// and contact pages, so one person's app data is visible from their CRM record.
+// appRelated adds the connected app's data to CRM records (D-90): a contact (the person)
+// shows their app profile and saved cards; an account (a business, D-52) shows that business
+// listing, the owner's app profile and, when the owner's contact sits under another of their
+// businesses, a link back to that contact. Businesses are never listed on the contact.
 func (c *Connector) appRelated(ctx context.Context, sc *records.Scope, object, recordID string) ([]records.RelatedList, error) {
 	col := map[string]string{"accounts": "account_id", "contacts": "contact_id"}[object]
 	if col == "" {
 		return nil, nil
 	}
 	var userID string
-	err := c.store.Pool.QueryRow(ctx, `SELECT external_id FROM crm.external_links WHERE system = $1 AND external_type = 'user' AND `+col+` = $2`,
-		System, recordID).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	bizIDs := map[string]bool{}
+	var ownerContact *string
+	if object == "accounts" && c.hasBiz {
+		rows, err := c.store.Pool.Query(ctx, `
+			SELECT el.external_id, COALESCE(b.owner_user_id::text, ''), el.contact_id::text
+			FROM crm.external_links el JOIN public.businesses b ON b.id::text = el.external_id
+			WHERE el.system = $1 AND el.external_type = 'business' AND el.account_id = $2`, System, recordID)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id, owner string
+			var contact *string
+			if err := rows.Scan(&id, &owner, &contact); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			bizIDs[id] = true
+			if userID == "" && owner != "" {
+				userID, ownerContact = owner, contact
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
-	if err != nil {
-		return nil, err
+	if userID == "" {
+		err := c.store.Pool.QueryRow(ctx, `SELECT external_id FROM crm.external_links WHERE system = $1 AND external_type = 'user' AND `+col+` = $2`,
+			System, recordID).Scan(&userID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	d, err := c.loadAppUser(ctx, userID)
 	if err != nil {
@@ -1068,12 +1099,31 @@ func (c *Connector) appRelated(ctx context.Context, sc *records.Scope, object, r
 		ID: d.ID, Title: strings.TrimSpace(d.Name + " · " + d.Phone), Subtitle: access + " · " + itoa(len(d.Businesses)) + " businesses · " + itoa(len(d.Cards)) + " saved cards",
 		Status: map[bool]string{true: "premium", false: "free"}[d.Premium],
 	}}}}
-	if c.hasBiz {
-		l := records.RelatedList{Key: "app-businesses", Label: "Businesses", Object: "app-businesses", Rows: []records.RelatedRow{}}
-		for _, b := range d.Businesses {
-			l.Rows = append(l.Rows, records.RelatedRow{ID: b.ID, Title: b.Name, Subtitle: strings.Trim(b.Category+" · "+b.City, " ·"), Status: b.Listing})
+	if object == "accounts" {
+		// The owner's contact, when it isn't already this account's contact (a person keeps one primary account).
+		if ownerContact != nil {
+			var name, primary string
+			if err := c.store.Pool.QueryRow(ctx, `SELECT trim(concat_ws(' ', first_name, last_name)), COALESCE(account_id::text, '') FROM crm.contacts
+				WHERE id = $1 AND deleted_at IS NULL`, *ownerContact).Scan(&name, &primary); err == nil && primary != recordID {
+				out = append(out, records.RelatedList{Key: "app-owner", Label: "Business owner", Object: "contacts", Rows: []records.RelatedRow{{
+					ID: *ownerContact, Title: name, Subtitle: "Contact · owns this business in " + AppName}}})
+			}
 		}
-		out = append(out, l)
+		if c.hasBiz {
+			l := records.RelatedList{Key: "app-businesses", Label: "Business listing", Object: "app-businesses", Rows: []records.RelatedRow{}}
+			for _, b := range d.Businesses {
+				// A business account shows its own listing; an older personal account shows them all.
+				if len(bizIDs) > 0 && !bizIDs[b.ID] {
+					continue
+				}
+				l.Rows = append(l.Rows, records.RelatedRow{ID: b.ID, Title: b.Name, Subtitle: strings.Trim(b.Category+" · "+b.City, " ·"), Status: b.Listing})
+			}
+			if len(bizIDs) == 0 {
+				l.Label = "Businesses"
+			}
+			out = append(out, l)
+		}
+		return out, nil
 	}
 	if c.hasCards {
 		l := records.RelatedList{Key: "app-cards", Label: "Saved cards", Object: "app-cards", Rows: []records.RelatedRow{}}

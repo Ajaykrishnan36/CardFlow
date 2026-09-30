@@ -33,7 +33,8 @@ backend/internal/crm/docs/DECISIONS.md first."*
 | Owner console sign-in | https://card-flow-kappa.vercel.app/crm/owner/login |
 | API + CRM (Render) | https://cardflow-api-fsij.onrender.com |
 | API health check | https://cardflow-api-fsij.onrender.com/health |
-| GitHub repo | https://github.com/Ajaykrishnan36/CardFlow (branch `main`) |
+| GitHub repo (live deploys from this one) | https://github.com/Ajaykrishnancreations/CardFlow (branch `main`) |
+| GitHub copy | https://github.com/Ajaykrishnan36/CardFlow (a separate repo; pushing only here deploys nothing) |
 
 How the pieces connect:
 - Vercel serves the web app. `frontend/vercel.json` forwards `/api/crm/*` to Render.
@@ -80,7 +81,11 @@ If you use a personal access token instead of `gh`:
 Notes:
 - If a push says *"Failed to connect to github.com port 443"* but github.com opens in your
   browser, the command ran inside a sandbox with no network. Run it in a normal Terminal.
-- The account used to be called `Ajaykrishnancreations`. Old links redirect to the new name.
+- `Ajaykrishnancreations/CardFlow` and `Ajaykrishnan36/CardFlow` are two separate repos (not a rename). Render and
+  Vercel build from `Ajaykrishnancreations/CardFlow`, so every change must reach that repo's `main`. This Mac pushes
+  there over SSH (key `~/.ssh/id_ed25519_github_cloudbytelabs`, which signs in as Ajaykrishnancreations):
+  `git -C ~/Documents/CardFlow push git@github.com:Ajaykrishnancreations/CardFlow.git main`.
+  The saved HTTPS login (`Ajaykrishnan36`) has no write access to it.
 
 ## 4. Running it on your Mac
 

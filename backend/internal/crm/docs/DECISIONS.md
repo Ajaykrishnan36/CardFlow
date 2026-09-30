@@ -405,6 +405,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   Products and Apps (this revises D-86's "Product only"). The App list opens once a product is chosen and lists its
   apps. Records belong to the product, not the app, so an app narrows the list the way the Overview counts it: the
   product's records while that app is active in it, none otherwise (`?app=` on the owner list, export and bulk).
+- **D-90 Businesses show on the account, not the contact.** A Business Card Snap person's contact shows their app
+  profile and saved cards only. Each business they register or claim is its own business account (D-52), and that
+  account shows its business listing and the owner's app profile; when the owner's contact sits under another of their
+  businesses (a contact keeps one primary account), the account also shows a "Business owner" link to that contact.
+  An older personal ("individual") account still lists all of the person's businesses.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed
