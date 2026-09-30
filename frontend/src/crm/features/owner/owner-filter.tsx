@@ -2,6 +2,8 @@ import { useMemo, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { platformApi } from '@crm/api/endpoints';
+import { X } from 'lucide-react';
+import { Button } from '@crm/components/ui/button';
 import { Select } from '@crm/components/ui/form-controls';
 import { cn } from '@crm/lib/utils';
 
@@ -78,6 +80,16 @@ export function useChangeOwnerFilter() {
   };
 }
 
+/** Shown next to the Product picker while one product is chosen: back to all products. */
+export function ClearProductButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Button variant="ghost" size="sm" onClick={onClick}>
+      <X /> {t('owner.filter.clear')}
+    </Button>
+  );
+}
+
 /**
  * In-page Product, then App picker (D-86). "All products" first; the App list opens up
  * only once a product is chosen, showing that product's apps.
@@ -115,6 +127,7 @@ export function OwnerScopeBar({ showApp = true, className }: { showApp?: boolean
           options={[{ value: '', label: t('owner.filter.allApps') }, ...appOptions.map((a) => ({ value: a.id, label: a.name }))]}
         />
       ) : null}
+      {f.product ? <ClearProductButton onClick={() => change(EMPTY)} /> : null}
     </div>
   );
 }

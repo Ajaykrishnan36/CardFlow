@@ -397,6 +397,10 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   in the chosen products) and gains an "Invited" tab (people with a pending, unexpired invitation); the Invitations
   card opens that tab. The Users card counts everyone the Users page lists, the owner included. Checked for all seven
   cards with no filter, one product, a product plus app, and three different products.
+- **D-88 One way back to all products.** On Leads, Accounts and Contacts the owner's Product picker moves out of the
+  table toolbar to sit above the list, the same place and size as on Overview, Products and Apps. Whenever a product
+  (or Platform CRM) is chosen, a "Show all products" button sits next to the picker on every owner page, so a filter
+  carried over from another page can be cleared in one click.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

@@ -223,6 +223,7 @@ const en = {
       app: 'App',
       allProducts: 'All products',
       allApps: 'All apps',
+      clear: 'Show all products',
       pickProductFirst: 'Choose a product first to pick one of its apps.'
     },
     apps: {

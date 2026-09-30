@@ -31,7 +31,7 @@ import { KanbanBoard } from './list/kanban-board';
 import { CalendarView } from './list/calendar-view';
 import { BinRetentionNote } from './list/bin-retention';
 import { BulkBar } from './list/bulk-bar';
-import { useChangeOwnerFilter, useOwnerFilter, useOwnerProducts } from '@crm/features/owner/owner-filter';
+import { ClearProductButton, useChangeOwnerFilter, useOwnerFilter, useOwnerProducts } from '@crm/features/owner/owner-filter';
 import { GroupedTable } from './list/grouped-table';
 import { useManualWorkflows, useRunWorkflow } from './run-workflow';
 import { ImportDialog } from './list/import-dialog';
@@ -305,6 +305,21 @@ function RecordListView({ object }: { object: ObjectKey }) {
         }
       />
 
+      {isOwner ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Select className="h-9 w-full text-[13px] sm:w-56" aria-label={t('records.list.workspaceFilter')} value={ws} onChange={(e) => pickProduct(e.target.value)}>
+            <option value={ALL_WS}>{t('records.list.allWorkspaces')}</option>
+            <option value={PLATFORM_WS}>{t('records.list.platformCrm')}</option>
+            {wsOptions.filter((w) => !w.isPlatform).map((w) => (
+              <option key={w.code} value={w.code}>
+                {t('records.list.wsOption', { name: w.name, count: w.count })}
+              </option>
+            ))}
+          </Select>
+          {ws !== ALL_WS ? <ClearProductButton onClick={() => pickProduct(ALL_WS)} /> : null}
+        </div>
+      ) : null}
+
       <Card className="min-w-0 overflow-hidden">
         {meta ? (
           <ViewsBar
@@ -327,17 +342,6 @@ function RecordListView({ object }: { object: ObjectKey }) {
           <div className="min-w-0 lg:w-72 lg:min-w-[180px] lg:shrink">
             <SearchInput value={q} onChange={(v) => patchParams({ q: v, page: null })} placeholder={t('records.list.search', { objects: plural.toLowerCase() })} className="lg:max-w-none" />
           </div>
-          {isOwner ? (
-            <Select className="lg:w-56" aria-label={t('records.list.workspaceFilter')} value={ws} onChange={(e) => pickProduct(e.target.value)}>
-              <option value={ALL_WS}>{t('records.list.allWorkspaces')}</option>
-              <option value={PLATFORM_WS}>{t('records.list.platformCrm')}</option>
-              {wsOptions.filter((w) => !w.isPlatform).map((w) => (
-                <option key={w.code} value={w.code}>
-                  {t('records.list.wsOption', { name: w.name, count: w.count })}
-                </option>
-              ))}
-            </Select>
-          ) : null}
           {meta ? (
             <div className="flex flex-wrap items-center gap-1.5 lg:shrink-0 lg:flex-nowrap">
               <FilterButton meta={meta} value={draft.filter} onChange={(g: FilterGroup | undefined) => { setDraft((d) => ({ ...d, filter: g })); patchParams({ page: null }); }} />
