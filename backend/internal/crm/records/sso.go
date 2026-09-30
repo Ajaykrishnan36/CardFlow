@@ -30,6 +30,7 @@ import (
 // with the chosen role.
 
 type SSOSettings struct {
+	Kind           string    `json:"kind"` // saml | oidc (D-82)
 	Enabled        bool      `json:"enabled"`
 	Name           string    `json:"name"`
 	IDPMetadataXML string    `json:"idpMetadataXml,omitempty"`
@@ -44,6 +45,10 @@ type SSOSettings struct {
 	Configured     bool      `json:"configured"`
 	UpdatedAt      time.Time `json:"updatedAt,omitempty"`
 	LoginMethodOn  bool      `json:"loginMethodOn"`
+	OIDCIssuer     string    `json:"oidcIssuer"`
+	OIDCClientID   string    `json:"oidcClientId"`
+	OIDCSecretSet  bool      `json:"oidcSecretSet"`
+	OIDCRedirect   string    `json:"oidcRedirectUrl"`
 }
 
 func spURLs(base, code string) (entity, acs, meta, start string) {
@@ -82,7 +87,7 @@ func (h *Handler) LoadSAML(ctx context.Context, code string) (*SAMLProvider, err
 	var keyEnc []byte
 	var status string
 	err := h.store.Pool.QueryRow(ctx, `SELECT w.id, w.code, s.idp_metadata_xml, s.sp_key_enc, COALESCE(s.sp_cert_pem, ''), s.domains, s.jit_provisioning, s.default_role_key, s.status
-		FROM crm.sso_providers s JOIN crm.workspaces w ON w.id = s.workspace_id WHERE w.code = $1 AND w.status = 'active'`, code).
+		FROM crm.sso_providers s JOIN crm.workspaces w ON w.id = s.workspace_id WHERE w.code = $1 AND w.status = 'active' AND s.kind = 'saml'`, code).
 		Scan(&p.WorkspaceID, &p.Code, &metaXML, &keyEnc, &certPEM, &p.Domains, &p.JIT, &p.RoleKey, &status)
 	if errors.Is(err, pgx.ErrNoRows) || status != "active" {
 		return nil, shared.NotFound("sso_not_configured")
@@ -127,17 +132,20 @@ func (h *Handler) requireAccessAdmin(w http.ResponseWriter, r *http.Request) (*S
 }
 
 func (h *Handler) ssoSettings(ctx context.Context, sc *Scope) (*SSOSettings, error) {
-	s := &SSOSettings{Domains: []string{}, DefaultRoleKey: "STAFF", Name: "Company sign-in"}
-	s.SPEntityID, s.SPACSURL, s.SPMetadataURL, s.SignInURL = spURLs(h.cfg.BaseURL, sc.Code)
+	s := &SSOSettings{Kind: "saml", Domains: []string{}, DefaultRoleKey: "STAFF", Name: "Company sign-in"}
+	s.SPEntityID, s.SPACSURL, s.SPMetadataURL, _ = spURLs(h.cfg.BaseURL, sc.Code)
+	s.SignInURL = strings.TrimRight(h.cfg.BaseURL, "/") + "/api/crm/v1/auth/sso/" + sc.Code + "/start"
+	s.OIDCRedirect = oidcRedirectURL(h.cfg.BaseURL, sc.Code)
 	var status string
-	err := h.store.Pool.QueryRow(ctx, `SELECT name, status, idp_metadata_xml, domains, jit_provisioning, default_role_key, updated_at FROM crm.sso_providers WHERE workspace_id = $1`, sc.WS).
-		Scan(&s.Name, &status, &s.IDPMetadataXML, &s.Domains, &s.JIT, &s.DefaultRoleKey, &s.UpdatedAt)
+	err := h.store.Pool.QueryRow(ctx, `SELECT kind, name, status, idp_metadata_xml, domains, jit_provisioning, default_role_key, updated_at, oidc_issuer, oidc_client_id,
+		oidc_secret_enc IS NOT NULL FROM crm.sso_providers WHERE workspace_id = $1`, sc.WS).
+		Scan(&s.Kind, &s.Name, &status, &s.IDPMetadataXML, &s.Domains, &s.JIT, &s.DefaultRoleKey, &s.UpdatedAt, &s.OIDCIssuer, &s.OIDCClientID, &s.OIDCSecretSet)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
 	if err == nil {
 		s.Configured, s.Enabled = true, status == "active"
-		if idp, err := samlsp.ParseMetadata([]byte(s.IDPMetadataXML)); err == nil {
+		if idp, err := samlsp.ParseMetadata([]byte(s.IDPMetadataXML)); s.Kind == "saml" && err == nil {
 			s.IDPEntityID = idp.EntityID
 		}
 	}
@@ -171,6 +179,10 @@ func (h *Handler) handleSaveSSO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
+		Kind           string   `json:"kind"`
+		OIDCIssuer     string   `json:"oidcIssuer"`
+		OIDCClientID   string   `json:"oidcClientId"`
+		OIDCSecret     string   `json:"oidcClientSecret"`
 		Enabled        bool     `json:"enabled"`
 		Name           string   `json:"name"`
 		IDPMetadataXML string   `json:"idpMetadataXml"`
@@ -184,7 +196,36 @@ func (h *Handler) handleSaveSSO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fe := map[string]string{}
-	if in.IDPMetadataURL != "" && strings.TrimSpace(in.IDPMetadataXML) == "" {
+	if in.Kind != "oidc" {
+		in.Kind = "saml"
+	}
+	var secretEnc []byte
+	var hadSecret bool
+	_ = h.store.Pool.QueryRow(r.Context(), `SELECT oidc_secret_enc IS NOT NULL FROM crm.sso_providers WHERE workspace_id = $1 AND kind = 'oidc'`, sc.WS).Scan(&hadSecret)
+	if in.Kind == "oidc" {
+		in.OIDCIssuer = strings.TrimRight(strings.TrimSpace(in.OIDCIssuer), "/")
+		in.OIDCClientID = strings.TrimSpace(in.OIDCClientID)
+		if _, msg := validOutboundURL(in.OIDCIssuer, h.cfg.AppEnv == "local"); msg != "" {
+			fe["oidcIssuer"] = msg
+		} else if _, err := h.discoverOIDC(r.Context(), in.OIDCIssuer); err != nil {
+			fe["oidcIssuer"] = "Couldn't read " + in.OIDCIssuer + "/.well-known/openid-configuration — check the issuer URL."
+		}
+		if in.OIDCClientID == "" || len(in.OIDCClientID) > 500 {
+			fe["oidcClientId"] = "Paste the client ID from your identity provider."
+		}
+		if s := strings.TrimSpace(in.OIDCSecret); s != "" {
+			enc, err := shared.Encrypt(h.cfg.EncryptionKey, []byte(s))
+			if err != nil {
+				shared.WriteError(w, r, err)
+				return
+			}
+			secretEnc = enc
+		} else if !hadSecret {
+			fe["oidcClientSecret"] = "Paste the client secret from your identity provider."
+		}
+		in.IDPMetadataXML, in.IDPMetadataURL = "", ""
+	}
+	if in.Kind == "saml" && in.IDPMetadataURL != "" && strings.TrimSpace(in.IDPMetadataXML) == "" {
 		u, msg := validOutboundURL(in.IDPMetadataURL, h.cfg.AppEnv == "local")
 		if msg != "" {
 			fe["idpMetadataUrl"] = msg
@@ -207,7 +248,9 @@ func (h *Handler) handleSaveSSO(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if strings.TrimSpace(in.IDPMetadataXML) == "" {
+	if in.Kind == "oidc" {
+		// checked above
+	} else if strings.TrimSpace(in.IDPMetadataXML) == "" {
 		fe["idpMetadataXml"] = "Paste your identity provider's metadata XML (or its metadata URL)."
 	} else if _, err := samlsp.ParseMetadata([]byte(in.IDPMetadataXML)); err != nil {
 		fe["idpMetadataXml"] = "That isn't valid SAML metadata."
@@ -250,15 +293,20 @@ func (h *Handler) handleSaveSSO(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
-			if _, err := tx.Exec(r.Context(), `INSERT INTO crm.sso_providers (workspace_id, name, status, idp_metadata_xml, domains, jit_provisioning, default_role_key, sp_key_enc, sp_cert_pem, created_by)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, sc.WS, in.Name, status, in.IDPMetadataXML, domains, in.JIT, in.DefaultRoleKey, enc, certPEM, actor(r)); err != nil {
+			if _, err := tx.Exec(r.Context(), `INSERT INTO crm.sso_providers (workspace_id, name, status, idp_metadata_xml, domains, jit_provisioning, default_role_key, sp_key_enc, sp_cert_pem, created_by,
+				kind, oidc_issuer, oidc_client_id, oidc_secret_enc)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`, sc.WS, in.Name, status, in.IDPMetadataXML, domains, in.JIT, in.DefaultRoleKey, enc, certPEM, actor(r),
+				in.Kind, in.OIDCIssuer, in.OIDCClientID, secretEnc); err != nil {
 				return err
 			}
-		} else if _, err := tx.Exec(r.Context(), `UPDATE crm.sso_providers SET name = $2, status = $3, idp_metadata_xml = $4, domains = $5, jit_provisioning = $6, default_role_key = $7, updated_at = now()
-			WHERE workspace_id = $1`, sc.WS, in.Name, status, in.IDPMetadataXML, domains, in.JIT, in.DefaultRoleKey); err != nil {
+		} else if _, err := tx.Exec(r.Context(), `UPDATE crm.sso_providers SET name = $2, status = $3, idp_metadata_xml = CASE WHEN $8 = 'oidc' THEN idp_metadata_xml ELSE $4 END,
+			domains = $5, jit_provisioning = $6, default_role_key = $7, kind = $8,
+			oidc_issuer = CASE WHEN $8 = 'oidc' THEN $9 ELSE oidc_issuer END, oidc_client_id = CASE WHEN $8 = 'oidc' THEN $10 ELSE oidc_client_id END,
+			oidc_secret_enc = COALESCE($11, oidc_secret_enc), updated_at = now()
+			WHERE workspace_id = $1`, sc.WS, in.Name, status, in.IDPMetadataXML, domains, in.JIT, in.DefaultRoleKey, in.Kind, in.OIDCIssuer, in.OIDCClientID, secretEnc); err != nil {
 			return err
 		}
-		return shared.WriteAudit(r.Context(), tx, actorFromRequest(r, "ui").audit(sc.WS, "sso.saved", "sso", nil, nil, map[string]any{"enabled": in.Enabled, "domains": domains, "jit": in.JIT}))
+		return shared.WriteAudit(r.Context(), tx, actorFromRequest(r, "ui").audit(sc.WS, "sso.saved", "sso", nil, nil, map[string]any{"kind": in.Kind, "enabled": in.Enabled, "domains": domains, "jit": in.JIT}))
 	})
 	if err != nil {
 		shared.WriteError(w, r, err)

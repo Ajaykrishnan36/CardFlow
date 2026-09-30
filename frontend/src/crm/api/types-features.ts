@@ -355,6 +355,12 @@ export interface SSOSettings {
   configured: boolean;
   updatedAt?: string;
   loginMethodOn: boolean;
+  /** SAML 2.0 or OpenID Connect (D-82). */
+  kind: 'saml' | 'oidc';
+  oidcIssuer: string;
+  oidcClientId: string;
+  oidcSecretSet: boolean;
+  oidcRedirectUrl: string;
 }
 
 /** Email conversations on a record (D-80). */

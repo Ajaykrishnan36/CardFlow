@@ -238,7 +238,7 @@ const strings = {
       microsoftHint: 'Continue with a Microsoft 365 / Entra ID work account.',
       linkedin: 'LinkedIn',
       linkedinHint: 'Continue with a LinkedIn account.',
-      sso: 'Single sign-on (SAML)',
+      sso: 'Single sign-on (SAML / OpenID)',
       ssoHint: 'The company’s own identity provider (Okta, Entra ID…). Its admin connects it in Settings → Single sign-on.',
       providersNote: 'Google, Microsoft and LinkedIn buttons appear on the sign-in page once the platform owner connects them in Integrations.',
       accessTitle: 'Sign-up',

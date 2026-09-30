@@ -357,6 +357,14 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   when that page is in the person's menu; "/" opens search, "?" lists the shortcuts. On a record page j / k step to the
   next / previous record of the list the person came from (the list remembers its visible rows for the browser tab),
   with "3 of 25" and arrows beside the breadcrumbs; e starts editing. Shortcuts never fire while typing or in a dialog.
+- **D-82 OpenID Connect single sign-on.** A product's SSO is SAML 2.0 or OpenID Connect (one provider per product).
+  For OIDC the admin enters the issuer URL, client ID and secret (secret encrypted, never shown again); the CRM reads
+  the issuer's discovery document, signs people in with the authorization-code flow plus PKCE, state and nonce (kept in
+  a 10-minute encrypted cookie) and checks the ID token's signature against the provider's keys, issuer, audience,
+  expiry and nonce; an unverified email is refused. Matching, just-in-time accounts and the role for new people work
+  as for SAML. /auth/sso/<code>/start picks the protocol (the old SAML start link keeps working). Sessions now record
+  the real sign-in method (it was always stored as "password", so SSO-only products would have refused them).
+  Additive migration 0014.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

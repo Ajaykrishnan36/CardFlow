@@ -498,7 +498,7 @@ export function workspaceToolsApi(code: string) {
     deleteTeam: (id: string) => api<void>(`${base}/teams/${enc(id)}`, { method: 'DELETE' }),
 
     sso: () => api<SSOSettings>(`${base}/sso`),
-    saveSso: (body: { enabled: boolean; name?: string; idpMetadataXml?: string; idpMetadataUrl?: string; domains: string[]; jitProvisioning: boolean; defaultRoleKey: string }) =>
+    saveSso: (body: { kind: 'saml' | 'oidc'; oidcIssuer?: string; oidcClientId?: string; oidcClientSecret?: string; enabled: boolean; name?: string; idpMetadataXml?: string; idpMetadataUrl?: string; domains: string[]; jitProvisioning: boolean; defaultRoleKey: string }) =>
       api<SSOSettings>(`${base}/sso`, { method: 'PUT', body }),
     deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' })
   };
@@ -509,5 +509,5 @@ export const signInApi = {
   methods: (product?: string) => api<{ methods: string[]; product: string; signup?: boolean }>(`/auth/methods${qs({ product })}`),
   providers: () => api<Record<'google' | 'microsoft' | 'linkedin', boolean>>('/oauth/providers'),
   oauthStartUrl: (provider: string, params: { product?: string; audience?: 'owner' | 'workspace' }) => `${API_BASE}/auth/oauth/${provider}/start${qs(params)}`,
-  ssoStartUrl: (code: string) => `${API_BASE}/auth/saml/${enc(code)}/start`
+  ssoStartUrl: (code: string) => `${API_BASE}/auth/sso/${enc(code)}/start`
 };

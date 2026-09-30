@@ -21,7 +21,9 @@ import (
 
 func (m *Module) samlRoutes(r chi.Router) {
 	r.Get("/auth/saml/{code}/metadata", m.samlMetadata)
-	r.Get("/auth/saml/{code}/start", m.samlStart)
+	r.Get("/auth/saml/{code}/start", m.ssoStart)
+	r.Get("/auth/sso/{code}/start", m.ssoStart)
+	r.Get("/auth/oidc/{code}/callback", m.oidcCallback)
 	r.Post("/auth/saml/{code}/acs", m.samlACS)
 }
 
@@ -40,10 +42,15 @@ func samlFail(w http.ResponseWriter, r *http.Request, code, msg string) {
 	http.Redirect(w, r, "/crm/login?product="+url.QueryEscape(code)+"&oauthError="+url.QueryEscape(msg), http.StatusFound)
 }
 
-func (m *Module) samlStart(w http.ResponseWriter, r *http.Request) {
+// ssoStart starts the product's single sign-on, SAML or OpenID Connect (D-82).
+func (m *Module) ssoStart(w http.ResponseWriter, r *http.Request) {
 	code := chi.URLParam(r, "code")
 	if err := identity.CheckMethod(r.Context(), code, "sso"); err != nil {
 		samlFail(w, r, code, "Single sign-on isn't turned on for this product.")
+		return
+	}
+	if m.records.SSOKind(r.Context(), code) == "oidc" {
+		m.oidcStart(w, r, code)
 		return
 	}
 	p, err := m.records.LoadSAML(r.Context(), code)
@@ -117,7 +124,7 @@ func (m *Module) samlACS(w http.ResponseWriter, r *http.Request) {
 	if a.Subject != nil && a.Subject.NameID != nil && a.Subject.NameID.Value != "" {
 		subject = a.Subject.NameID.Value
 	}
-	identityID, err := m.samlIdentity(r.Context(), p.WorkspaceID, code, subject, email, name, p.JIT, p.Domains, p.RoleKey)
+	identityID, err := m.ssoIdentity(r.Context(), "saml:"+code, p.WorkspaceID, subject, email, name, p.JIT, p.Domains, p.RoleKey)
 	if err != nil {
 		samlFail(w, r, code, errText(err))
 		return
@@ -130,9 +137,8 @@ func (m *Module) samlACS(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, next, http.StatusFound)
 }
 
-// samlIdentity finds (or, with just-in-time provisioning, creates) the person.
-func (m *Module) samlIdentity(ctx context.Context, ws uuid.UUID, code, subject, email, name string, jit bool, domains []string, roleKey string) (uuid.UUID, error) {
-	provider := "saml:" + code
+// ssoIdentity finds (or, with just-in-time provisioning, creates) the person.
+func (m *Module) ssoIdentity(ctx context.Context, provider string, ws uuid.UUID, subject, email, name string, jit bool, domains []string, roleKey string) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := m.platform.Store().Pool.QueryRow(ctx, `SELECT identity_id FROM crm.sso_links WHERE provider = $1 AND subject = $2`, provider, subject).Scan(&id)
 	if err == nil {

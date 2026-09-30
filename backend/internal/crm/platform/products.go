@@ -61,7 +61,7 @@ type ProductConfig struct {
 		Google    bool `json:"google"`
 		Microsoft bool `json:"microsoft"`
 		LinkedIn  bool `json:"linkedin"`
-		SSO       bool `json:"sso"` // the product's SAML identity provider
+		SSO       bool `json:"sso"` // the product's SAML or OpenID Connect identity provider
 		// Enforced marks configs saved since sign-in methods are enforced (D-64). Older
 		// configs only enforced the password, and an email code always worked too.
 		Enforced bool `json:"enforced"`

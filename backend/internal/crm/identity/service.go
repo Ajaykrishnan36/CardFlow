@@ -669,6 +669,7 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 			mfaRequired: mfaRequired,
 			ip:          meta.IP,
 			userAgent:   meta.UserAgent,
+			method:      method, // a product that only allows SSO (say) checks this later
 		})
 		if err != nil {
 			return err

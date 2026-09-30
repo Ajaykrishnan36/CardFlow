@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { isApiError } from '@crm/api/client';
 import type { SSOSettings } from '@crm/api/types-features';
 import { Button } from '@crm/components/ui/button';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -17,7 +18,7 @@ import { useWorkspace } from '@crm/features/workspace/workspace-context';
 import { useAdminOptions } from '@crm/features/workspace/admin/admin-utils';
 import { CopyField, errorText, formatDateTime, hasCap, SettingRow, toolKeys, useTools } from './tool-utils';
 
-/** /crm/w/:ws/settings/sso — SAML single sign-on for this workspace (access.manage). */
+/** /crm/w/:ws/settings/sso — SAML or OpenID Connect single sign-on for this workspace (access.manage). */
 export function SsoPage() {
   const { t } = useTranslation();
   const { code, context } = useWorkspace();
@@ -48,6 +49,10 @@ function SsoForm({ s }: { s: SSOSettings }) {
   const api = useTools();
   const qc = useQueryClient();
   const roles = useAdminOptions(code);
+  const [kind, setKind] = useState<'saml' | 'oidc'>(s.kind ?? 'saml');
+  const [issuer, setIssuer] = useState(s.oidcIssuer ?? '');
+  const [clientId, setClientId] = useState(s.oidcClientId ?? '');
+  const [secret, setSecret] = useState('');
   const [enabled, setEnabled] = useState(s.enabled || !s.configured);
   const [name, setName] = useState(s.name);
   const [source, setSource] = useState<'xml' | 'url'>('xml');
@@ -61,10 +66,14 @@ function SsoForm({ s }: { s: SSOSettings }) {
   const save = useMutation({
     mutationFn: () =>
       api.saveSso({
+        kind,
+        oidcIssuer: kind === 'oidc' ? issuer.trim() : undefined,
+        oidcClientId: kind === 'oidc' ? clientId.trim() : undefined,
+        oidcClientSecret: kind === 'oidc' && secret.trim() ? secret.trim() : undefined,
         enabled,
         name: name.trim(),
-        idpMetadataXml: source === 'xml' ? xml : undefined,
-        idpMetadataUrl: source === 'url' ? metaUrl.trim() : undefined,
+        idpMetadataXml: kind === 'saml' && source === 'xml' ? xml : undefined,
+        idpMetadataUrl: kind === 'saml' && source === 'url' ? metaUrl.trim() : undefined,
         domains: domains
           .split(/[\s,;]+/)
           .map((d) => d.trim().toLowerCase())
@@ -74,9 +83,11 @@ function SsoForm({ s }: { s: SSOSettings }) {
       }),
     onSuccess: () => {
       toast.success(t('tools.sso.saved'));
+      setSecret('');
       refresh();
     }
   });
+  const fieldError = (k: string) => (save.error && isApiError(save.error) ? save.error.fieldErrors[k] : undefined);
   const del = useMutation({
     mutationFn: () => api.deleteSso(),
     onSuccess: () => {
@@ -104,9 +115,34 @@ function SsoForm({ s }: { s: SSOSettings }) {
         >
           {save.isError ? <Alert tone="danger">{errorText(save.error, t('common.genericError'))}</Alert> : null}
           {!s.loginMethodOn ? <Alert tone="warning" title={t('tools.sso.methodOffTitle')}>{t('tools.sso.methodOffBody')}</Alert> : null}
+          <Field label={t('tools.sso.protocol')}>
+            <Tabs
+              value={kind}
+              onChange={setKind}
+              items={[
+                { value: 'saml', label: t('tools.sso.saml') },
+                { value: 'oidc', label: t('tools.sso.oidc') }
+              ]}
+            />
+          </Field>
           <Field label={t('tools.sso.buttonName')} hint={t('tools.sso.buttonNameHint')}>
             <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
           </Field>
+          {kind === 'oidc' ? (
+            <>
+              <Field label={t('tools.sso.issuer')} hint={t('tools.sso.issuerHint')} error={fieldError('oidcIssuer')}>
+                <Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="https://acme.okta.com" inputMode="url" />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={t('tools.sso.clientId')} error={fieldError('oidcClientId')}>
+                  <Input value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" spellCheck={false} />
+                </Field>
+                <Field label={t('tools.sso.clientSecret')} hint={s.oidcSecretSet ? t('tools.sso.secretKept') : undefined} error={fieldError('oidcClientSecret')}>
+                  <Input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="new-password" placeholder={s.oidcSecretSet ? '••••••••' : ''} />
+                </Field>
+              </div>
+            </>
+          ) : (
           <div>
             <p className="mb-1.5 text-[13px] font-medium">{t('tools.sso.metadata')}</p>
             <Tabs
@@ -125,6 +161,7 @@ function SsoForm({ s }: { s: SSOSettings }) {
             )}
             {s.idpEntityId ? <p className="mt-1.5 text-xs text-muted-foreground">{t('tools.sso.currentIdp', { id: s.idpEntityId })}</p> : null}
           </div>
+          )}
           <Field label={t('tools.sso.domains')} hint={t('tools.sso.domainsHint')}>
             <Input value={domains} onChange={(e) => setDomains(e.target.value)} placeholder="example.com, example.in" />
           </Field>
@@ -157,13 +194,23 @@ function SsoForm({ s }: { s: SSOSettings }) {
         </form>
       </Card>
       <Card className="h-fit">
-        <CardHeader title={t('tools.sso.sp')} description={t('tools.sso.spBody')} />
+        <CardHeader title={t('tools.sso.sp')} description={kind === 'oidc' ? t('tools.sso.spBodyOidc') : t('tools.sso.spBody')} />
         <div className="space-y-3 px-5 py-4">
-          <CopyField label={t('tools.sso.entityId')} value={s.spEntityId} />
-          <CopyField label={t('tools.sso.acsUrl')} value={s.spAcsUrl} />
-          <CopyField label={t('tools.sso.spMetadata')} value={s.spMetadataUrl} />
-          <CopyField label={t('tools.sso.signInUrl')} value={s.signInUrl} hint={t('tools.sso.signInUrlHint')} />
-          <p className="text-xs text-muted-foreground">{t('tools.sso.attributes')}</p>
+          {kind === 'oidc' ? (
+            <>
+              <CopyField label={t('tools.sso.redirectUrl')} value={s.oidcRedirectUrl} />
+              <CopyField label={t('tools.sso.signInUrl')} value={s.signInUrl} hint={t('tools.sso.signInUrlHint')} />
+              <p className="text-xs text-muted-foreground">{t('tools.sso.oidcScopes')}</p>
+            </>
+          ) : (
+            <>
+              <CopyField label={t('tools.sso.entityId')} value={s.spEntityId} />
+              <CopyField label={t('tools.sso.acsUrl')} value={s.spAcsUrl} />
+              <CopyField label={t('tools.sso.spMetadata')} value={s.spMetadataUrl} />
+              <CopyField label={t('tools.sso.signInUrl')} value={s.signInUrl} hint={t('tools.sso.signInUrlHint')} />
+              <p className="text-xs text-muted-foreground">{t('tools.sso.attributes')}</p>
+            </>
+          )}
         </div>
       </Card>
       <ConfirmDialog

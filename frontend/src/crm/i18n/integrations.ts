@@ -14,7 +14,7 @@ const strings = {
     step1: '1. Create an OAuth app in {{where}}.',
     step2: '2. Add this redirect URL:',
     step3: '3. Put its ID and secret in the server’s environment (Render → Environment), then redeploy:',
-    sso: 'Single sign-on (SAML)',
+    sso: 'Single sign-on (SAML / OpenID)',
     ssoUse: 'Set up per product by its admin in Settings → Single sign-on (Okta, Entra ID, Google Workspace…). Nothing to add here.'
   },
   page: {
