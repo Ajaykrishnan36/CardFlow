@@ -266,9 +266,17 @@ func workspaceModules(ctx context.Context, q Querier, wsID uuid.UUID, isPlatform
 	if isPlatform {
 		// The owner's own workspace has no products; its members work the Platform CRM.
 		for _, o := range CatalogObjects() {
-			modules[o.Module] = true
+			if o.WorkspaceID == nil {
+				modules[o.Module] = true
+			}
 		}
 		return modules, products, nil
+	}
+	// Objects this product created for itself are always on here (D-79).
+	for _, o := range CatalogObjects() {
+		if o.WorkspaceID != nil && *o.WorkspaceID == wsID {
+			modules[o.Module] = true
+		}
 	}
 	rows, err := q.Query(ctx, `
 		SELECT p.id, p.key, p.name, v.config

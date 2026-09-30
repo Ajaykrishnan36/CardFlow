@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { createContext, useContext, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { objectsApi } from '@crm/api/endpoints';
+import { objectsApi, objectsApiFor } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { FieldType, ObjectDefinition } from '@crm/api/types';
 import { Button } from '@crm/components/ui/button';
@@ -18,6 +18,31 @@ export const objectKeys = {
   all: ['platform', 'objects'] as const,
   one: (key: string) => ['platform', 'objects', key] as const
 };
+
+/** Where the object builder works (D-79): the owner console, or one product's Settings. */
+export interface ObjectsScope {
+  api: ReturnType<typeof objectsApiFor>;
+  /** Route of the objects list, e.g. /crm/owner/objects or /crm/w/acme/settings/objects. */
+  base: string;
+  keys: { all: readonly unknown[]; one: (key: string) => readonly unknown[] };
+  /** Set in a product: only its own objects, no standard ones. */
+  product?: string;
+}
+
+const ownerObjectsScope: ObjectsScope = { api: objectsApi, base: '/crm/owner/objects', keys: objectKeys };
+const ScopeCtx = createContext<ObjectsScope>(ownerObjectsScope);
+export const ObjectsScopeProvider = ScopeCtx.Provider;
+export const useObjectsScope = () => useContext(ScopeCtx);
+
+export function productObjectsScope(code: string): ObjectsScope {
+  const c = encodeURIComponent(code);
+  return {
+    api: objectsApiFor(`/w/${c}`),
+    base: `/crm/w/${c}/settings/objects`,
+    keys: { all: ['workspace', code, 'objects'], one: (key: string) => ['workspace', code, 'objects', key] },
+    product: code
+  };
+}
 
 export { CREATABLE_TYPES as FIELD_TYPES } from '@crm/features/records/field-dialog';
 
@@ -92,16 +117,18 @@ export function NewObjectDialog({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const scope = useObjectsScope();
   const [singular, setSingular] = useState('');
   const [plural, setPlural] = useState('');
   const [pluralTouched, setPluralTouched] = useState(false);
   const [description, setDescription] = useState('');
   const [icon, setIcon] = useState('box');
   const create = useMutation({
-    mutationFn: () => objectsApi.create({ singular: singular.trim(), plural: plural.trim() || undefined, description: description.trim(), icon }),
+    mutationFn: () => scope.api.create({ singular: singular.trim(), plural: plural.trim() || undefined, description: description.trim(), icon }),
     onSuccess: (d) => {
-      void qc.invalidateQueries({ queryKey: objectKeys.all });
+      void qc.invalidateQueries({ queryKey: scope.keys.all });
       void qc.invalidateQueries({ queryKey: ['products'] });
+      if (scope.product) void qc.invalidateQueries({ queryKey: ['workspace', scope.product, 'context'] });
       toast.success(t('objects.createdToast', { name: d.plural }));
       onOpenChange(false);
       setSingular('');
@@ -110,7 +137,7 @@ export function NewObjectDialog({
       setDescription('');
       setIcon('box');
       onCreated?.(d);
-      if (navigateOnCreate) navigate(`/crm/owner/objects/${encodeURIComponent(d.key)}`);
+      if (navigateOnCreate) navigate(`${scope.base}/${encodeURIComponent(d.key)}`);
     }
   });
   const fe = isApiError(create.error) ? create.error.fieldErrors : {};

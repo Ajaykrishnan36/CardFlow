@@ -19,6 +19,7 @@ import { SsoPage } from './features/tools/sso-page';
 import { DeveloperPage } from './features/tools/developer-page';
 import { SignupPage } from './features/auth/signup-page';
 import { AppsPage } from './features/owner/apps-page';
+import { ProductObjectDetailPage, ProductObjectsPage } from './features/objects/product-objects';
 import { ComingSoonPage, NotFoundPage } from '@crm/features/system/pages';
 
 // Route-level code splitting (PRD §11 performance): only the sign-in screens ship eagerly.
@@ -157,6 +158,8 @@ function AppRoutes() {
               <Route path="settings/teams" element={<TeamsPage />} />
               <Route path="settings/sso" element={<SsoPage />} />
               <Route path="settings/developer" element={<DeveloperPage />} />
+              <Route path="settings/objects" element={<ProductObjectsPage />} />
+              <Route path="settings/objects/:key" element={<ProductObjectDetailPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [
                 <Route key={`w-${object}`} path={object} element={<RecordListPage key={object} object={object} />} />,
                 <Route key={`w-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,

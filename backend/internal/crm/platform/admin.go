@@ -636,7 +636,7 @@ func (h *Handler) adminOptions(w http.ResponseWriter, r *http.Request, sc *Admin
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
 		"canManageAccess": canAccess, "canManageMembers": canMembers, "userTypes": userTypes,
 		"grantable": sc.Limit.AsRules(),
-		"catalog":   accessCatalog{Objects: access.CatalogObjects(), Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles()},
+		"catalog":   accessCatalog{Objects: access.CatalogObjectsFor(sc.WS), Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles()},
 		"roles":     roles, "permissionSets": sets, "products": sc.Limit.Products, "isPlatform": sc.IsPlatform,
 	})
 }

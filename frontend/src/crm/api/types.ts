@@ -998,6 +998,9 @@ export interface ObjectFieldDef {
 }
 
 export interface ObjectDefinition {
+  /** Set when a product created it for itself (D-79). */
+  workspaceId?: string;
+  workspaceName?: string;
   key: string;
   module: string;
   singular: string;

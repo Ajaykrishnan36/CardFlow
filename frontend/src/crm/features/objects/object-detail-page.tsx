@@ -4,7 +4,6 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Archive, ArrowDown, ArrowUp, Code2, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react';
-import { objectsApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { FieldType, ObjectDefinition, ObjectDefinitionBody, ObjectFieldDef, StatusOption } from '@crm/api/types';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -18,7 +17,7 @@ import { Breadcrumbs, ConfirmDialog, PageContainer } from '@crm/components/page'
 import { ErrorState } from '@crm/components/states';
 import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
-import { FIELD_TYPES, UNIQUE_FIELD_TYPES, fieldErrorText, isLinkField, IconPicker, ObjectIcon, objectKeys } from './object-utils';
+import { FIELD_TYPES, UNIQUE_FIELD_TYPES, fieldErrorText, isLinkField, IconPicker, ObjectIcon, useObjectsScope } from './object-utils';
 
 const TONES: StatusOption['tone'][] = ['neutral', 'primary', 'success', 'warning', 'danger'];
 const toneDot: Record<StatusOption['tone'], string> = {
@@ -38,8 +37,11 @@ export function ObjectDetailPage() {
 function ObjectDetailView({ objectKey }: { objectKey: string }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const scope = useObjectsScope();
+  const objectsApi = scope.api;
+  const objectKeys = scope.keys;
   const q = useQuery({ queryKey: objectKeys.one(objectKey), queryFn: () => objectsApi.get(objectKey) });
-  const catalog = useQuery({ queryKey: objectKeys.all, queryFn: objectsApi.list });
+  const catalog = useQuery({ queryKey: objectKeys.all, queryFn: () => objectsApi.list() });
   const d = q.data;
   useDocumentTitle(d ? d.plural : t('objects.title'));
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -50,6 +52,7 @@ function ObjectDetailView({ objectKey }: { objectKey: string }) {
       qc.setQueryData(objectKeys.one(objectKey), next);
       void qc.invalidateQueries({ queryKey: objectKeys.all });
       void qc.invalidateQueries({ queryKey: ['records'] });
+      if (scope.product) void qc.invalidateQueries({ queryKey: ['workspace', scope.product, 'context'] });
       toast.success(t('objects.savedToast', { name: next.plural }));
     },
     onError: (e) => toast.error(fieldErrorText(e, t('common.genericError')))
@@ -87,7 +90,7 @@ function ObjectDetailView({ objectKey }: { objectKey: string }) {
 
   return (
     <PageContainer>
-      <Breadcrumbs items={[{ label: t('objects.title'), to: '/crm/owner/objects' }, { label: d.plural }]} />
+      <Breadcrumbs items={[{ label: t('objects.title'), to: scope.base }, { label: d.plural }]} />
       <Card className="mt-3 p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <ObjectIcon icon={d.icon} className="size-12" />

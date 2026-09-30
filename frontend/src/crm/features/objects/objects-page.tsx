@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Boxes, ChevronRight, Plus } from 'lucide-react';
-import { objectsApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { ObjectDefinition } from '@crm/api/types';
 import { Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -12,13 +11,14 @@ import { Skeleton } from '@crm/components/ui/spinner';
 import { PageContainer, PageHeader } from '@crm/components/page';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
-import { NewObjectDialog, ObjectIcon, objectKeys } from './object-utils';
+import { NewObjectDialog, ObjectIcon, useObjectsScope } from './object-utils';
 
 /** /crm/owner/objects — every object beyond leads/accounts/contacts: standard ones and yours. */
 export function ObjectsPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('objects.title'));
-  const q = useQuery({ queryKey: objectKeys.all, queryFn: objectsApi.list });
+  const scope = useObjectsScope();
+  const q = useQuery({ queryKey: scope.keys.all, queryFn: () => scope.api.list() });
   const [open, setOpen] = useState(false);
   const custom = q.data?.data.filter((d) => !d.standard) ?? [];
   const standard = q.data?.data.filter((d) => d.standard) ?? [];
@@ -27,7 +27,7 @@ export function ObjectsPage() {
     <PageContainer>
       <PageHeader
         title={t('objects.title')}
-        description={t('objects.subtitle')}
+        description={scope.product ? t('objects.productSubtitle') : t('objects.subtitle')}
         icon={
           <span className="grid size-10 place-items-center rounded-lg bg-primary-soft text-primary">
             <Boxes className="size-5" aria-hidden />
@@ -50,7 +50,7 @@ export function ObjectsPage() {
       ) : (
         <div className="space-y-5">
           <Card className="overflow-hidden">
-            <CardHeader title={t('objects.yours')} description={t('objects.yoursBody')} />
+            <CardHeader title={scope.product ? t('objects.productYours') : t('objects.yours')} description={scope.product ? t('objects.productYoursBody') : t('objects.yoursBody')} />
             {custom.length === 0 ? (
               <EmptyState
                 icon={Boxes}
@@ -66,10 +66,12 @@ export function ObjectsPage() {
               <ObjectRows list={custom} />
             )}
           </Card>
-          <Card className="overflow-hidden">
-            <CardHeader title={t('objects.standard')} description={t('objects.standardBody')} />
-            <ObjectRows list={standard} />
-          </Card>
+          {!scope.product ? (
+            <Card className="overflow-hidden">
+              <CardHeader title={t('objects.standard')} description={t('objects.standardBody')} />
+              <ObjectRows list={standard} />
+            </Card>
+          ) : null}
         </div>
       )}
       <NewObjectDialog open={open} onOpenChange={setOpen} icons={q.data?.icons ?? ['box']} />
@@ -79,16 +81,18 @@ export function ObjectsPage() {
 
 function ObjectRows({ list }: { list: ObjectDefinition[] }) {
   const { t } = useTranslation();
+  const scope = useObjectsScope();
   return (
     <ul className="divide-y border-t">
       {list.map((d) => (
         <li key={d.key}>
-          <Link to={`/crm/owner/objects/${encodeURIComponent(d.key)}`} className="group flex items-center gap-3 px-4 py-3 hover:bg-muted/50">
+          <Link to={`${scope.base}/${encodeURIComponent(d.key)}`} className="group flex items-center gap-3 px-4 py-3 hover:bg-muted/50">
             <ObjectIcon icon={d.icon} />
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-2 truncate text-[13px] font-semibold group-hover:text-primary">
                 {d.plural}
                 {d.status === 'archived' ? <Badge tone="neutral">{t('objects.archived')}</Badge> : null}
+                {!scope.product && d.workspaceName ? <Badge tone="primary">{t('objects.ofProduct', { name: d.workspaceName })}</Badge> : null}
               </p>
               <p className="truncate text-xs text-muted-foreground">{d.description || t('objects.noDescription')}</p>
             </div>

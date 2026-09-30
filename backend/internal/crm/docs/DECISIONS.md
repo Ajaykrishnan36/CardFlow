@@ -341,6 +341,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
 - **D-78 Run workflow on a record.** Record pages have a "Run workflow" menu with the active manual workflows for that
   object (only those "everyone can run" for people who don't manage workflows). A workflow with a form asks for its
   answers first; the list's bulk run uses the same flow.
+- **D-79 A product's own objects.** People with "Customize page layouts & fields" create objects in their product
+  (Settings → Objects & fields), with the same builder the owner uses. Such an object belongs to that product
+  (`object_definitions.workspace_id`): only that product's menu, permissions editor and API see it, it's on in every
+  one of its apps, and it isn't offered as a module for other setups. Platform-wide objects stay the owner's. The
+  owner console lists every object, marking the ones that belong to a product.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

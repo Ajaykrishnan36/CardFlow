@@ -269,7 +269,7 @@ func navForApp(nav []access.NavItem, app workspaceApp) []access.NavItem {
 		if o.App {
 			continue
 		}
-		on := app.modules[o.Module]
+		on := app.modules[o.Module] || o.WorkspaceID != nil // the product's own objects show in every app
 		keys[o.Module] = keys[o.Module] || on
 		keys[o.Key] = keys[o.Key] || on
 	}

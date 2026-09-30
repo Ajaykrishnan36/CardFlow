@@ -389,14 +389,19 @@ export function reportsApi(code: string) {
 }
 
 /** Objects defined as data: standard objects behind modules and the owner's custom objects. */
-export const objectsApi = {
-  list: () => api<ObjectsResponse>('/platform/objects'),
-  get: (key: string) => api<ObjectDefinition>(`/platform/objects/${enc(key)}`),
-  create: (body: ObjectDefinitionBody) => api<ObjectDefinition>('/platform/objects', { method: 'POST', body }),
-  update: (key: string, body: ObjectDefinitionBody) => api<ObjectDefinition>(`/platform/objects/${enc(key)}`, { method: 'PATCH', body }),
-  archive: (key: string) => api<ObjectDefinition>(`/platform/objects/${enc(key)}/archive`, { method: 'POST', body: {} }),
-  restore: (key: string) => api<ObjectDefinition>(`/platform/objects/${enc(key)}/restore`, { method: 'POST', body: {} })
-};
+/** Object builder API: '/platform' (owner, every object) or '/w/{code}' (a product's own objects, D-79). */
+export function objectsApiFor(prefix: string) {
+  const base = `${prefix}/objects`;
+  return {
+    list: () => api<ObjectsResponse>(base),
+    get: (key: string) => api<ObjectDefinition>(`${base}/${enc(key)}`),
+    create: (body: ObjectDefinitionBody) => api<ObjectDefinition>(base, { method: 'POST', body }),
+    update: (key: string, body: ObjectDefinitionBody) => api<ObjectDefinition>(`${base}/${enc(key)}`, { method: 'PATCH', body }),
+    archive: (key: string) => api<ObjectDefinition>(`${base}/${enc(key)}/archive`, { method: 'POST', body: {} }),
+    restore: (key: string) => api<ObjectDefinition>(`${base}/${enc(key)}/restore`, { method: 'POST', body: {} })
+  };
+}
+export const objectsApi = objectsApiFor('/platform');
 
 /** The connected app's own data (Business Card Snap), edited in place. */
 export function workspaceAppApi(code: string) {

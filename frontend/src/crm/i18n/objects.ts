@@ -81,6 +81,10 @@ const strings = {
   addOptions: 'Add at least one option.',
   helpText: 'Help text',
   required: 'Required',
+  productSubtitle: 'Objects this product created for itself. Only this product sees them; they work like Leads or Accounts — lists, record pages, fields, reports, workflows and the API.',
+  productYours: 'This product’s objects',
+  productYoursBody: 'After creating one, give people access in Settings → Users & access (Super Admins have it already).',
+  ofProduct: 'Only in {{name}}',
   uniqueHint: 'No two records can share the same value in this field.',
   types: {
     text: 'Text',

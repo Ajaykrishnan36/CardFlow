@@ -80,6 +80,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if e.HasCapability(CapAccessManage) {
 		nav = append(nav, NavItem{Key: "sso", Label: "Single sign-on", Path: base + "/settings/sso", Icon: "key-round", Group: "Settings", Available: true})
 	}
+	// A product's own objects and fields (D-79).
+	if e.HasCapability(CapMetadata) {
+		nav = append(nav, NavItem{Key: "objects", Label: "Objects & fields", Path: base + "/settings/objects", Icon: "box", Group: "Settings", Available: true})
+	}
 	if e.HasCapability(CapDeveloper) {
 		nav = append(nav, NavItem{Key: "developer", Label: "API & webhooks", Path: base + "/settings/developer", Icon: "code", Group: "Settings", Available: true})
 	}

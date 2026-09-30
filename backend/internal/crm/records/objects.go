@@ -55,11 +55,14 @@ type ObjectDefinition struct {
 	Icon        string `json:"icon"`
 	Prefix      string `json:"prefix"`
 	ObjectBody
-	Standard  bool      `json:"standard"`
-	Status    string    `json:"status"`
-	Records   int       `json:"records"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Standard bool `json:"standard"`
+	// WorkspaceID: the product that created it (D-79); empty = platform-wide.
+	WorkspaceID   *uuid.UUID `json:"workspaceId,omitempty"`
+	WorkspaceName string     `json:"workspaceName,omitempty"`
+	Status        string     `json:"status"`
+	Records       int        `json:"records"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
 // ObjectIcons are the icons an object can use (the web app maps each to a glyph).
@@ -336,8 +339,10 @@ func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefi
 	rows, err := q.Query(ctx, `
 		SELECT d.key, d.module, d.singular, d.plural, d.description, d.icon, d.prefix, d.definition, d.is_standard, d.status,
 		       d.created_at, d.updated_at,
-		       (SELECT count(*) FROM crm.object_records r WHERE r.object_key = d.key AND r.deleted_at IS NULL)
-		FROM crm.object_definitions d ORDER BY d.is_standard DESC, d.created_at`)
+		       (SELECT count(*) FROM crm.object_records r WHERE r.object_key = d.key AND r.deleted_at IS NULL),
+		       d.workspace_id, COALESCE(w.name, '')
+		FROM crm.object_definitions d LEFT JOIN crm.workspaces w ON w.id = d.workspace_id
+		ORDER BY d.is_standard DESC, d.created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +352,7 @@ func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefi
 		d := &ObjectDefinition{}
 		var raw []byte
 		if err := rows.Scan(&d.Key, &d.Module, &d.Singular, &d.Plural, &d.Description, &d.Icon, &d.Prefix, &raw, &d.Standard, &d.Status,
-			&d.CreatedAt, &d.UpdatedAt, &d.Records); err != nil {
+			&d.CreatedAt, &d.UpdatedAt, &d.Records, &d.WorkspaceID, &d.WorkspaceName); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(raw, &d.ObjectBody)
@@ -380,9 +385,10 @@ func (h *Handler) reloadObjects(ctx context.Context) error {
 		specsByKey[d.Key] = buildSpec(d)
 		catalog = append(catalog, access.CatalogObject{
 			Key: d.Key, Label: d.Plural, Module: d.Module, Actions: access.RecordActions(),
-			Custom: true, Route: d.Key, Icon: d.Icon,
+			Custom: true, Route: d.Key, Icon: d.Icon, WorkspaceID: d.WorkspaceID,
 		})
-		if !d.Standard {
+		// A product's own objects aren't modules the owner can put in other setups.
+		if !d.Standard && d.WorkspaceID == nil {
 			modules = append(modules, platform.ModuleInfo{Key: d.Module, Label: d.Plural, Description: d.Description, Group: "Custom objects",
 				Available: true, Custom: true, Objects: []string{d.Key}})
 		}
@@ -707,6 +713,11 @@ func (h *Handler) handleGetObject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleCreateObject(w http.ResponseWriter, r *http.Request) {
+	h.createObject(w, r, nil)
+}
+
+// createObject: ws set = an object the product creates for itself (D-79).
+func (h *Handler) createObject(w http.ResponseWriter, r *http.Request, ws *uuid.UUID) {
 	ctx := r.Context()
 	var in objectInput
 	if err := shared.DecodeJSON(w, r, &in); err != nil {
@@ -722,8 +733,8 @@ func (h *Handler) handleCreateObject(w http.ResponseWriter, r *http.Request) {
 	raw, _ := json.Marshal(d.ObjectBody)
 	err := h.store.WithTx(ctx, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO crm.object_definitions (key, module, singular, plural, description, icon, prefix, definition, created_by)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`, d.Key, d.Module, d.Singular, d.Plural, d.Description, d.Icon, d.Prefix, raw, actor); err != nil {
+			INSERT INTO crm.object_definitions (key, module, singular, plural, description, icon, prefix, definition, created_by, workspace_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, d.Key, d.Module, d.Singular, d.Plural, d.Description, d.Icon, d.Prefix, raw, actor, ws); err != nil {
 			return err
 		}
 		for _, ddl := range viewDDL(d.Key) {
@@ -732,7 +743,7 @@ func (h *Handler) handleCreateObject(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		meta := identity.Meta(r)
-		return shared.WriteAudit(ctx, tx, shared.AuditEvent{ActorID: &actor, Action: "object.created", EntityType: "object",
+		return shared.WriteAudit(ctx, tx, shared.AuditEvent{WorkspaceID: ws, ActorID: &actor, Action: "object.created", EntityType: "object",
 			After: map[string]any{"key": d.Key, "label": d.Plural, "fields": len(d.Fields)}, IP: meta.IP, RequestID: meta.RequestID})
 	})
 	if err != nil {
@@ -1008,4 +1019,78 @@ func addMissingStandardOptions(ctx context.Context, tx pgx.Tx, d ObjectDefinitio
 	out, _ := json.Marshal(stored)
 	_, err := tx.Exec(ctx, `UPDATE crm.object_definitions SET definition = $2, updated_at = now() WHERE key = $1`, d.Key, out)
 	return err
+}
+
+// ---- product API: /w/{code}/objects (D-79) ----
+// A product's customizers (metadata.manage) create and edit objects that belong to the
+// product. They can't touch platform-wide or other products' objects.
+
+func (h *Handler) workspaceObjectRoutes(r chi.Router) {
+	r.Get("/objects", h.handleListWorkspaceObjects)
+	r.Post("/objects", func(w http.ResponseWriter, r *http.Request) {
+		sc, ok := h.requireCustomizer(w, r)
+		if !ok {
+			return
+		}
+		ws := sc.WS
+		h.createObject(w, r, &ws)
+	})
+	r.Get("/objects/{key}", h.ownObject(h.handleGetObject))
+	r.Patch("/objects/{key}", h.ownObject(h.handleUpdateObject))
+	r.Post("/objects/{key}/archive", h.ownObject(h.setObjectStatus("archived")))
+	r.Post("/objects/{key}/restore", h.ownObject(h.setObjectStatus("active")))
+}
+
+func (h *Handler) requireCustomizer(w http.ResponseWriter, r *http.Request) (*Scope, bool) {
+	sc := scopeFrom(r.Context())
+	if sc == nil || sc.IsPlatformWS || apiKeyFrom(r.Context()) != nil || !sc.CanCustomize() {
+		shared.WriteError(w, r, shared.Forbidden("forbidden", "You need the “Customize page layouts & fields” permission."))
+		return nil, false
+	}
+	return sc, true
+}
+
+// ownObject allows only this product's own objects.
+func (h *Handler) ownObject(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sc, ok := h.requireCustomizer(w, r)
+		if !ok {
+			return
+		}
+		d, err := h.findDefinition(r.Context(), chi.URLParam(r, "key"))
+		if err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+		if d.WorkspaceID == nil || *d.WorkspaceID != sc.WS {
+			shared.WriteError(w, r, shared.Forbidden("not_your_object", "Only objects this product created can be changed here."))
+			return
+		}
+		next(w, r)
+	}
+}
+
+func (h *Handler) handleListWorkspaceObjects(w http.ResponseWriter, r *http.Request) {
+	sc, ok := h.requireCustomizer(w, r)
+	if !ok {
+		return
+	}
+	defs, err := h.listDefinitions(r.Context(), h.store.Pool)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	own := []*ObjectDefinition{}
+	for _, d := range defs {
+		if d.WorkspaceID != nil && *d.WorkspaceID == sc.WS {
+			own = append(own, d)
+		}
+	}
+	targets := []lookupTarget{}
+	for _, t := range h.lookupTargets() {
+		if s := specFor(t.Key); s == nil || !s.Custom || sc.Enabled(t.Key) {
+			targets = append(targets, t)
+		}
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"data": own, "icons": ObjectIcons, "lookupTargets": targets})
 }

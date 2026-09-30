@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 // Rules is the permission JSON stored in roles.base_rules and permission_sets.rules
@@ -69,6 +71,19 @@ type CatalogObject struct {
 	Custom bool   `json:"custom,omitempty"`
 	Route  string `json:"route,omitempty"`
 	Icon   string `json:"icon,omitempty"`
+	// WorkspaceID: an object a product created for itself (D-79); nil = platform-wide.
+	WorkspaceID *uuid.UUID `json:"-"`
+}
+
+// CatalogObjectsFor is the catalog one workspace may see: platform-wide objects and its own.
+func CatalogObjectsFor(ws uuid.UUID) []CatalogObject {
+	out := []CatalogObject{}
+	for _, o := range CatalogObjects() {
+		if o.WorkspaceID == nil || *o.WorkspaceID == ws {
+			out = append(out, o)
+		}
+	}
+	return out
 }
 
 type CatalogEntry struct {
