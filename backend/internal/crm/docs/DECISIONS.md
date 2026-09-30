@@ -377,6 +377,15 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   90, 180 or 365 days after they were deleted (with a warning that it can't be undone). The worker checks at most
   hourly, removes up to 500 records a run through the same path as "Delete permanently" (links cleared, audit entry by
   the system), and skips records still in use. Nothing changes for products that don't opt in. Additive migration 0016.
+- **D-85 Setup wizard: statuses/stages out, lead conversion into Objects.** The product setup wizard drops the
+  separate "Sales process" step (now five steps: Details & branding → Objects → Roles & user types → Sign-in &
+  integrations → Review & publish). Lead statuses and opportunity stages are no longer edited there; every product
+  keeps the standard defaults (backend normalize() fills leadStatuses and pipelineStages whenever a config leaves them
+  empty, so publish never blocks), and they are edited per object afterwards under Objects → Leads/Opportunities →
+  Statuses, the way Twenty edits the Stage field's options. The "Lead conversion" toggles (create contact / create
+  opportunity / only qualified) moved onto the Objects step, shown only when the Leads module is on, and appear under
+  Objects in the review summary. Old `?step=pipeline` links fall back to the first step. Frontend only, plus the
+  normalize() default-fill; no migration.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

@@ -9,7 +9,7 @@ import { Button } from '@crm/components/ui/button';
 import { cn } from '@crm/lib/utils';
 import { LOGIN_METHODS, nextVersion, SETUP_STEPS, stepForField, type SetupStep } from './product-utils';
 import type { ProductDraft } from './use-product-draft';
-import { GeneralStep, LoginStep, ModulesStep, PipelineStep, ReviewStep, RolesStep } from './setup-steps';
+import { GeneralStep, LoginStep, ModulesStep, ReviewStep, RolesStep } from './setup-steps';
 
 type SaveResult = { ok: true } | { ok: false; error: unknown };
 
@@ -38,8 +38,6 @@ function stepComplete(step: SetupStep, d: ProductDraft): boolean {
       return d.config.modules.length > 0;
     case 'roles':
       return d.config.userTypes.length > 0 && d.config.roles.some((r) => r.enabled);
-    case 'pipeline':
-      return d.config.leadStatuses.length > 0 && d.config.pipelineStages.length > 0;
     case 'login':
       return LOGIN_METHODS.some((k) => d.config.loginMethods[k]);
     default:
@@ -164,6 +162,7 @@ export function ProductSetupWizard(props: WizardProps) {
             <ModulesStep
               catalog={product.moduleCatalog}
               modules={draft.config.modules}
+              conversion={draft.config.conversion}
               updateConfig={updateConfig}
               onObjectCreated={(key) => {
                 void qc.invalidateQueries({ queryKey: ['product', product.id] });
@@ -172,7 +171,6 @@ export function ProductSetupWizard(props: WizardProps) {
             />
           ) : null}
           {step === 'roles' ? <RolesStep config={draft.config} updateConfig={updateConfig} /> : null}
-          {step === 'pipeline' ? <PipelineStep config={draft.config} updateConfig={updateConfig} /> : null}
           {step === 'login' ? <LoginStep config={draft.config} updateConfig={updateConfig} /> : null}
           {step === 'review' ? (
             <ReviewStep

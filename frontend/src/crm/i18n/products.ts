@@ -163,9 +163,8 @@ const strings = {
     remove: 'Remove',
     steps: {
       general: { title: 'Details & branding', description: 'Name, description, icon and colour of this product.' },
-      modules: { title: 'Objects', description: 'Pick the objects this product uses — Leads, Accounts, Contacts, Opportunities and more, including your own.' },
+      modules: { title: 'Objects', description: 'Pick the objects this product uses — Leads, Accounts, Contacts, Opportunities and more, including your own — and what converting a lead creates.' },
       roles: { title: 'Roles & user types', description: 'Name the roles and the kinds of people who use this product, and which roles each may hold.' },
-      pipeline: { title: 'Sales process', description: 'The lead statuses, the opportunity stages with their win probability, and what converting a lead creates.' },
       login: { title: 'Sign-in & integrations', description: 'How people sign in, whether they can sign up themselves, and API & webhook access.' },
       review: { title: 'Review & publish', description: 'Check everything, then publish a new version.' }
     },
@@ -176,6 +175,7 @@ const strings = {
       accent: 'Accent colour'
     },
     modules: {
+      objectsTitle: 'Objects',
       noneHint: 'Select at least one module. A setup needs one to be published.',
       catalogEmpty: 'No modules are available yet.',
       objectsIntro: 'Every module is a set of objects with their own pages, fields, permissions and API. Need something else? Create your own object — it appears here as a module.',

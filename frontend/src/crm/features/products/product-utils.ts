@@ -74,8 +74,8 @@ export function normalizeConfig(c: Partial<ProductConfig> | undefined): ProductC
 /** Sign-in methods a product can allow (D-64), in the order the setup shows them. */
 export const LOGIN_METHODS = ['password', 'otp', 'google', 'microsoft', 'linkedin', 'sso'] as const;
 
-export type SetupStep = 'general' | 'modules' | 'roles' | 'pipeline' | 'login' | 'review';
-export const SETUP_STEPS: SetupStep[] = ['general', 'modules', 'roles', 'pipeline', 'login', 'review'];
+export type SetupStep = 'general' | 'modules' | 'roles' | 'login' | 'review';
+export const SETUP_STEPS: SetupStep[] = ['general', 'modules', 'roles', 'login', 'review'];
 
 /** Publish-validation field key (possibly nested, e.g. "userTypes.0.label") → wizard step that fixes it. */
 export function stepForField(field: string): SetupStep {
@@ -94,7 +94,8 @@ export function stepForField(field: string): SetupStep {
     case 'leadStatuses':
     case 'pipelineStages':
     case 'conversion':
-      return 'pipeline';
+      // Lead conversion moved into the Objects step; statuses/stages are edited per object (D-85).
+      return 'modules';
     case 'loginMethods':
     case 'selfRegistration':
     case 'integrations':

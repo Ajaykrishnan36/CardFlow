@@ -220,11 +220,14 @@ func (c *ProductConfig) normalize() {
 		}
 		c.Roles = append(c.Roles, r)
 	}
+	// Statuses and stages are no longer edited in the setup wizard (D-85); they seed the
+	// Leads/Opportunities pick-lists at publish and are edited per object afterwards. Keep
+	// sensible defaults whenever a config leaves them empty so publish never blocks on them.
 	if len(c.LeadStatuses) == 0 {
 		c.LeadStatuses = d.LeadStatuses
 	}
-	if c.PipelineStages == nil {
-		c.PipelineStages = []Stage{}
+	if len(c.PipelineStages) == 0 {
+		c.PipelineStages = d.PipelineStages
 	}
 	if !c.LoginMethods.Enforced {
 		// Keep what worked before enforcement: password and email code.

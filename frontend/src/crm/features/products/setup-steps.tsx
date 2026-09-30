@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { objectsApi } from '@crm/api/endpoints';
 import { NewObjectDialog } from '@crm/features/objects/object-utils';
-import { ArrowDown, ArrowUp, Check, Lock, Plus, Rocket, Trash2 } from 'lucide-react';
+import { Check, Lock, Plus, Rocket, Trash2 } from 'lucide-react';
 import type { ModuleInfo, ProductConfig, ProductDetail, SystemRoleKey } from '@crm/api/types';
 import { Alert, Badge } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
@@ -13,7 +13,7 @@ import { Field } from '@crm/components/ui/field';
 import { Checkbox, Switch, Textarea } from '@crm/components/ui/form-controls';
 import { cn } from '@crm/lib/utils';
 import { ACCENT_COLORS, PRODUCT_ICON_KEYS, PRODUCT_ICONS, ProductIcon } from './product-icon';
-import { LOGIN_METHODS, moveItem, stepForField, syncedKey, type SetupStep } from './product-utils';
+import { LOGIN_METHODS, stepForField, syncedKey, type SetupStep } from './product-utils';
 import type { ProductDraft } from './use-product-draft';
 
 type UpdateConfig = (patch: Partial<ProductConfig>) => void;
@@ -31,23 +31,6 @@ export function StepSection({ title, description, children, aside }: { title: st
       </div>
       {children}
     </section>
-  );
-}
-
-function RowActions({ index, length, onMove, onRemove, removeLabel }: { index: number; length: number; onMove: (d: -1 | 1) => void; onRemove: () => void; removeLabel: string }) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      <Button type="button" variant="subtle" size="icon-sm" onClick={() => onMove(-1)} disabled={index === 0} aria-label={t('products.setup.moveUp')}>
-        <ArrowUp />
-      </Button>
-      <Button type="button" variant="subtle" size="icon-sm" onClick={() => onMove(1)} disabled={index === length - 1} aria-label={t('products.setup.moveDown')}>
-        <ArrowDown />
-      </Button>
-      <Button type="button" variant="subtle" size="icon-sm" onClick={onRemove} aria-label={removeLabel} className="hover:text-danger">
-        <Trash2 />
-      </Button>
-    </div>
   );
 }
 
@@ -140,11 +123,14 @@ function titleCase(s: string) {
 export function ModulesStep({
   catalog,
   modules,
+  conversion,
   updateConfig,
   onObjectCreated
 }: {
   catalog: ModuleInfo[];
   modules: string[];
+  /** Lead conversion lives on this step now (D-85). */
+  conversion: ProductConfig['conversion'];
   updateConfig: UpdateConfig;
   /** A new custom object was created from here: switch its module on. */
   onObjectCreated?: (moduleKey: string) => void;
@@ -230,6 +216,23 @@ export function ModulesStep({
           </div>
         </StepSection>
       ))}
+      {modules.includes('leads') ? (
+        <StepSection title={t('products.setup.pipeline.conversionTitle')} description={t('products.setup.pipeline.conversionBody')}>
+          <div className="divide-y rounded-lg border">
+            {(['createContact', 'createOpportunity', 'requireQualified'] as const).map((k) => (
+              <Switch
+                key={k}
+                id={`conv-${k}`}
+                className="px-3 py-3"
+                label={t(`products.setup.pipeline.${k}`)}
+                description={t(`products.setup.pipeline.${k}Hint`)}
+                checked={conversion[k]}
+                onCheckedChange={(v) => updateConfig({ conversion: { ...conversion, [k]: v } })}
+              />
+            ))}
+          </div>
+        </StepSection>
+      ) : null}
       <NewObjectDialog
         open={creating}
         onOpenChange={setCreating}
@@ -353,134 +356,6 @@ export function RolesStep({ config, updateConfig }: { config: ProductConfig; upd
                 </Button>
               </div>
             </div>
-          ))}
-        </div>
-      </StepSection>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- 4. Sales process
-export function PipelineStep({ config, updateConfig }: { config: ProductConfig; updateConfig: UpdateConfig }) {
-  const { t } = useTranslation();
-  const statuses = config.leadStatuses;
-  const stages = config.pipelineStages;
-
-  return (
-    <div className="space-y-8">
-      <StepSection
-        title={t('products.setup.pipeline.statusesTitle')}
-        description={t('products.setup.pipeline.statusesBody')}
-        aside={
-          <Button type="button" variant="outline" size="sm" onClick={() => updateConfig({ leadStatuses: [...statuses, { value: '', label: '' }] })}>
-            <Plus /> {t('products.setup.pipeline.addStatus')}
-          </Button>
-        }
-      >
-        {statuses.length === 0 ? <Alert tone="warning">{t('products.setup.pipeline.noStatuses')}</Alert> : null}
-        <ol className="space-y-2">
-          {statuses.map((s, i) => (
-            <li key={i} className="flex flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:items-center">
-              <span className="hidden w-6 shrink-0 text-center text-xs tabular-nums text-muted-foreground sm:block">{i + 1}</span>
-              <Input
-                value={s.label}
-                placeholder={t('products.setup.pipeline.statusLabel')}
-                aria-label={t('products.setup.pipeline.statusLabel')}
-                onChange={(e) =>
-                  updateConfig({
-                    leadStatuses: statuses.map((x, j) => (j === i ? { label: e.target.value, value: syncedKey(x.value, x.label, e.target.value) } : x))
-                  })
-                }
-              />
-              <div className="flex items-center gap-2">
-                <Input
-                  className="font-mono sm:w-44"
-                  value={s.value}
-                  placeholder={t('products.setup.pipeline.statusValue')}
-                  aria-label={t('products.setup.pipeline.statusValue')}
-                  spellCheck={false}
-                  autoCapitalize="none"
-                  onChange={(e) =>
-                    updateConfig({ leadStatuses: statuses.map((x, j) => (j === i ? { ...x, value: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '') } : x)) })
-                  }
-                />
-                <RowActions
-                  index={i}
-                  length={statuses.length}
-                  onMove={(d) => updateConfig({ leadStatuses: moveItem(statuses, i, d) })}
-                  onRemove={() => updateConfig({ leadStatuses: statuses.filter((_, j) => j !== i) })}
-                  removeLabel={t('products.setup.remove')}
-                />
-              </div>
-            </li>
-          ))}
-        </ol>
-      </StepSection>
-
-      <StepSection
-        title={t('products.setup.pipeline.stagesTitle')}
-        description={t('products.setup.pipeline.stagesBody')}
-        aside={
-          <Button type="button" variant="outline" size="sm" onClick={() => updateConfig({ pipelineStages: [...stages, { key: '', label: '', probability: 50 }] })}>
-            <Plus /> {t('products.setup.pipeline.addStage')}
-          </Button>
-        }
-      >
-        {stages.length === 0 ? <Alert tone="warning">{t('products.setup.pipeline.noStages')}</Alert> : null}
-        <ol className="space-y-2">
-          {stages.map((s, i) => (
-            <li key={i} className="flex flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:items-center">
-              <span className="hidden w-6 shrink-0 text-center text-xs tabular-nums text-muted-foreground sm:block">{i + 1}</span>
-              <Input
-                value={s.label}
-                placeholder={t('products.setup.pipeline.stageLabel')}
-                aria-label={t('products.setup.pipeline.stageLabel')}
-                onChange={(e) =>
-                  updateConfig({
-                    pipelineStages: stages.map((x, j) => (j === i ? { ...x, label: e.target.value, key: syncedKey(x.key, x.label, e.target.value) } : x))
-                  })
-                }
-              />
-              <div className="flex items-center gap-2">
-                <Input
-                  className="sm:w-28"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={100}
-                  value={Number.isFinite(s.probability) ? s.probability : 0}
-                  aria-label={t('products.setup.pipeline.probability')}
-                  trailing={<span className="pr-2 text-xs text-muted-foreground">%</span>}
-                  onChange={(e) => {
-                    const n = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0)));
-                    updateConfig({ pipelineStages: stages.map((x, j) => (j === i ? { ...x, probability: n } : x)) });
-                  }}
-                />
-                <RowActions
-                  index={i}
-                  length={stages.length}
-                  onMove={(d) => updateConfig({ pipelineStages: moveItem(stages, i, d) })}
-                  onRemove={() => updateConfig({ pipelineStages: stages.filter((_, j) => j !== i) })}
-                  removeLabel={t('products.setup.remove')}
-                />
-              </div>
-            </li>
-          ))}
-        </ol>
-      </StepSection>
-
-      <StepSection title={t('products.setup.pipeline.conversionTitle')} description={t('products.setup.pipeline.conversionBody')}>
-        <div className="divide-y rounded-lg border">
-          {(['createContact', 'createOpportunity', 'requireQualified'] as const).map((k) => (
-            <Switch
-              key={k}
-              id={`conv-${k}`}
-              className="px-3 py-3"
-              label={t(`products.setup.pipeline.${k}`)}
-              description={t(`products.setup.pipeline.${k}Hint`)}
-              checked={config.conversion[k]}
-              onCheckedChange={(v) => updateConfig({ conversion: { ...config.conversion, [k]: v } })}
-            />
           ))}
         </div>
       </StepSection>
@@ -636,7 +511,17 @@ export function ReviewStep({
       </ReviewBlock>
 
       <ReviewBlock title={t('products.setup.steps.modules.title')} onEdit={() => goTo('modules')}>
-        <Chips items={c.modules.map(moduleLabel)} empty={none} />
+        <Row label={t('products.setup.modules.objectsTitle')}>
+          <Chips items={c.modules.map(moduleLabel)} empty={none} />
+        </Row>
+        {c.modules.includes('leads') ? (
+          <Row label={t('products.setup.pipeline.conversionTitle')}>
+            <span className="text-muted-foreground">
+              {t('products.setup.pipeline.createContact')}: {on(c.conversion.createContact)} · {t('products.setup.pipeline.createOpportunity')}:{' '}
+              {on(c.conversion.createOpportunity)} · {t('products.setup.pipeline.requireQualified')}: {on(c.conversion.requireQualified)}
+            </span>
+          </Row>
+        ) : null}
       </ReviewBlock>
 
       <ReviewBlock title={t('products.setup.steps.roles.title')} onEdit={() => goTo('roles')}>
@@ -658,21 +543,6 @@ export function ReviewStep({
               ))}
             </ul>
           )}
-        </Row>
-      </ReviewBlock>
-
-      <ReviewBlock title={t('products.setup.steps.pipeline.title')} onEdit={() => goTo('pipeline')}>
-        <Row label={t('products.setup.pipeline.statusesTitle')}>
-          <Chips items={c.leadStatuses.map((s) => s.label || s.value)} empty={none} />
-        </Row>
-        <Row label={t('products.setup.pipeline.stagesTitle')}>
-          <Chips items={c.pipelineStages.map((s) => `${s.label || s.key} · ${s.probability}%`)} empty={none} />
-        </Row>
-        <Row label={t('products.setup.pipeline.conversionTitle')}>
-          <span className="text-muted-foreground">
-            {t('products.setup.pipeline.createContact')}: {on(c.conversion.createContact)} · {t('products.setup.pipeline.createOpportunity')}:{' '}
-            {on(c.conversion.createOpportunity)} · {t('products.setup.pipeline.requireQualified')}: {on(c.conversion.requireQualified)}
-          </span>
         </Row>
       </ReviewBlock>
 
