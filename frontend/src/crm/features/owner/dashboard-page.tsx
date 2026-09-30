@@ -13,6 +13,7 @@ import { Skeleton } from '@crm/components/ui/spinner';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { cn, relativeTime, timeOfDayGreeting } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
+import { ownerFilterParams, useOwnerFilter } from './owner-filter';
 
 const kpiIcons: Record<string, LucideIcon> = {
   products: Boxes,
@@ -31,7 +32,8 @@ export function OwnerDashboardPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('brand.ownerConsole'));
   const { data: me } = useMe();
-  const q = useQuery({ queryKey: ['platform', 'dashboard'], queryFn: platformApi.dashboard, staleTime: 60_000 });
+  const filter = useOwnerFilter();
+  const q = useQuery({ queryKey: ['platform', 'dashboard', filter.product, filter.app], queryFn: () => platformApi.dashboard(ownerFilterParams(filter)), staleTime: 60_000 });
   const firstName = me?.identity.displayName.split(' ')[0] ?? '';
   const greetingKey = { morning: 'greetingMorning', afternoon: 'greetingAfternoon', evening: 'greetingEvening' }[timeOfDayGreeting()];
 

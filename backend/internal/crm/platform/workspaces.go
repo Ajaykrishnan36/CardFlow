@@ -100,12 +100,14 @@ func scanWorkspaceSummary(row pgx.Row) (WorkspaceSummary, error) {
 	return s, err
 }
 
-func (h *Handler) listWorkspaces(ctx context.Context, q, status string) ([]WorkspaceSummary, error) {
+func (h *Handler) listWorkspaces(ctx context.Context, q, status string, f ownerFilter) ([]WorkspaceSummary, error) {
 	rows, err := h.store.Pool.Query(ctx, workspaceSummarySelect+`
 		WHERE NOT w.is_platform
 		  AND ($1 = '' OR w.name ILIKE $1 OR w.code ILIKE $1)
 		  AND ($2 = '' OR w.status = $2)
-		ORDER BY w.created_at DESC`, likePattern(q), status)
+		  AND ($3::uuid IS NULL OR w.id = $3::uuid)
+		  AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM crm.workspace_products wp WHERE wp.workspace_id = w.id AND wp.product_id = $4::uuid AND wp.status = 'active'))
+		ORDER BY w.created_at DESC`, likePattern(q), status, f.Workspace, f.App)
 	if err != nil {
 		return nil, err
 	}
@@ -392,7 +394,7 @@ func (h *Handler) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	default:
 		status = ""
 	}
-	list, err := h.listWorkspaces(r.Context(), r.URL.Query().Get("q"), status)
+	list, err := h.listWorkspaces(r.Context(), r.URL.Query().Get("q"), status, ownerFilterFrom(r))
 	writeResult(w, r, http.StatusOK, map[string]any{"data": list, "total": len(list)}, err)
 }
 

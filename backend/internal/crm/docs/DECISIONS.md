@@ -322,6 +322,9 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   the server falls back to the first app. Members see only the apps they are given. Owner console: *Administration →
   Apps* lists every app installed in every product, the dashboard's Apps card counts them, and the product page's
   tab is "Apps" (New app / Add existing app / Edit app setup).
+- **D-74 Owner console filter.** The owner sidebar has two filters: Product (default "All products"), then App
+  (default "All apps", listing only the selected product's apps). The Overview cards, Products, Apps and the
+  Leads / Accounts / Contacts lists follow it; the setup checklist always covers the whole platform. Kept in the browser.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

@@ -10,12 +10,14 @@ import { PageContainer, PageHeader, SearchInput } from '@crm/components/page';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { relativeTime } from '@crm/lib/utils';
+import { ownerFilterParams, useOwnerFilter } from './owner-filter';
 
 /** /crm/owner/apps — every app installed in every product (D-73). */
 export function AppsPage() {
   const { t } = useTranslation();
   useDocumentTitle(t('owner.apps.title'));
-  const q = useQuery({ queryKey: ['platform', 'apps'], queryFn: () => platformApi.apps() });
+  const filter = useOwnerFilter();
+  const q = useQuery({ queryKey: ['platform', 'apps', filter.product, filter.app], queryFn: () => platformApi.apps(ownerFilterParams(filter)) });
   const [search, setSearch] = useState('');
   const rows = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -27,7 +29,7 @@ export function AppsPage() {
       <PageHeader title={t('owner.apps.title')} description={t('owner.apps.subtitle')} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <SearchInput value={search} onChange={setSearch} placeholder={t('owner.apps.search')} />
-        {q.data ? <p className="text-[13px] text-muted-foreground">{t('owner.apps.count', { count: q.data.length, products })}</p> : null}
+        {q.data ? <p className="text-[13px] text-muted-foreground">{t('owner.apps.count', { count: q.data.length })} {t('owner.apps.inProducts', { count: products })}</p> : null}
       </div>
       <Card className="overflow-hidden">
         {q.isPending ? (

@@ -212,12 +212,20 @@ const en = {
     idleWarning: 'For security, privileged sessions end after 30 minutes of inactivity.'
   },
   owner: {
+    filter: {
+      product: 'Product',
+      app: 'App',
+      allProducts: 'All products',
+      allApps: 'All apps'
+    },
     apps: {
       title: 'Apps',
       subtitle: 'Every app installed in a product. A product can have several apps — each with its own menu, objects and setup — and they share the product’s records.',
       search: 'Search by app or product…',
-      count_one: '{{count}} app in {{products}} products',
-      count_other: '{{count}} apps in {{products}} products',
+      count_one: '{{count}} app',
+      count_other: '{{count}} apps',
+      inProducts_one: 'in {{count}} product',
+      inProducts_other: 'in {{count}} products',
       error: 'Couldn’t load apps',
       emptyTitle: 'No apps installed yet',
       emptyBody: 'Open a product and add an app from its Apps tab.',

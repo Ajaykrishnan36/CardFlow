@@ -12,6 +12,7 @@ import { EmptyState, ErrorState } from '@crm/components/states';
 import { PageContainer, PageHeader, SearchInput, SegmentedFilter } from '@crm/components/page';
 import { relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
+import { ownerFilterParams, useOwnerFilter } from '@crm/features/owner/owner-filter';
 import { WorkspaceStatusBadge, WorkspaceTile } from './workspace-ui';
 
 type StatusFilter = '' | 'active' | 'suspended';
@@ -40,9 +41,10 @@ export function WorkspacesPage() {
   );
   const onSearch = useCallback((v: string) => setParam('q', v), [setParam]);
 
+  const ownerFilter = useOwnerFilter();
   const list = useQuery({
-    queryKey: ['workspaces', { q, status }],
-    queryFn: () => workspacesApi.list({ q, status }),
+    queryKey: ['workspaces', { q, status, product: ownerFilter.product, app: ownerFilter.app }],
+    queryFn: () => workspacesApi.list({ q, status, ...ownerFilterParams(ownerFilter) }),
     placeholderData: keepPreviousData
   });
   const rows = list.data?.data;

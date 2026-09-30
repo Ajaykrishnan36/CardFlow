@@ -29,6 +29,7 @@ import { RecordTable, rowHref, WorkspaceChip } from './list/record-table';
 import { KanbanBoard } from './list/kanban-board';
 import { CalendarView } from './list/calendar-view';
 import { BulkBar } from './list/bulk-bar';
+import { useOwnerFilter } from '@crm/features/owner/owner-filter';
 import { ImportDialog } from './list/import-dialog';
 
 const PAGE_SIZE = 50;
@@ -111,7 +112,8 @@ function RecordListView({ object }: { object: ObjectKey }) {
 
   const q = sp.get('q') ?? '';
   const page = Math.max(1, Number(sp.get('page')) || 1);
-  const ws = isOwner ? sp.get('ws') || ALL_WS : undefined;
+  const ownerFilter = useOwnerFilter();
+  const ws = isOwner ? sp.get('ws') || ownerFilter.productCode || ALL_WS : undefined;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
   const [newOpen, setNewOpen] = useState(false);

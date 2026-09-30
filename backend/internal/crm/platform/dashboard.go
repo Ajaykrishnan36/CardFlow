@@ -46,7 +46,7 @@ type Dashboard struct {
 }
 
 func (h *Handler) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	d, err := h.dashboard(r.Context())
+	d, err := h.dashboard(r.Context(), ownerFilterFrom(r))
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
@@ -54,7 +54,31 @@ func (h *Handler) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, d)
 }
 
-func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
+// ownerFilter narrows the owner console to one product and/or one app (D-74).
+type ownerFilter struct {
+	Workspace *uuid.UUID // a product (workspace)
+	App       *uuid.UUID // an app (setup)
+}
+
+func (f ownerFilter) on() bool { return f.Workspace != nil || f.App != nil }
+
+func ownerFilterFrom(r *http.Request) ownerFilter {
+	var f ownerFilter
+	if id, err := uuid.Parse(r.URL.Query().Get("product")); err == nil {
+		f.Workspace = &id
+	}
+	if id, err := uuid.Parse(r.URL.Query().Get("app")); err == nil {
+		f.App = &id
+	}
+	return f
+}
+
+// filteredWorkspaces is the SQL for the products a filter keeps ($1 product, $2 app).
+const filteredWorkspaces = `SELECT w.id FROM crm.workspaces w WHERE NOT w.is_platform
+	AND ($1::uuid IS NULL OR w.id = $1::uuid)
+	AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM crm.workspace_products wp WHERE wp.workspace_id = w.id AND wp.product_id = $2::uuid AND wp.status = 'active'))`
+
+func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, error) {
 	var (
 		activeProducts, draftProducts         int
 		activeWorkspaces, totalWorkspaces     int
@@ -96,6 +120,33 @@ func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The setup checklist is about the whole platform, whatever the filter.
+	allLeads, allActiveWorkspaces := totalLeads, activeWorkspaces
+	if f.on() {
+		// Counts inside the selected product / app only.
+		err := h.store.Pool.QueryRow(ctx, `
+			WITH ws AS (`+filteredWorkspaces+`)
+			SELECT
+			  (SELECT count(*) FROM crm.workspaces w WHERE w.id IN (SELECT id FROM ws) AND w.status = 'active'),
+			  (SELECT count(*) FROM ws),
+			  (SELECT count(*) FROM crm.workspace_products wp WHERE wp.workspace_id IN (SELECT id FROM ws) AND wp.status = 'active'
+			     AND ($2::uuid IS NULL OR wp.product_id = $2::uuid)),
+			  (SELECT count(DISTINCT wp.workspace_id) FROM crm.workspace_products wp WHERE wp.workspace_id IN (SELECT id FROM ws) AND wp.status = 'active'
+			     AND ($2::uuid IS NULL OR wp.product_id = $2::uuid)),
+			  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.workspace_id IN (SELECT id FROM ws)),
+			  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.status NOT IN ('converted', 'lost') AND l.workspace_id IN (SELECT id FROM ws)),
+			  (SELECT count(*) FROM crm.accounts a WHERE a.deleted_at IS NULL AND a.workspace_id IN (SELECT id FROM ws)),
+			  (SELECT count(*) FROM crm.contacts c WHERE c.deleted_at IS NULL AND c.workspace_id IN (SELECT id FROM ws)),
+			  (SELECT count(DISTINCT m.identity_id) FROM crm.memberships m WHERE m.workspace_id IN (SELECT id FROM ws) AND m.status <> 'revoked'),
+			  (SELECT count(DISTINCT m.identity_id) FROM crm.memberships m WHERE m.workspace_id IN (SELECT id FROM ws) AND m.status = 'active'),
+			  (SELECT count(*) FROM crm.invitations i WHERE i.workspace_id IN (SELECT id FROM ws) AND i.status IN ('pending', 'delivered') AND i.expires_at > now())`,
+			f.Workspace, f.App).Scan(&activeWorkspaces, &totalWorkspaces, &installedApps, &appProducts,
+			&totalLeads, &openLeads, &accounts, &contacts, &totalUsers, &activeIdentities, &pendingInvites)
+		if err != nil {
+			return nil, err
+		}
+		suspendedIdentities = 0
+	}
 
 	d := &Dashboard{
 		KPIs: []KPI{
@@ -110,8 +161,8 @@ func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
 			{Key: "invites", Label: "Invitations", Value: pendingInvites, Hint: "pending", Path: "/crm/owner/users"},
 		},
 		Checklist: []ChecklistStep{
-			step("lead", "Add a customer lead", "Capture the customer you're onboarding in Platform CRM.", totalLeads > 0, false, "/crm/owner/leads"),
-			step("provision", "Add a product for the customer", "Name it, invite its Super Admin, then add its first app (objects, roles, sales process, sign-in) from the Apps tab.", activeWorkspaces > 0, false, "/crm/owner/workspaces/new"),
+			step("lead", "Add a customer lead", "Capture the customer you're onboarding in Platform CRM.", allLeads > 0, false, "/crm/owner/leads"),
+			step("provision", "Add a product for the customer", "Name it, invite its Super Admin, then add its first app (objects, roles, sales process, sign-in) from the Apps tab.", allActiveWorkspaces > 0, false, "/crm/owner/workspaces/new"),
 			step("product", "Publish the app", "Publishing makes the app live for the product's users.", activeProducts > 0, false, "/crm/owner/workspaces"),
 			step("permissions", "Set up permissions", "Create permission sets and give users exactly the access they need.", customPermissionSets > 0, false, "/crm/owner/users?tab=permissions"),
 			step("test", "First sign-in", "The customer's Super Admin signs in for the first time.", testedCustomers > 0, false, "/crm/owner/workspaces"),
@@ -127,9 +178,9 @@ func (h *Handler) dashboard(ctx context.Context) (*Dashboard, error) {
 		       COALESCE((SELECT array_agg(p.name || ' v' || wp.config_version ORDER BY p.name) FROM crm.workspace_products wp
 		                  JOIN crm.products p ON p.id = wp.product_id WHERE wp.workspace_id = w.id AND wp.status = 'active'), '{}')
 		FROM crm.workspaces w
-		WHERE NOT w.is_platform
+		WHERE w.id IN (`+filteredWorkspaces+`)
 		ORDER BY w.created_at DESC
-		LIMIT 5`)
+		LIMIT 5`, f.Workspace, f.App)
 	if err != nil {
 		return nil, err
 	}
@@ -203,6 +254,7 @@ type InstalledApp struct {
 
 // GET /platform/apps — every app installed in every product (D-73).
 func (h *Handler) handleListApps(w http.ResponseWriter, r *http.Request) {
+	f := ownerFilterFrom(r)
 	rows, err := h.store.Pool.Query(r.Context(), `
 		SELECT w.id, w.code, w.name, p.id, p.key, p.name, COALESCE(p.icon, ''), wp.config_version, COALESCE(p.current_version, wp.config_version),
 		       wp.status, COALESCE(jsonb_array_length(v.config->'modules'), 0), wp.created_at
@@ -210,7 +262,8 @@ func (h *Handler) handleListApps(w http.ResponseWriter, r *http.Request) {
 		JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform
 		JOIN crm.products p ON p.id = wp.product_id
 		LEFT JOIN crm.product_versions v ON v.product_id = wp.product_id AND v.version = wp.config_version
-		ORDER BY w.name, wp.created_at`)
+		WHERE ($1::uuid IS NULL OR w.id = $1::uuid) AND ($2::uuid IS NULL OR p.id = $2::uuid)
+		ORDER BY w.name, wp.created_at`, f.Workspace, f.App)
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return

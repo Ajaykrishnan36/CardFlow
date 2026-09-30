@@ -134,9 +134,9 @@ function qs(params: object = {}): string {
 const enc = encodeURIComponent;
 
 export const platformApi = {
-  dashboard: () => api<OwnerDashboard>('/platform/dashboard'),
+  dashboard: (params: { product?: string; app?: string } = {}) => api<OwnerDashboard>(`/platform/dashboard${qs(params)}`),
   /** Every app installed in every product (D-73). */
-  apps: () => api<{ data: InstalledApp[] }>('/platform/apps').then((r) => r.data)
+  apps: (params: { product?: string; app?: string } = {}) => api<{ data: InstalledApp[] }>(`/platform/apps${qs(params)}`).then((r) => r.data)
 };
 
 export const productsApi = {
@@ -150,7 +150,7 @@ export const productsApi = {
 };
 
 export const workspacesApi = {
-  list: (params: { q?: string; status?: string } = {}) => api<Page<WorkspaceSummary>>(`/platform/workspaces${qs(params)}`),
+  list: (params: { q?: string; status?: string; product?: string; app?: string } = {}) => api<Page<WorkspaceSummary>>(`/platform/workspaces${qs(params)}`),
   get: (id: string) => api<WorkspaceDetail>(`/platform/workspaces/${enc(id)}`),
   /** Idempotent (PRD OWN-02): the same key never creates a second workspace. */
   provision: (body: ProvisionBody, idempotencyKey: string) =>
