@@ -311,22 +311,21 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 		out.Setup.CreateContact, out.Setup.CreateOpportunity, out.Setup.RequireQualified = cfg.Conversion.CreateContact, cfg.Conversion.CreateOpportunity, cfg.Conversion.RequireQualified
 		out.Setup.AccentColor, out.Setup.APIAccess, out.Setup.Webhooks = cfg.AccentColor, cfg.Integrations.APIAccess, cfg.Integrations.Webhooks
 	}
+	// Default "All apps": the whole product's menu. Picking one app narrows it (D-73).
 	out.Apps = h.appsFor(r.Context(), sc)
-	if len(out.Apps) > 0 {
-		sel := out.Apps[0]
-		want := r.URL.Query().Get("app")
-		for _, a := range out.Apps {
-			if a.Key == want {
-				sel = a
+	out.App = "all"
+	want := r.URL.Query().Get("app")
+	for _, a := range out.Apps {
+		if len(out.Apps) > 1 && a.Key == want {
+			out.App = a.Key
+			out.Navigation = navForApp(out.Navigation, a)
+			if a.AccentColor != "" {
+				out.Setup.AccentColor = a.AccentColor
 			}
 		}
-		out.App = sel.Key
-		if len(out.Apps) > 1 {
-			out.Navigation = navForApp(out.Navigation, sel)
-		}
-		if sel.AccentColor != "" {
-			out.Setup.AccentColor = sel.AccentColor
-		}
+	}
+	if len(out.Apps) == 1 {
+		out.App = out.Apps[0].Key
 	}
 	out.Workspaces = []struct {
 		Code string `json:"code"`

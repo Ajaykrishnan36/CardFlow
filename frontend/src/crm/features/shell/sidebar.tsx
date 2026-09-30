@@ -309,7 +309,14 @@ function AppSwitcher({ workspace, code, collapsed, onNavigate }: { workspace?: W
   const navigate = useNavigate();
   const apps = workspace?.apps ?? [];
   if (apps.length < 2) return null;
-  const current = apps.find((a) => a.key === workspace?.app) ?? apps[0]!;
+  const current = apps.find((a) => a.key === workspace?.app);
+  const currentName = current?.name ?? t('shell.apps.all');
+  const pick = (key: string) => {
+    if (key === (current?.key ?? 'all')) return;
+    setSelectedApp(code, key);
+    onNavigate?.();
+    navigate(workspaceHomePath(code));
+  };
   const trigger = (
     <button
       type="button"
@@ -317,14 +324,14 @@ function AppSwitcher({ workspace, code, collapsed, onNavigate }: { workspace?: W
         'flex w-full items-center gap-2 rounded-md border bg-background px-2 py-1.5 text-left shadow-sm transition-colors hover:bg-muted data-[state=open]:bg-muted',
         collapsed && 'justify-center px-0'
       )}
-      aria-label={t('shell.apps.switch', { name: current.name })}
+      aria-label={t('shell.apps.switch', { name: currentName })}
     >
       <LayoutGrid className="size-4 shrink-0 text-primary" aria-hidden />
       {!collapsed ? (
         <>
           <span className="min-w-0 flex-1">
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('shell.apps.label')}</span>
-            <span className="block truncate text-[13px] font-medium text-foreground">{current.name}</span>
+            <span className="block truncate text-[13px] font-medium text-foreground">{currentName}</span>
           </span>
           <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         </>
@@ -337,19 +344,17 @@ function AppSwitcher({ workspace, code, collapsed, onNavigate }: { workspace?: W
         <MenuTrigger asChild>{trigger}</MenuTrigger>
         <MenuContent align="start" className="w-64">
           <MenuLabel>{t('shell.apps.title')}</MenuLabel>
+          <MenuItem aria-current={!current ? 'true' : undefined} onSelect={() => pick('all')}>
+            <span className="grid size-6 place-items-center rounded-md bg-muted text-muted-foreground">
+              <LayoutGrid className="size-3.5" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1 truncate">{t('shell.apps.all')}</span>
+            {!current ? <Check className="!text-primary" aria-label={t('shell.apps.current')} /> : null}
+          </MenuItem>
           {apps.map((a) => {
-            const on = a.key === current.key;
+            const on = a.key === current?.key;
             return (
-              <MenuItem
-                key={a.key}
-                aria-current={on ? 'true' : undefined}
-                onSelect={() => {
-                  if (on) return;
-                  setSelectedApp(code, a.key);
-                  onNavigate?.();
-                  navigate(workspaceHomePath(code));
-                }}
-              >
+              <MenuItem key={a.key} aria-current={on ? 'true' : undefined} onSelect={() => pick(a.key)}>
                 <span className="grid size-6 place-items-center rounded-md text-[10px] font-semibold text-white" style={{ background: a.accentColor || 'hsl(var(--primary))' }}>
                   {initials(a.name)}
                 </span>

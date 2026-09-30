@@ -317,7 +317,7 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   Business Card Snap also gets the standard objects once (opportunities, tasks, calendar, notes, communications,
   catalog, files); the owner can switch any off. The sidebar orders objects the same way in every product.
 - **D-73 Apps inside a product (Salesforce App Launcher).** A product can have several apps (setups). The sidebar
-  has an app switcher; the selected app decides the menu, the dashboard cards and the accent colour, and the records
+  has an app switcher, "All apps" by default (the whole menu); picking one app narrows the menu, the dashboard cards and the accent colour, and the records
   are shared across the product's apps (nothing is split or moved). The choice is kept per product in the browser;
   the server falls back to the first app. Members see only the apps they are given. Owner console: *Administration →
   Apps* lists every app installed in every product, the dashboard's Apps card counts them, and the product page's

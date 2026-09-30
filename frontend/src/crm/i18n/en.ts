@@ -201,10 +201,11 @@ const en = {
     searching: 'Searching…',
     apps: {
       label: 'App',
+      all: 'All apps',
       title: 'Switch app',
       switch: 'App: {{name}} — switch app',
       current: 'Current app',
-      hint: 'Each app has its own menu. Records are shared across the product.'
+      hint: 'All apps shows everything. Pick an app to see only its menu. Records are shared across the product.'
     },
     favorites: 'Favorites',
     commandGroup: 'Pages',
