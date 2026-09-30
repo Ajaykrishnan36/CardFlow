@@ -62,9 +62,9 @@ export function WorkspacesPage() {
     <PageContainer>
       <PageHeader title={t('workspaces.list.title')} description={t('workspaces.list.description')} actions={provisionButton} />
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <SearchInput value={q} onChange={onSearch} placeholder={t('workspaces.list.search')} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex w-full max-w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
+          <SearchInput value={q} onChange={onSearch} placeholder={t('workspaces.list.search')} className="sm:w-64" />
           <OwnerScopeBar />
         </div>
         <SegmentedFilter<StatusFilter>

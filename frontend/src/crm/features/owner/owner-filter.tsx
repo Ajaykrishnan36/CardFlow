@@ -105,7 +105,7 @@ export function OwnerScopeBar({ showApp = true, className }: { showApp?: boolean
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [apps, f.product]);
   return (
-    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+    <div className={cn('flex w-full flex-wrap items-center gap-2 sm:w-auto', className)}>
       <Select
         className="h-9 w-full text-[13px] sm:w-52"
         aria-label={t('owner.filter.product')}

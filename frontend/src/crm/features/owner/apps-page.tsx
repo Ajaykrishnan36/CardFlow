@@ -28,8 +28,8 @@ export function AppsPage() {
     <PageContainer>
       <PageHeader title={t('owner.apps.title')} description={t('owner.apps.subtitle')} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <SearchInput value={search} onChange={setSearch} placeholder={t('owner.apps.search')} />
+        <div className="flex w-full max-w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
+          <SearchInput value={search} onChange={setSearch} placeholder={t('owner.apps.search')} className="sm:w-64" />
           <OwnerScopeBar />
         </div>
         {q.data ? <p className="text-[13px] text-muted-foreground">{t('owner.apps.count', { count: q.data.length })} {t('owner.apps.inProducts', { count: products })}</p> : null}

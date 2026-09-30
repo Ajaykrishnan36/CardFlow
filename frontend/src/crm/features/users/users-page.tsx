@@ -149,8 +149,8 @@ function UsersList() {
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <SearchInput value={q} onChange={onSearch} placeholder={t('users.list.search')} />
+        <div className="flex w-full max-w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
+          <SearchInput value={q} onChange={onSearch} placeholder={t('users.list.search')} className="sm:w-64" />
           <OwnerScopeBar showApp={false} />
         </div>
         <SegmentedFilter<StatusFilter>
