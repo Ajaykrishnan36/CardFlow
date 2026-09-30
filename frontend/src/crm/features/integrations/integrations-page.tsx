@@ -21,6 +21,7 @@ import {
   type LucideIcon
 } from 'lucide-react';
 import { integrationsApi } from '@crm/api/endpoints';
+import { SignInProviders } from './sign-in-providers';
 import { isApiError } from '@crm/api/client';
 import type { IntegrationInfo } from '@crm/api/types';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -83,6 +84,9 @@ export function IntegrationsPage() {
           <HowItWorks name={list[0]?.name ?? ''} />
         </div>
       )}
+      <div className="mt-6">
+        <SignInProviders />
+      </div>
     </PageContainer>
   );
 }

@@ -56,10 +56,15 @@ type ProductConfig struct {
 		RequireQualified  bool `json:"requireQualified"`
 	} `json:"conversion"`
 	LoginMethods struct {
-		Password bool `json:"password"`
-		OTP      bool `json:"otp"`
-		Google   bool `json:"google"`
-		LinkedIn bool `json:"linkedin"`
+		Password  bool `json:"password"`
+		OTP       bool `json:"otp"` // email sign-in code or link
+		Google    bool `json:"google"`
+		Microsoft bool `json:"microsoft"`
+		LinkedIn  bool `json:"linkedin"`
+		SSO       bool `json:"sso"` // the product's SAML identity provider
+		// Enforced marks configs saved since sign-in methods are enforced (D-64). Older
+		// configs only enforced the password, and an email code always worked too.
+		Enforced bool `json:"enforced"`
 	} `json:"loginMethods"`
 	SelfRegistration bool `json:"selfRegistration"`
 	Integrations     struct {
@@ -96,7 +101,7 @@ var ModuleCatalog = []ModuleInfo{
 	{Key: "communications", Label: "Communications", Description: "A log of emails, SMS, WhatsApp messages and calls.", Group: "Engagement"},
 	{Key: "forms", Label: "Forms", Description: "Multi-step public and internal forms.", Group: "Engagement"},
 	{Key: "submissions", Label: "Submissions", Description: "Form submissions with review and approvals.", Group: "Engagement"},
-	{Key: "tickets", Label: "Support", Description: "Support cases from first contact to resolution.", Group: "Service"},
+	{Key: "tickets", Label: "Cases", Description: "Customer support cases from first contact to resolution — including tickets from a connected app.", Group: "Service"},
 	{Key: "subscriptions", Label: "Subscriptions", Description: "Plans, amounts, billing periods and renewals.", Group: "Commerce"},
 	{Key: "catalog", Label: "Catalog", Description: "The products and services you sell, with prices.", Group: "Commerce"},
 	{Key: "workflows", Label: "Workflows", Description: "Triggers, conditions and automated actions.", Group: "Automation"},
@@ -172,6 +177,8 @@ func DefaultProductConfig() ProductConfig {
 	c.Conversion.CreateContact = true
 	c.Conversion.CreateOpportunity = false
 	c.LoginMethods.Password = true
+	c.LoginMethods.OTP = true
+	c.LoginMethods.Enforced = true
 	return c
 }
 
@@ -219,7 +226,17 @@ func (c *ProductConfig) normalize() {
 	if c.PipelineStages == nil {
 		c.PipelineStages = []Stage{}
 	}
-	c.LoginMethods.Password = true
+	if !c.LoginMethods.Enforced {
+		// Keep what worked before enforcement: password and email code.
+		if c.LoginMethods.Password || (!c.LoginMethods.Google && !c.LoginMethods.LinkedIn) {
+			c.LoginMethods.Password, c.LoginMethods.OTP = true, true
+		}
+		c.LoginMethods.Enforced = true
+	}
+	lm := c.LoginMethods
+	if !lm.Password && !lm.OTP && !lm.Google && !lm.Microsoft && !lm.LinkedIn && !lm.SSO {
+		c.LoginMethods.Password = true // a product always has a way in
+	}
 }
 
 var (
@@ -748,4 +765,73 @@ func (h *Handler) handleArchiveProduct(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) handleRestoreProduct(w http.ResponseWriter, r *http.Request) {
 	h.setProductStatus(w, r, false)
+}
+
+// WorkspaceSetup is the setup that applies to a workspace: its active products' published
+// configs combined (a switch is on when any product turns it on; lists are merged). The
+// owner's Platform CRM has no products and allows everything.
+func WorkspaceSetup(ctx context.Context, q interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, wsID uuid.UUID) (ProductConfig, error) {
+	var out ProductConfig
+	var isPlatform bool
+	if err := q.QueryRow(ctx, `SELECT is_platform FROM crm.workspaces WHERE id = $1`, wsID).Scan(&isPlatform); err != nil {
+		return out, err
+	}
+	if isPlatform {
+		out = DefaultProductConfig()
+		out.LoginMethods.Password, out.LoginMethods.OTP = true, true
+		out.Integrations.APIAccess, out.Integrations.Webhooks = true, true
+		return out, nil
+	}
+	rows, err := q.Query(ctx, `
+		SELECT v.config FROM crm.workspace_products wp
+		JOIN crm.products p ON p.id = wp.product_id AND p.status <> 'archived'
+		JOIN crm.product_versions v ON v.product_id = wp.product_id AND v.version = wp.config_version
+		WHERE wp.workspace_id = $1 AND wp.status = 'active' ORDER BY p.name`, wsID)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	first := true
+	seenMod := map[string]bool{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return out, err
+		}
+		c := decodeConfig(raw)
+		if first {
+			out = c
+			for _, m := range c.Modules {
+				seenMod[m] = true
+			}
+			first = false
+			continue
+		}
+		for _, m := range c.Modules {
+			if !seenMod[m] {
+				seenMod[m] = true
+				out.Modules = append(out.Modules, m)
+			}
+		}
+		out.Conversion.CreateContact = out.Conversion.CreateContact || c.Conversion.CreateContact
+		out.Conversion.CreateOpportunity = out.Conversion.CreateOpportunity || c.Conversion.CreateOpportunity
+		out.Conversion.RequireQualified = out.Conversion.RequireQualified || c.Conversion.RequireQualified
+		out.LoginMethods.Password = out.LoginMethods.Password || c.LoginMethods.Password
+		out.LoginMethods.OTP = out.LoginMethods.OTP || c.LoginMethods.OTP
+		out.LoginMethods.Google = out.LoginMethods.Google || c.LoginMethods.Google
+		out.LoginMethods.LinkedIn = out.LoginMethods.LinkedIn || c.LoginMethods.LinkedIn
+		out.LoginMethods.Microsoft = out.LoginMethods.Microsoft || c.LoginMethods.Microsoft
+		out.LoginMethods.SSO = out.LoginMethods.SSO || c.LoginMethods.SSO
+		out.SelfRegistration = out.SelfRegistration || c.SelfRegistration
+		out.Integrations.APIAccess = out.Integrations.APIAccess || c.Integrations.APIAccess
+		out.Integrations.Webhooks = out.Integrations.Webhooks || c.Integrations.Webhooks
+	}
+	if first {
+		// No active product: standard setup (password sign-in, nothing else).
+		out = DefaultProductConfig()
+	}
+	return out, rows.Err()
 }

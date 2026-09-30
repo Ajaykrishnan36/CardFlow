@@ -14,23 +14,37 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/comp
 import { FIELD_KEY_RE, toFieldKey } from './use-object-meta';
 import { useRecordScope } from './record-scope';
 
-type CreatableType = Exclude<FieldType, 'lookup'>;
+type CreatableType = FieldType;
 
+/** Field types a customizer can add, grouped the way the type picker shows them. */
 export const CREATABLE_TYPES: CreatableType[] = [
   'text',
   'textarea',
+  'fullName',
   'email',
+  'emails',
   'phone',
+  'phones',
   'url',
+  'links',
+  'address',
   'number',
   'currency',
   'percent',
+  'rating',
   'date',
   'datetime',
   'select',
   'multiselect',
-  'boolean'
+  'boolean',
+  'lookup',
+  'relations',
+  'files',
+  'json'
 ];
+
+const UNIQUE_TYPES = new Set<FieldType>(['text', 'email', 'phone', 'url', 'number']);
+const LINK_TYPES = new Set<FieldType>(['lookup', 'relations']);
 
 interface OptionRow {
   value: string;
@@ -74,6 +88,8 @@ export function FieldDialog({
   const [type, setType] = useState<CreatableType>('text');
   const [options, setOptions] = useState<OptionRow[]>([]);
   const [required, setRequired] = useState(false);
+  const [unique, setUnique] = useState(false);
+  const [lookup, setLookup] = useState('');
   const [helpText, setHelpText] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -88,9 +104,11 @@ export function FieldDialog({
       setLabel(f.label);
       setKey(f.key);
       setKeyTouched(true);
-      setType(f.type === 'lookup' ? 'text' : f.type);
+      setType(f.type);
       setOptions((f.options ?? []).map((o) => ({ ...o, valueTouched: true, locked: true })));
       setRequired(f.required);
+      setUnique(Boolean(f.unique));
+      setLookup(f.lookup ?? '');
       setHelpText(f.helpText ?? '');
       setSectionId('');
     } else {
@@ -100,6 +118,8 @@ export function FieldDialog({
       setType('text');
       setOptions([]);
       setRequired(false);
+      setUnique(false);
+      setLookup('');
       setHelpText('');
       setSectionId(state.sectionId ?? sections[0]?.id ?? '');
     }
@@ -108,6 +128,9 @@ export function FieldDialog({
   }, [state]);
 
   const hasOptions = type === 'select' || type === 'multiselect';
+  const isLink = LINK_TYPES.has(type);
+  const canBeUnique = UNIQUE_TYPES.has(type);
+  const targets = (meta.lookupTargets ?? []).filter((x) => x.key !== 'products' && x.key !== 'workspaces');
 
   useEffect(() => {
     if (hasOptions && options.length === 0) setOptions([{ value: '', label: '', valueTouched: false }]);
@@ -117,10 +140,20 @@ export function FieldDialog({
     mutationFn: async (): Promise<{ meta: ObjectMeta; key: string }> => {
       const opts: Option[] | undefined = hasOptions ? options.filter((o) => o.label.trim()).map((o) => ({ value: o.value.trim(), label: o.label.trim() })) : undefined;
       if (editing) {
-        const m = await recordsApi.updateField(object, editing.key, { label: label.trim(), required, options: opts, helpText: helpText.trim() || undefined });
+        const m = await recordsApi.updateField(object, editing.key, { label: label.trim(), required, unique: canBeUnique ? unique : undefined, options: opts, helpText: helpText.trim() || undefined });
         return { meta: m, key: editing.key };
       }
-      const body: FieldCreateBody = { label: label.trim(), key, type, required, options: opts, helpText: helpText.trim() || undefined, sectionId: persistedSectionIds.has(sectionId) ? sectionId : undefined };
+      const body: FieldCreateBody = {
+        label: label.trim(),
+        key,
+        type,
+        required,
+        unique: canBeUnique && unique ? true : undefined,
+        lookup: isLink ? lookup : undefined,
+        options: opts,
+        helpText: helpText.trim() || undefined,
+        sectionId: persistedSectionIds.has(sectionId) ? sectionId : undefined
+      };
       const m = await recordsApi.createField(object, body);
       const known = new Set(meta.fields.map((f) => f.key));
       const created = m.fields.find((f) => f.key === key) ?? m.fields.find((f) => !known.has(f.key));
@@ -152,6 +185,7 @@ export function FieldDialog({
       if (!FIELD_KEY_RE.test(key)) next.key = t('records.fieldDialog.keyInvalid');
       else if (meta.fields.some((f) => f.key === key)) next.key = t('records.fieldDialog.keyTaken');
     }
+    if (!editing && isLink && !lookup) next.lookup = t('records.fieldDialog.lookupRequired');
     if (hasOptions) {
       const filled = options.filter((o) => o.label.trim());
       if (filled.length === 0) next.options = t('records.fieldDialog.optionsRequired');
@@ -210,7 +244,7 @@ export function FieldDialog({
                   }}
                 />
               </Field>
-              <Field label={t('records.fieldDialog.type')} error={errors.type} hint={editing ? t('records.fieldDialog.typeLocked') : undefined}>
+              <Field label={t('records.fieldDialog.type')} error={errors.type} hint={editing ? t('records.fieldDialog.typeLocked') : t(`records.typeHints.${type}`)}>
                 <Select
                   value={type}
                   disabled={Boolean(editing)}
@@ -218,6 +252,17 @@ export function FieldDialog({
                   options={CREATABLE_TYPES.map((ty) => ({ value: ty, label: t(`records.types.${ty}`) }))}
                 />
               </Field>
+              {isLink ? (
+                <Field label={t('records.fieldDialog.lookup')} error={errors.lookup} hint={editing ? t('records.fieldDialog.lookupLocked') : t('records.fieldDialog.lookupHint')}>
+                  <Select
+                    value={lookup}
+                    disabled={Boolean(editing)}
+                    onChange={(e) => setLookup(e.target.value)}
+                    placeholder={t('records.fieldDialog.lookupPlaceholder')}
+                    options={targets.map((x) => ({ value: x.key, label: x.label }))}
+                  />
+                </Field>
+              ) : null}
               {!editing ? (
                 <Field label={t('records.fieldDialog.section')} error={errors.sectionId}>
                   <Select
@@ -272,6 +317,12 @@ export function FieldDialog({
               <Textarea rows={2} maxLength={300} value={helpText} onChange={(e) => setHelpText(e.target.value)} />
             </Field>
             <Checkbox checked={required} onCheckedChange={setRequired} label={t('records.fieldDialog.required')} description={t('records.fieldDialog.requiredHint')} />
+            {canBeUnique ? (
+              <div>
+                <Checkbox checked={unique} onCheckedChange={setUnique} label={t('records.fieldDialog.unique')} description={t('records.fieldDialog.uniqueHint', { objects: meta.labelPlural.toLowerCase() })} />
+                {errors.unique ? <p className="mt-1 text-[13px] text-danger">{errors.unique}</p> : null}
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-col-reverse gap-2 border-t bg-muted/30 px-5 py-3 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>

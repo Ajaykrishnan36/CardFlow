@@ -19,14 +19,16 @@ import (
 // ---- DTOs ----
 
 type WorkspaceSummary struct {
-	ID             uuid.UUID `json:"id"`
-	Code           string    `json:"code"`
-	Name           string    `json:"name"`
-	Status         string    `json:"status"`
-	Timezone       string    `json:"timezone"`
-	Locale         string    `json:"locale"`
-	Currency       string    `json:"currency"`
-	Products       int       `json:"products"`
+	ID       uuid.UUID `json:"id"`
+	Code     string    `json:"code"`
+	Name     string    `json:"name"`
+	Status   string    `json:"status"`
+	Timezone string    `json:"timezone"`
+	Locale   string    `json:"locale"`
+	Currency string    `json:"currency"`
+	Products int       `json:"products"`
+	// SetupNames: the product's setups as "Name v3", for the Products list.
+	SetupNames     []string  `json:"setupNames"`
 	Members        int       `json:"members"`
 	PendingInvites int       `json:"pendingInvites"`
 	CreatedAt      time.Time `json:"createdAt"`
@@ -86,13 +88,15 @@ const workspaceSummarySelect = `
 	SELECT w.id, w.code, w.name, w.status, w.timezone, w.locale, w.currency, w.created_at,
 	       (SELECT count(*) FROM crm.workspace_products wp WHERE wp.workspace_id = w.id AND wp.status = 'active'),
 	       (SELECT count(*) FROM crm.memberships m WHERE m.workspace_id = w.id AND m.status = 'active'),
-	       (SELECT count(*) FROM crm.invitations i WHERE i.workspace_id = w.id AND i.status IN ('pending', 'delivered') AND i.expires_at > now())
+	       (SELECT count(*) FROM crm.invitations i WHERE i.workspace_id = w.id AND i.status IN ('pending', 'delivered') AND i.expires_at > now()),
+	       COALESCE((SELECT array_agg(p.name || ' v' || wp.config_version ORDER BY p.name) FROM crm.workspace_products wp
+	                  JOIN crm.products p ON p.id = wp.product_id WHERE wp.workspace_id = w.id AND wp.status = 'active'), '{}')
 	FROM crm.workspaces w`
 
 func scanWorkspaceSummary(row pgx.Row) (WorkspaceSummary, error) {
 	var s WorkspaceSummary
 	err := row.Scan(&s.ID, &s.Code, &s.Name, &s.Status, &s.Timezone, &s.Locale, &s.Currency, &s.CreatedAt,
-		&s.Products, &s.Members, &s.PendingInvites)
+		&s.Products, &s.Members, &s.PendingInvites, &s.SetupNames)
 	return s, err
 }
 

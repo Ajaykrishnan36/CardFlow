@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -453,6 +454,7 @@ type GiveLoginInput struct {
 	PermissionSetIDs []uuid.UUID        `json:"permissionSetIds"`
 	Method           string             `json:"method"` // invite | password
 	Password         string             `json:"password"`
+	UserType         string             `json:"userType"` // a user type key from the product setup (optional)
 }
 
 type GiveLoginResult struct {
@@ -550,6 +552,10 @@ func (h *Handler) GiveLoginTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, p
 		res.WorkspaceID = id
 	}
 
+	if err := checkUserType(ctx, tx, res.WorkspaceID, in.UserType, in.RoleKey, fieldPrefix); err != nil {
+		return nil, nil, err
+	}
+
 	// 2a. Invitation
 	if in.Method == "invite" {
 		var hasPassword bool
@@ -565,6 +571,9 @@ func (h *Handler) GiveLoginTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, p
 			return nil, nil, err
 		}
 		res.IdentityID, res.MembershipID, res.ExistingLogin = sent.IdentityID, sent.MembershipID, hasPassword
+		if err := setUserType(ctx, tx, res.MembershipID, in.UserType); err != nil {
+			return nil, nil, err
+		}
 		return res, sent, nil
 	}
 
@@ -634,6 +643,9 @@ func (h *Handler) GiveLoginTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, p
 	pids := in.ProductIDs
 	sets := in.PermissionSetIDs
 	if err := setMembershipAccess(ctx, tx, actor, res.WorkspaceID, res.MembershipID, &role, &pids, &sets, fieldPrefix); err != nil {
+		return nil, nil, err
+	}
+	if err := setUserType(ctx, tx, res.MembershipID, in.UserType); err != nil {
 		return nil, nil, err
 	}
 	if len(in.ProductIDs) == 0 { // "all products" default
@@ -785,4 +797,37 @@ func (h *Handler) handleAddMembership(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := h.getUser(r.Context(), id)
 	writeResult(w, r, http.StatusCreated, d, err)
+}
+
+// checkUserType validates a user type against the product setup: it must exist and
+// allow the role (D-70). No user type is always fine.
+func checkUserType(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, userType, roleKey, fieldPrefix string) error {
+	userType = strings.TrimSpace(userType)
+	if userType == "" {
+		return nil
+	}
+	setup, err := WorkspaceSetup(ctx, tx, wsID)
+	if err != nil {
+		return err
+	}
+	for _, ut := range setup.UserTypes {
+		if ut.Key != userType {
+			continue
+		}
+		for _, r := range ut.AllowedRoles {
+			if r == roleKey {
+				return nil
+			}
+		}
+		return shared.Validation(map[string]string{fieldPrefix + "roleKey": fmt.Sprintf("A %s can't have this role — pick one the product setup allows for them.", ut.Label)})
+	}
+	return shared.Validation(map[string]string{fieldPrefix + "userType": "Pick a user type from this product's setup."})
+}
+
+func setUserType(ctx context.Context, tx pgx.Tx, membershipID uuid.UUID, userType string) error {
+	if strings.TrimSpace(userType) == "" {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `UPDATE crm.memberships SET user_type = $2 WHERE id = $1`, membershipID, strings.TrimSpace(userType))
+	return err
 }

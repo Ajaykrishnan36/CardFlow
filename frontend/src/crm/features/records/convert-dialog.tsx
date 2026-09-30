@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Building2, CircleCheck, Contact, KeyRound, Info } from 'lucide-react';
+import { ArrowRight, Building2, CircleCheck, Contact, Handshake, KeyRound, Info } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { ConvertBody, ConvertResult, GiveLoginBody, GiveLoginResult, LookupValue, RecordRow } from '@crm/api/types';
 import { Button } from '@crm/components/ui/button';
@@ -31,25 +31,35 @@ type ConvertOutcome = ConvertResult & Partial<Pick<GiveLoginResult, 'existingLog
 const ACCESS_PREFIX = 'access.';
 
 interface Draft {
-  mode: 'new' | 'existing';
+  mode: 'new' | 'existing' | 'none';
   accountName: string;
   kind: 'business' | 'individual';
   existing: LookupValue | null;
   createContact: boolean;
   /** Owner only: give the converted person a login (null = no login). */
   access: GiveLoginBody | null;
+  createOpportunity: boolean;
+  oppName: string;
+  oppAmount: string;
+  oppCloseDate: string;
 }
 
-function draftFor(lead: RecordRow): Draft {
+function draftFor(lead: RecordRow, createOpportunity: boolean): Draft {
   const org = s(lead.values.organization);
   const fullName = [s(lead.values.firstName), s(lead.values.lastName)].filter(Boolean).join(' ') || lead.title;
+  const close = new Date(Date.now() + 30 * 86400_000);
   return {
-    mode: 'new',
+    // Contact first: a person without a company becomes just a contact.
+    mode: org ? 'new' : 'none',
     accountName: org || fullName,
-    kind: org ? 'business' : 'individual',
+    kind: 'business',
     existing: null,
     createContact: true,
-    access: null
+    access: null,
+    createOpportunity,
+    oppName: `${org || fullName} — new deal`,
+    oppAmount: '',
+    oppCloseDate: `${close.getFullYear()}-${String(close.getMonth() + 1).padStart(2, '0')}-${String(close.getDate()).padStart(2, '0')}`
   };
 }
 
@@ -60,7 +70,9 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
   const scope = useRecordScope();
   // Tenants don't create tenants: logins are only given from the owner console.
   const canGiveLogin = scope.audience === 'owner';
-  const [d, setD] = useState<Draft>(() => draftFor(lead));
+  const canOpportunity = scope.can('opportunities', 'create');
+  const [d, setD] = useState<Draft>(() => draftFor(lead, scope.setup.createOpportunity && canOpportunity));
+  const notQualified = scope.setup.requireQualified && lead.values.status !== 'qualified';
   const [idemKey, setIdemKey] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [accessErrors, setAccessErrors] = useState<Record<string, string>>({});
@@ -75,7 +87,7 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
   // Fresh form + idempotency key each time the dialog opens: retries of one attempt reuse the key.
   useEffect(() => {
     if (!open) return;
-    setD(draftFor(lead));
+    setD(draftFor(lead, scope.setup.createOpportunity && canOpportunity));
     setIdemKey(uuid());
     setErrors({});
     setAccessErrors({});
@@ -127,17 +139,25 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
       return;
     }
     setFormError(null);
+    if (d.mode === 'none' && !d.createContact) {
+      setFormError(t('records.convert.noneNeedsContact'));
+      return;
+    }
     const body: ConvertBody = {
-      account: d.mode === 'new' ? { mode: 'new', name: d.accountName.trim(), kind: d.kind } : { mode: 'existing', accountId: d.existing!.id },
+      account: d.mode === 'new' ? { mode: 'new', name: d.accountName.trim(), kind: d.kind } : d.mode === 'existing' ? { mode: 'existing', accountId: d.existing!.id } : { mode: 'none' },
       createContact: d.createContact,
+      opportunity: canOpportunity
+        ? { create: d.createOpportunity, name: d.oppName.trim() || undefined, amount: d.oppAmount ? Number(d.oppAmount) : null, closeDate: d.oppCloseDate || undefined }
+        : undefined,
       access: canGiveLogin && email && d.access ? d.access : undefined
     };
     convert.mutate(body);
   };
 
   const err = (...keys: string[]) => keys.map((k) => errors[k]).find(Boolean);
-  const accountLabel = d.mode === 'new' ? d.accountName : d.existing?.label ?? '';
-  const accountHref = result ? scopedLookupHref(scope, 'accounts', result.accountId) : null;
+  const accountLabel = d.mode === 'new' ? d.accountName : d.mode === 'existing' ? d.existing?.label ?? '' : '';
+  const accountHref = result?.accountId ? scopedLookupHref(scope, 'accounts', result.accountId) : null;
+  const opportunityHref = result?.opportunityId ? scopedLookupHref(scope, 'opportunities', result.opportunityId) : null;
   const contactHref = result?.contactId ? scopedLookupHref(scope, 'contacts', result.contactId) : null;
   const newWorkspaceName = sentAccess?.workspace.mode === 'new' ? sentAccess.workspace.name : null;
   const showWorkspace = Boolean(result?.workspaceId && sentAccess && sentAccess.workspace.mode !== 'platform');
@@ -156,8 +176,9 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
           <>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5">
               <ul className="divide-y rounded-lg border">
-                <ResultRow icon={Building2} label={t('records.convert.account')} name={accountLabel} to={accountHref} />
+                {result.accountId ? <ResultRow icon={Building2} label={t('records.convert.account')} name={accountLabel} to={accountHref} /> : null}
                 {result.contactId ? <ResultRow icon={Contact} label={t('records.convert.contact')} name={fullName} to={contactHref} /> : null}
+                {result.opportunityId ? <ResultRow icon={Handshake} label={t('records.convert.opportunity')} name={d.oppName} to={opportunityHref} /> : null}
                 {showWorkspace && result.workspaceId ? (
                   <ResultRow
                     icon={Building2}
@@ -191,14 +212,14 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 {t('records.convert.stayOnLead')}
               </Button>
-              {accountHref ? (
+              {accountHref || contactHref ? (
                 <Button
                   onClick={() => {
                     onOpenChange(false);
-                    navigate(accountHref);
+                    navigate((accountHref || contactHref)!);
                   }}
                 >
-                  {t('records.convert.goToAccount')} <ArrowRight />
+                  {accountHref ? t('records.convert.goToAccount') : t('records.convert.goToContact')} <ArrowRight />
                 </Button>
               ) : null}
             </div>
@@ -207,9 +228,10 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
           <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
               {formError ? <Alert tone="danger">{formError}</Alert> : null}
+              {notQualified ? <Alert tone="warning" title={t('records.convert.needsQualifiedTitle')}>{t('records.convert.needsQualified')}</Alert> : null}
 
               <Section icon={Building2} title={t('records.convert.account')}>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <RadioCard checked={d.mode === 'new'} onSelect={() => patch({ mode: 'new' })} name="account-mode" label={t('records.convert.createNew')}>
                     {d.mode === 'new' ? (
                       <div className="mt-3 space-y-3" onClick={(e) => e.stopPropagation()}>
@@ -229,6 +251,9 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
                       </div>
                     ) : null}
                   </RadioCard>
+                  <RadioCard checked={d.mode === 'none'} onSelect={() => patch({ mode: 'none', createContact: true })} name="account-mode" label={t('records.convert.noAccount')}>
+                    {d.mode === 'none' ? <p className="mt-2 text-xs text-muted-foreground">{t('records.convert.noAccountHint')}</p> : null}
+                  </RadioCard>
                   <RadioCard checked={d.mode === 'existing'} onSelect={() => patch({ mode: 'existing' })} name="account-mode" label={t('records.convert.chooseExisting')}>
                     {d.mode === 'existing' ? (
                       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
@@ -246,9 +271,40 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
                   checked={d.createContact}
                   onCheckedChange={(c) => patch({ createContact: c })}
                   label={t('records.convert.createContact')}
-                  description={d.createContact ? t('records.convert.contactWillBe', { name: fullName, account: accountLabel || '—' }) : t('records.convert.noContact')}
+                  disabled={d.mode === 'none'}
+                  description={
+                    d.createContact
+                      ? d.mode === 'none'
+                        ? t('records.convert.contactOnly', { name: fullName })
+                        : t('records.convert.contactWillBe', { name: fullName, account: accountLabel || '—' })
+                      : t('records.convert.noContact')
+                  }
                 />
               </Section>
+
+              {canOpportunity ? (
+                <Section icon={Handshake} title={t('records.convert.opportunity')}>
+                  <Checkbox
+                    checked={d.createOpportunity}
+                    onCheckedChange={(c) => patch({ createOpportunity: c })}
+                    label={t('records.convert.createOpportunity')}
+                    description={scope.setup.createOpportunity ? t('records.convert.opportunityDefaultOn') : t('records.convert.opportunityHint')}
+                  />
+                  {d.createOpportunity ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <Field label={t('records.convert.oppName')} error={err('opportunity.name')} className="sm:col-span-3">
+                        <Input value={d.oppName} onChange={(e) => patch({ oppName: e.target.value })} />
+                      </Field>
+                      <Field label={t('records.convert.oppAmount')} error={err('opportunity.amount')}>
+                        <Input type="number" inputMode="decimal" leading={<span className="text-[13px]">₹</span>} value={d.oppAmount} onChange={(e) => patch({ oppAmount: e.target.value })} />
+                      </Field>
+                      <Field label={t('records.convert.oppClose')} error={err('opportunity.closeDate')}>
+                        <Input type="date" value={d.oppCloseDate} onChange={(e) => patch({ oppCloseDate: e.target.value })} />
+                      </Field>
+                    </div>
+                  ) : null}
+                </Section>
+              ) : null}
 
               {canGiveLogin ? (
                 <Section icon={KeyRound} title={t('records.convert.access')}>
@@ -279,7 +335,7 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={convert.isPending}>
                 {t('common.cancel')}
               </Button>
-              <Button type="submit" loading={convert.isPending}>
+              <Button type="submit" loading={convert.isPending} disabled={notQualified}>
                 {t('records.convert.submit')}
               </Button>
             </div>

@@ -23,8 +23,9 @@ type Field struct {
 	ReadOnly bool     `json:"readOnly"`
 	Standard bool     `json:"standard"`
 	Options  []Option `json:"options,omitempty"`
-	Lookup   string   `json:"lookup,omitempty"`
+	Lookup   string   `json:"lookup,omitempty"` // lookup / relations: the object linked to
 	HelpText string   `json:"helpText,omitempty"`
+	Unique   bool     `json:"unique,omitempty"` // no two records may share a value
 
 	column string // standard fields stored in a column; "" = stored in custom jsonb
 	isInt  bool   // int column (numbers are rounded)
@@ -137,7 +138,8 @@ func help(f Field, h string) Field {
 func systemFields() []Field {
 	return []Field{
 		ro(text("code", "Record ID", "code")),
-		ro(lookup("ownerId", "Owner", "owner_id", "users")),
+		// The owner can be changed (reassign / "change owner"); it must be a member of the workspace.
+		help(lookup("ownerId", "Owner", "owner_id", "users"), "Who this record belongs to. Records are shared by owner and role."),
 		ro(typed("createdAt", "Created", "datetime", "created_at")),
 		ro(lookup("createdBy", "Created by", "created_by", "users")),
 		ro(typed("updatedAt", "Last modified", "datetime", "updated_at")),
@@ -249,7 +251,7 @@ var accountSpec = objectSpec{
 		text("shippingPostalCode", "Shipping postal code", "shipping_postal_code"),
 		text("shippingCountry", "Shipping country", "shipping_country"),
 		typed("description", "Description", "textarea", "description"),
-		ro(lookup("customerWorkspaceId", "Customer workspace", "customer_workspace_id", "workspaces")),
+		ro(lookup("customerWorkspaceId", "Customer product", "customer_workspace_id", "workspaces")),
 		ro(lookup("identityId", "Primary login", "identity_id", "users")),
 	),
 	ListColumns: []string{"type", "lifecycle", "industry", "phone", "ownerId", "createdAt"},

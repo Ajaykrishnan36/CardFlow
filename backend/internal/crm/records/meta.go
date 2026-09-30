@@ -28,12 +28,23 @@ type Meta struct {
 	Statuses      []StatusOption `json:"statuses,omitempty"`
 	Icon          string         `json:"icon,omitempty"`
 	Custom        bool           `json:"custom,omitempty"`
+	// LookupTargets are the objects a new lookup / relations field can point at.
+	LookupTargets []lookupTarget `json:"lookupTargets,omitempty"`
 }
 
 var customTypes = map[string]bool{
 	"text": true, "textarea": true, "email": true, "phone": true, "url": true, "number": true, "currency": true,
 	"percent": true, "date": true, "datetime": true, "select": true, "multiselect": true, "boolean": true,
+	// D-57: richer types (Twenty parity).
+	"rating": true, "address": true, "fullName": true, "emails": true, "phones": true, "links": true, "json": true,
+	"lookup": true, "relations": true, "files": true,
 }
+
+// uniqueTypes are the field types that can require unique values.
+var uniqueTypes = map[string]bool{"text": true, "email": true, "phone": true, "url": true, "number": true}
+
+// linkTypes point at other records (their target object is Field.Lookup).
+func isLinkType(t string) bool { return t == "lookup" || t == "relations" }
 
 var fieldKeyRe = regexp.MustCompile(`^[a-z][a-z0-9_]{1,40}$`)
 
@@ -45,7 +56,7 @@ type querier interface {
 // customFields returns the published custom fields of an object, in position order.
 func customFields(ctx context.Context, q querier, wsID uuid.UUID, object string) ([]Field, error) {
 	rows, err := q.Query(ctx, `
-		SELECT key, label, type, is_required, options, COALESCE(help_text, '')
+		SELECT key, label, type, is_required, options, COALESCE(help_text, ''), is_unique, COALESCE(lookup_target, '')
 		FROM crm.field_definitions
 		WHERE workspace_id = $1 AND object_key = $2 AND status = 'published'
 		ORDER BY position, created_at`, wsID, object)
@@ -57,7 +68,7 @@ func customFields(ctx context.Context, q querier, wsID uuid.UUID, object string)
 	for rows.Next() {
 		var f Field
 		var raw []byte
-		if err := rows.Scan(&f.Key, &f.Label, &f.Type, &f.Required, &raw, &f.HelpText); err != nil {
+		if err := rows.Scan(&f.Key, &f.Label, &f.Type, &f.Required, &raw, &f.HelpText, &f.Unique, &f.Lookup); err != nil {
 			return nil, err
 		}
 		var o struct {
@@ -76,7 +87,16 @@ func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSp
 	if err != nil {
 		return nil, err
 	}
-	return append(append([]Field{}, spec.Fields...), custom...), nil
+	fields := append([]Field{}, spec.Fields...)
+	if spec.StatusField != "" && (spec.Key == "leads" || spec.Key == "opportunities") {
+		sts := statusesFor(ctx, q, wsID, spec)
+		for i := range fields {
+			if fields[i].Key == spec.StatusField {
+				fields[i].Options = statusOptions(sts)
+			}
+		}
+	}
+	return append(fields, custom...), nil
 }
 
 // allFields returns the fields the requester may use (D-46): hidden fields are left out
@@ -216,7 +236,8 @@ func (h *Handler) meta(ctx context.Context, wsID uuid.UUID, spec *objectSpec) (*
 	return &Meta{
 		Object: spec.Key, LabelSingular: spec.Singular, LabelPlural: spec.Plural, CodePrefix: spec.Prefix,
 		Fields: fields, Layout: layout, DefaultLayout: sanitizeLayout(cloneLayout(spec.Layout), fields),
-		ListColumns: spec.ListColumns, StatusField: spec.StatusField, Statuses: spec.Statuses, Icon: spec.Icon, Custom: spec.Custom,
+		ListColumns: spec.ListColumns, StatusField: spec.StatusField, Statuses: statusesFor(ctx, h.store.Pool, wsID, spec), Icon: spec.Icon, Custom: spec.Custom,
+		LookupTargets: h.lookupTargets(),
 	}, nil
 }
 
@@ -318,6 +339,8 @@ type fieldInput struct {
 	Label     *string   `json:"label"`
 	Key       string    `json:"key"`
 	Type      string    `json:"type"`
+	Lookup    string    `json:"lookup"`
+	Unique    *bool     `json:"unique"`
 	Required  *bool     `json:"required"`
 	Options   *[]Option `json:"options"`
 	HelpText  *string   `json:"helpText"`

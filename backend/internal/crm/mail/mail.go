@@ -31,6 +31,12 @@ type Message struct {
 	Button  *Button  // primary call to action
 	Code    string   // a one-time code shown large (OTP)
 	Footer  string   // small print under the button
+
+	// HTML is a ready-made body (CRM emails, campaigns); it replaces the branded layout.
+	HTML     string
+	FromName string            // display name instead of the configured sender's
+	ReplyTo  string            // where replies go
+	Headers  map[string]string // extra headers (List-Unsubscribe …)
 }
 
 type Button struct {
@@ -153,23 +159,38 @@ func build(from *netmail.Address, m Message, appName string) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	h := func(k, v string) { buf.WriteString(k + ": " + v + "\r\n") }
-	h("From", from.String())
+	sender := *from
+	if m.FromName != "" {
+		sender.Name = m.FromName
+	}
+	h("From", sender.String())
 	h("To", m.To)
+	if m.ReplyTo != "" {
+		h("Reply-To", m.ReplyTo)
+	}
+	for k, v := range m.Headers {
+		if !strings.ContainsAny(k+v, "\r\n") {
+			h(k, v)
+		}
+	}
 	h("Subject", mime.QEncoding.Encode("utf-8", m.Subject))
 	h("Date", time.Now().Format(time.RFC1123Z))
 	h("Message-ID", "<"+randomID()+"@"+domain+">")
 	h("MIME-Version", "1.0")
 
 	text := plainText(m)
-	if m.Heading == "" {
+	if m.Heading == "" && m.HTML == "" {
 		h("Content-Type", "text/plain; charset=UTF-8")
 		h("Content-Transfer-Encoding", "quoted-printable")
 		buf.WriteString("\r\n" + qp(text))
 		return buf.Bytes(), nil
 	}
-	html, err := renderHTML(m, appName)
-	if err != nil {
-		return nil, err
+	html := m.HTML
+	if html == "" {
+		var err error
+		if html, err = renderHTML(m, appName); err != nil {
+			return nil, err
+		}
 	}
 	boundary := "crm-" + randomID()
 	h("Content-Type", `multipart/alternative; boundary="`+boundary+`"`)

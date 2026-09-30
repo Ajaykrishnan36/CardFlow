@@ -11,6 +11,13 @@ import { useUI } from '@crm/lib/ui-store';
 import { LoginPage, OwnerLoginPage } from '@crm/features/auth/login-pages';
 import { ThemeController } from '@crm/features/shell/theme-toggle';
 import { AppShell } from '@crm/features/shell/app-shell';
+import { WorkflowEditorPage, WorkflowsPage } from './features/tools/workflows-page';
+import { CampaignEditorPage, CampaignsPage } from './features/tools/campaigns-page';
+import { MailboxesPage } from './features/tools/mailboxes-page';
+import { TeamsPage } from './features/tools/teams-page';
+import { SsoPage } from './features/tools/sso-page';
+import { DeveloperPage } from './features/tools/developer-page';
+import { SignupPage } from './features/auth/signup-page';
 import { ComingSoonPage, NotFoundPage } from '@crm/features/system/pages';
 
 // Route-level code splitting (PRD §11 performance): only the sign-in screens ship eagerly.
@@ -24,8 +31,7 @@ const WorkspaceHomePage = lazy(() => import('@crm/features/workspace/home-page')
 const WorkspaceLayout = lazy(() => import('@crm/features/workspace/workspace-layout').then((m) => ({ default: m.WorkspaceLayout })));
 const WorkspaceIndexRedirect = lazy(() => import('@crm/features/workspace/workspace-layout').then((m) => ({ default: m.WorkspaceIndexRedirect })));
 const WorkspaceAccessPage = lazy(() => import('@crm/features/workspace/admin/access-page').then((m) => ({ default: m.WorkspaceAccessPage })));
-const SupportListPage = lazy(() => import('@crm/features/workspace/support/support-list-page').then((m) => ({ default: m.SupportListPage })));
-const TicketDetailPage = lazy(() => import('@crm/features/workspace/support/ticket-detail-page').then((m) => ({ default: m.TicketDetailPage })));
+const TicketToCase = lazy(() => import('@crm/features/workspace/support/ticket-to-case').then((m) => ({ default: m.TicketToCase })));
 const ReportsPage = lazy(() => import('@crm/features/reports/reports-page').then((m) => ({ default: m.ReportsPage })));
 const ReportBuilderPage = lazy(() => import('@crm/features/reports/report-builder-page').then((m) => ({ default: m.ReportBuilderPage })));
 const DashboardsPage = lazy(() => import('@crm/features/reports/dashboards-page').then((m) => ({ default: m.DashboardsPage })));
@@ -107,6 +113,7 @@ function AppRoutes() {
 
         <Route element={<RedirectIfSignedIn />}>
           <Route path="/crm/login" element={<LoginPage />} />
+          <Route path="/crm/signup" element={<SignupPage />} />
           <Route path="/crm/owner/login" element={<OwnerLoginPage />} />
         </Route>
         <Route path="/crm/forgot-password" element={<ForgotPasswordPage />} />
@@ -129,8 +136,9 @@ function AppRoutes() {
               <Route index element={<WorkspaceIndexRedirect />} />
               <Route path="home" element={<WorkspaceDashboardPage />} />
               <Route path="settings/access" element={<WorkspaceAccessPage />} />
-              <Route path="support" element={<SupportListPage />} />
-              <Route path="support/:id" element={<TicketDetailPage />} />
+              {/* App support tickets are Cases now (D-72); old links still work. */}
+              <Route path="support" element={<Navigate to="../cases" relative="path" replace />} />
+              <Route path="support/:id" element={<TicketToCase />} />
               <Route path="app-users" element={<AppUsersPage />} />
               <Route path="app-users/:id" element={<AppUserDetailPage />} />
               <Route path="businesses" element={<BusinessesPage />} />
@@ -140,6 +148,14 @@ function AppRoutes() {
               <Route path="reports/:id" element={<ReportBuilderPage />} />
               <Route path="dashboards" element={<DashboardsPage />} />
               <Route path="dashboards/:id" element={<DashboardPage />} />
+              <Route path="workflows" element={<WorkflowsPage />} />
+              <Route path="workflows/:id" element={<WorkflowEditorPage />} />
+              <Route path="campaigns" element={<CampaignsPage />} />
+              <Route path="campaigns/:id" element={<CampaignEditorPage />} />
+              <Route path="settings/email" element={<MailboxesPage />} />
+              <Route path="settings/teams" element={<TeamsPage />} />
+              <Route path="settings/sso" element={<SsoPage />} />
+              <Route path="settings/developer" element={<DeveloperPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [
                 <Route key={`w-${object}`} path={object} element={<RecordListPage key={object} object={object} />} />,
                 <Route key={`w-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,

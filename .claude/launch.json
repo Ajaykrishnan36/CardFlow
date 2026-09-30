@@ -4,14 +4,29 @@
     {
       "name": "cardflow-backend",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd backend && go run ./cmd/api/"],
+      "runtimeArgs": [
+        "-c",
+        "cd backend && go run ./cmd/api/"
+      ],
       "port": 8080
     },
     {
       "name": "cardflow-frontend",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd frontend && npm run web -- --port 3001"],
+      "runtimeArgs": [
+        "-c",
+        "cd frontend && npm run web -- --port 3001"
+      ],
       "port": 3001
+    },
+    {
+      "name": "cardflow-backend-console-mail",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd backend && CRM_SMTP_HOST= CRM_BREVO_API_KEY= go run ./cmd/api/"
+      ],
+      "port": 8080
     }
   ]
 }

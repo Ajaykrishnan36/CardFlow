@@ -125,3 +125,16 @@ func ClientIP(r *http.Request) string {
 	}
 	return addr
 }
+
+// DecodeJSONLimit is DecodeJSON with a larger body limit (imports, uploads).
+func DecodeJSONLimit(w http.ResponseWriter, r *http.Request, dst any, max int64) error {
+	r.Body = http.MaxBytesReader(w, r.Body, max)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return NewError(http.StatusRequestEntityTooLarge, "too_large", "That's too much at once — split it into smaller parts.")
+		}
+		return BadRequest("Request body must be valid JSON.")
+	}
+	return nil
+}

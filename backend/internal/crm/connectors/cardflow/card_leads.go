@@ -263,6 +263,9 @@ func createCardLead(ctx context.Context, tx pgx.Tx, wsID, owner uuid.UUID, b biz
 		"cardflow:cardbiz:"+b.ID, map[string]any{"business": b.Name, "gstin": b.GSTIN}); err != nil {
 		return uuid.Nil, err
 	}
+	if err := records.EmitRecordEvent(ctx, tx, wsID, "leads", id, "record.created", "app"); err != nil {
+		return uuid.Nil, err
+	}
 	return id, shared.WriteAudit(ctx, tx, shared.AuditEvent{WorkspaceID: &wsID, ActorKind: "system", Action: "connector.card_lead_created",
 		EntityType: "lead", EntityID: &id, After: map[string]any{"app": AppName, "businessId": b.ID, "gstin": b.GSTIN}})
 }
@@ -311,6 +314,9 @@ func createBusinessAccount(ctx context.Context, tx pgx.Tx, wsID, owner uuid.UUID
 		desc, owner, custom, at).Scan(&id); err != nil {
 		return uuid.Nil, err
 	}
+	if err := records.EmitRecordEvent(ctx, tx, wsID, "accounts", id, "record.created", "app"); err != nil {
+		return uuid.Nil, err
+	}
 	return id, shared.WriteAudit(ctx, tx, shared.AuditEvent{WorkspaceID: &wsID, ActorKind: "system", Action: "connector.business_account_created",
 		EntityType: "account", EntityID: &id, After: map[string]any{"app": AppName, "businessId": b.ID, "gstin": b.GSTIN}})
 }
@@ -324,6 +330,9 @@ func convertCardLead(ctx context.Context, tx pgx.Tx, wsID, owner, leadID, accoun
 		UPDATE crm.leads SET status = 'converted', converted_at = $2, converted_account_id = $3, converted_contact_id = $4, updated_at = now()
 		WHERE id = $1 AND converted_at IS NULL`, leadID, at, accountID, contactID)
 	if err != nil || tag.RowsAffected() == 0 {
+		return err
+	}
+	if err := records.EmitRecordEvent(ctx, tx, wsID, "leads", leadID, "record.updated", "app"); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx, `

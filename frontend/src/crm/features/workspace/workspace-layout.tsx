@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Outlet, useParams } from 'react-router-dom';
-import { Building2, Compass, Lock, LogOut } from 'lucide-react';
+import { Building2, Compass, KeyRound, Lock, LogOut } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import { useMe, useSignOut, workspaceHomePath } from '@crm/auth/session';
 import { Button } from '@crm/components/ui/button';
@@ -10,6 +10,7 @@ import { Spinner } from '@crm/components/ui/spinner';
 import { ErrorState } from '@crm/components/states';
 import { PageContainer } from '@crm/components/page';
 import { RecordScopeProvider, scopeFromContext } from '@crm/features/records/record-scope';
+import { hexToHsl } from '@crm/lib/utils';
 import { useWorkspaceContextQuery, WorkspaceProvider } from './workspace-context';
 
 /**
@@ -22,6 +23,7 @@ export function WorkspaceLayout() {
   const q = useWorkspaceContextQuery(ws);
   const value = useMemo(() => (q.data ? { code: ws, context: q.data } : null), [q.data, ws]);
   const scope = useMemo(() => (q.data ? scopeFromContext(q.data, ws) : null), [q.data, ws]);
+  useProductAccent(q.data?.setup?.accentColor);
 
   if (q.isPending) {
     return (
@@ -31,6 +33,7 @@ export function WorkspaceLayout() {
     );
   }
   if (q.isError) {
+    if (isApiError(q.error) && q.error.code === 'sign_in_method_not_allowed') return <WrongSignInMethod code={ws} message={q.error.message} />;
     if (isApiError(q.error) && q.error.status === 403) return <WorkspaceUnavailable code={ws} reason="forbidden" />;
     if (isApiError(q.error) && q.error.status === 404) return <WorkspaceUnavailable code={ws} reason="notFound" />;
     return (
@@ -57,10 +60,48 @@ export function WorkspaceLayout() {
   );
 }
 
+/** The product setup's accent colour (Details & branding) becomes the workspace's primary colour. */
+function useProductAccent(hex: string | undefined) {
+  useEffect(() => {
+    const hsl = hex ? hexToHsl(hex) : null;
+    if (!hsl) return;
+    const [h, s, l] = hsl;
+    const el = document.createElement('style');
+    el.dataset.productAccent = '';
+    const fg = l > 65 ? '0 0% 9%' : '0 0% 100%';
+    const darkL = Math.min(72, Math.max(l, 58));
+    el.textContent =
+      `:root{--primary:${h} ${s}% ${l}%;--ring:${h} ${s}% ${l}%;--primary-foreground:${fg};--primary-soft:${h} 100% 97%}` +
+      `.dark{--primary:${h} ${Math.min(s, 85)}% ${darkL}%;--ring:${h} ${Math.min(s, 85)}% ${darkL}%;--primary-foreground:${darkL > 65 ? '0 0% 9%' : '0 0% 100%'};--primary-soft:${h} 40% 19%}`;
+    document.head.appendChild(el);
+    return () => el.remove();
+  }, [hex]);
+}
+
 /** /crm/w/:ws → /crm/w/:ws/home */
 export function WorkspaceIndexRedirect() {
   const { ws = '' } = useParams();
   return <Navigate to={workspaceHomePath(ws)} replace />;
+}
+
+/** The product only accepts other sign-in methods (e.g. SSO) than the one this session used (D-64). */
+function WrongSignInMethod({ code, message }: { code: string; message: string }) {
+  const { t } = useTranslation();
+  const signOut = useSignOut();
+  return (
+    <div className="grid min-h-full place-items-center px-6 py-16">
+      <div className="flex w-full max-w-md flex-col items-center text-center animate-slide-up">
+        <div className="mb-5 grid size-14 place-items-center rounded-2xl border bg-card text-primary shadow-card">
+          <KeyRound className="size-7" aria-hidden />
+        </div>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">{t('workspaceApp.layout.methodTitle')}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+        <Button className="mt-6" onClick={() => void signOut({ to: `/crm/login?product=${encodeURIComponent(code)}` })}>
+          {t('workspaceApp.layout.methodAction')}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 /** Not a member (403 no_workspace_access) or unknown code (404): offer the user's other workspaces. */

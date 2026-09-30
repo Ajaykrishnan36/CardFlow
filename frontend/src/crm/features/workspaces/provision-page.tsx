@@ -16,7 +16,7 @@ import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { CURRENCIES, InviteStatusBadge, LOCALES, slugCode, TIMEZONES, WORKSPACE_CODE_RE } from './workspace-ui';
 
-// The setup (modules, roles, pipeline, login) is created afterwards from the
+// The setup (objects, roles, sales process, sign-in) is created afterwards from the
 // product's Product setup tab and linked when published (D-53).
 const STEPS = ['details', 'admin', 'review'] as const;
 type Step = (typeof STEPS)[number];

@@ -3,6 +3,7 @@ package records
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -34,6 +35,7 @@ type ObjectField struct {
 	Required bool     `json:"required,omitempty"`
 	Options  []Option `json:"options,omitempty"`
 	Lookup   string   `json:"lookup,omitempty"`
+	Unique   bool     `json:"unique,omitempty"`
 	HelpText string   `json:"helpText,omitempty"`
 }
 
@@ -162,7 +164,7 @@ func standardObjects() []ObjectDefinition {
 				st("resolved", "Resolved", "success"), st("closed", "Closed", "neutral")},
 				Fields: []ObjectField{
 					ofSelect("priority", "Priority", opts("high", "High", "medium", "Medium", "low", "Low")),
-					ofSelect("origin", "Origin", opts("email", "Email", "phone", "Phone", "web", "Web", "chat", "Chat")),
+					ofSelect("origin", "Origin", opts("email", "Email", "phone", "Phone", "web", "Web", "chat", "Chat", "app", "App")),
 					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
 					of("description", "Description", "textarea"), of("resolution", "Resolution", "textarea")}}},
 	}
@@ -238,7 +240,7 @@ func buildSpec(d *ObjectDefinition) *objectSpec {
 		listCols = append(listCols, "status")
 	}
 	for _, f := range d.Fields {
-		fields = append(fields, Field{Key: f.Key, Label: f.Label, Type: f.Type, Required: f.Required, Options: f.Options, Lookup: f.Lookup, HelpText: f.HelpText})
+		fields = append(fields, Field{Key: f.Key, Label: f.Label, Type: f.Type, Required: f.Required, Options: f.Options, Lookup: f.Lookup, Unique: f.Unique, HelpText: f.HelpText})
 		switch f.Type {
 		case "text", "email", "phone":
 			search = append(search, "t.custom->>'"+f.Key+"'")
@@ -292,6 +294,9 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 				INSERT INTO crm.object_definitions (key, module, singular, plural, description, icon, prefix, definition, is_standard)
 				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) ON CONFLICT (key) DO NOTHING`,
 				d.Key, d.Module, d.Singular, d.Plural, d.Description, d.Icon, d.Prefix, raw); err != nil {
+				return err
+			}
+			if err := addMissingStandardOptions(ctx, tx, d); err != nil {
 				return err
 			}
 		}
@@ -374,7 +379,7 @@ func (h *Handler) reloadObjects(ctx context.Context) error {
 		}
 		specsByKey[d.Key] = buildSpec(d)
 		catalog = append(catalog, access.CatalogObject{
-			Key: d.Key, Label: d.Plural, Module: d.Module, Actions: []string{"read", "create", "update", "delete", "export"},
+			Key: d.Key, Label: d.Plural, Module: d.Module, Actions: access.RecordActions(),
 			Custom: true, Route: d.Key, Icon: d.Icon,
 		})
 		if !d.Standard {
@@ -385,6 +390,8 @@ func (h *Handler) reloadObjects(ctx context.Context) error {
 	registry.Lock()
 	registry.defs, registry.specs = byKey, specsByKey
 	registry.Unlock()
+	// The same order in every product's sidebar: the module catalog's (Salesforce-like) order.
+	sort.SliceStable(catalog, func(i, j int) bool { return moduleOrder(catalog[i].Module) < moduleOrder(catalog[j].Module) })
 	access.SetCustomObjects(catalog)
 	// Standard modules are available when their object is active; custom objects are modules of their own.
 	avail := map[string][]string{}
@@ -573,7 +580,10 @@ func (h *Handler) validateObject(ctx context.Context, d *ObjectDefinition, in ob
 			case !customTypes[f.Type] && f.Type != "lookup":
 				fe[path] = fmt.Sprintf("Pick a type for %q.", f.Label)
 			}
-			if f.Type == "lookup" {
+			if f.Unique && !uniqueTypes[f.Type] {
+				f.Unique = false
+			}
+			if isLinkType(f.Type) {
 				if f.Lookup != "users" && specFor(f.Lookup) == nil && f.Lookup != d.Key {
 					fe[path] = fmt.Sprintf("Pick which object %q links to.", f.Label)
 				}
@@ -663,6 +673,15 @@ func (h *Handler) lookupTargets() []lookupTarget {
 		out = append(out, lookupTarget{s.Key, s.Plural})
 	}
 	return out
+}
+
+func (h *Handler) isLookupTarget(key string) bool {
+	for _, t := range h.lookupTargets() {
+		if t.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) findDefinition(ctx context.Context, key string) (*ObjectDefinition, error) {
@@ -936,4 +955,49 @@ func (h *Handler) handleOwnerFieldCatalog(w http.ResponseWriter, r *http.Request
 	}
 	list, err := h.fieldCatalog(r.Context(), id)
 	respond(w, r, http.StatusOK, map[string]any{"data": list}, err)
+}
+
+// addMissingStandardOptions adds pick-list options that a newer release added to a
+// standard object (e.g. Case origin "App") to the stored definition. Additive only:
+// options the owner renamed or added are kept.
+func addMissingStandardOptions(ctx context.Context, tx pgx.Tx, d ObjectDefinition) error {
+	var raw []byte
+	if err := tx.QueryRow(ctx, `SELECT definition FROM crm.object_definitions WHERE key = $1 AND is_standard`, d.Key).Scan(&raw); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	var stored ObjectBody
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil
+	}
+	changed := false
+	for _, want := range d.Fields {
+		if len(want.Options) == 0 {
+			continue
+		}
+		for i := range stored.Fields {
+			f := &stored.Fields[i]
+			if f.Key != want.Key || (f.Type != "select" && f.Type != "multiselect") {
+				continue
+			}
+			have := map[string]bool{}
+			for _, o := range f.Options {
+				have[o.Value] = true
+			}
+			for _, o := range want.Options {
+				if !have[o.Value] {
+					f.Options = append(f.Options, o)
+					changed = true
+				}
+			}
+		}
+	}
+	if !changed {
+		return nil
+	}
+	out, _ := json.Marshal(stored)
+	_, err := tx.Exec(ctx, `UPDATE crm.object_definitions SET definition = $2, updated_at = now() WHERE key = $1`, d.Key, out)
+	return err
 }

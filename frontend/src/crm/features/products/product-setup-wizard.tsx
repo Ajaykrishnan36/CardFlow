@@ -7,7 +7,7 @@ import type { ProductConfig, ProductDetail } from '@crm/api/types';
 import { Alert, Card } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
 import { cn } from '@crm/lib/utils';
-import { nextVersion, SETUP_STEPS, stepForField, type SetupStep } from './product-utils';
+import { LOGIN_METHODS, nextVersion, SETUP_STEPS, stepForField, type SetupStep } from './product-utils';
 import type { ProductDraft } from './use-product-draft';
 import { GeneralStep, LoginStep, ModulesStep, PipelineStep, ReviewStep, RolesStep } from './setup-steps';
 
@@ -41,13 +41,13 @@ function stepComplete(step: SetupStep, d: ProductDraft): boolean {
     case 'pipeline':
       return d.config.leadStatuses.length > 0 && d.config.pipelineStages.length > 0;
     case 'login':
-      return d.config.loginMethods.password;
+      return LOGIN_METHODS.some((k) => d.config.loginMethods[k]);
     default:
       return false;
   }
 }
 
-/** PRD product setup: General → Modules & data → Roles & user types → Pipeline & conversion → Login & integrations → Review & publish. */
+/** Product setup: Details & branding → Objects → Roles & user types → Sales process → Sign-in & integrations → Review & publish. */
 export function ProductSetupWizard(props: WizardProps) {
   const { product, draft, setDraft, updateConfig, dirty, step, onStepChange, onSave, saving, publishErrors, publishable, publishing, onPublish } = props;
   const { t } = useTranslation();

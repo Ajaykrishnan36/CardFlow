@@ -10,6 +10,7 @@ import { cn, initials } from '@crm/lib/utils';
 import { useUI } from '@crm/lib/ui-store';
 import { navIcon } from './nav-icons';
 import { UserMenu } from './user-menu';
+import { FavoritesNav } from './live';
 
 function groupNav(items: NavItem[]) {
   const groups: Array<{ name: string | null; items: NavItem[] }> = [];
@@ -36,9 +37,11 @@ interface SidebarProps {
   collapsed: boolean;
   onNavigate?: () => void;
   className?: string;
+  /** API prefix of the CRM being shown ('/platform' or '/w/<code>'), for favorites. */
+  apiPrefix?: string | null;
 }
 
-export function SidebarContent({ me, navigation, loading, workspace, workspaceCode, collapsed, onNavigate, className }: SidebarProps) {
+export function SidebarContent({ me, navigation, loading, workspace, workspaceCode, collapsed, onNavigate, className, apiPrefix }: SidebarProps) {
   const { t } = useTranslation();
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const setCommandOpen = useUI((s) => s.setCommandOpen);
@@ -98,6 +101,7 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
 
       {/* Navigation */}
       <nav className="crm-scroll flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
+        {apiPrefix ? <FavoritesNav prefix={apiPrefix} collapsed={collapsed} onNavigate={onNavigate} /> : null}
         {loading || !navigation ? (
           <div className="space-y-2 px-1">
             {Array.from({ length: 6 }).map((_, i) => (

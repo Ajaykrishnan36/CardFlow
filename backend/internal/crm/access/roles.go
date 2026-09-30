@@ -1,6 +1,7 @@
 package access
 
 import (
+	"encoding/json"
 	"regexp"
 	"sync"
 )
@@ -77,14 +78,22 @@ type CatalogEntry struct {
 }
 
 var builtinObjects = []CatalogObject{
-	{Key: "lead", Label: "Leads", Module: "leads", Actions: []string{"read", "create", "update", "delete", "convert", "export"}},
-	{Key: "account", Label: "Accounts", Module: "accounts", Actions: []string{"read", "create", "update", "delete", "export"}},
-	{Key: "contact", Label: "Contacts", Module: "contacts", Actions: []string{"read", "create", "update", "delete", "export"}},
+	{Key: "lead", Label: "Leads", Module: "leads", Actions: RecordActions("convert")},
+	{Key: "account", Label: "Accounts", Module: "accounts", Actions: RecordActions()},
+	{Key: "contact", Label: "Contacts", Module: "contacts", Actions: RecordActions()},
 	{Key: "ticket", Label: "Support tickets", Module: "tickets", Actions: []string{"read", "update"}},
 	// update = edit profile, grant or revoke premium access, change app role / status.
 	{Key: "app_user", Label: "App users", Module: "app_users", Actions: []string{"read", "update", "delete"}, App: true},
 	// update = edit the listing, its verification badge and search visibility.
 	{Key: "app_business", Label: "Business listings", Module: "directory", Actions: []string{"read", "update", "delete"}, App: true},
+}
+
+// RecordActions are the actions on a CRM record object (plus any extra, e.g. "convert").
+// destroy = delete permanently from the recycle bin; import/export = CSV.
+func RecordActions(extra ...string) []string {
+	out := []string{"read", "create", "update", "delete"}
+	out = append(out, extra...)
+	return append(out, "import", "export", "destroy")
 }
 
 var (
@@ -109,7 +118,8 @@ func CatalogObjects() []CatalogObject {
 
 var Actions = []CatalogEntry{
 	{Key: "read", Label: "View"}, {Key: "create", Label: "Create"}, {Key: "update", Label: "Edit"},
-	{Key: "delete", Label: "Delete"}, {Key: "convert", Label: "Convert"}, {Key: "export", Label: "Export"},
+	{Key: "delete", Label: "Delete"}, {Key: "convert", Label: "Convert"}, {Key: "import", Label: "Import"}, {Key: "export", Label: "Export"},
+	{Key: "destroy", Label: "Delete permanently"},
 }
 
 // actionLabelFor names an action for one object (tickets: update = reply).
@@ -128,6 +138,10 @@ const (
 	CapMetadata      = "metadata.manage"
 	CapAccessManage  = "access.manage"
 	CapMembersManage = "members.manage"
+	CapWorkflows     = "workflows.manage"
+	CapDeveloper     = "developer.manage"
+	CapEmailSend     = "email.send"
+	CapCampaigns     = "campaigns.manage"
 )
 
 var CapabilityCatalog = []CatalogEntry{
@@ -135,6 +149,10 @@ var CapabilityCatalog = []CatalogEntry{
 	{Key: CapMetadata, Label: "Customize page layouts & fields", Description: "Arrange record pages and add custom fields."},
 	{Key: CapAccessManage, Label: "Manage roles & permission sets",
 		Description: "Create and edit roles and permission sets in this workspace — never beyond their own access."},
+	{Key: CapWorkflows, Label: "Manage workflows", Description: "Build, turn on and run automations (they act with full access to the records they touch)."},
+	{Key: CapDeveloper, Label: "Manage API keys & webhooks", Description: "Create API keys and webhooks for this workspace (needs API access in the product's setup)."},
+	{Key: CapEmailSend, Label: "Send email", Description: "Send emails from records, from a connected mailbox or the CRM's address."},
+	{Key: CapCampaigns, Label: "Manage email campaigns", Description: "Send one email to many contacts at once."},
 	{Key: CapMembersManage, Label: "Manage users",
 		Description: "Invite users and change their access in this workspace — never beyond their own access."},
 }
@@ -143,7 +161,8 @@ var CapabilityCatalog = []CatalogEntry{
 // outside local, like Admin); otherwise it sits with Staff.
 func RankFor(r Rules) int {
 	for _, c := range r.Capabilities {
-		if c == CapAccessManage || c == CapMembersManage {
+		switch c {
+		case CapAccessManage, CapMembersManage, CapWorkflows, CapDeveloper:
 			return RankAdmin
 		}
 	}
@@ -205,7 +224,7 @@ func only(list []string, keep ...string) []string {
 // not read from roles.base_rules, so improving a role reaches existing workspaces.
 func SystemRoles() []SystemRole {
 	saObj, saRows := grantAll(func(o CatalogObject) []string { return o.Actions }, "workspace")
-	adObj, adRows := grantAll(func(o CatalogObject) []string { return without(o.Actions, "export") }, "workspace")
+	adObj, adRows := grantAll(func(o CatalogObject) []string { return without(o.Actions, "export", "destroy") }, "workspace")
 	stObj, stRows := grantAll(func(o CatalogObject) []string {
 		if o.App {
 			return only(o.Actions, "read") // staff can look up app data but not change it
@@ -215,17 +234,26 @@ func SystemRoles() []SystemRole {
 	return []SystemRole{
 		{Key: "SUPER_ADMIN", Name: "Super Admin", Rank: RankSuperAdmin,
 			Description: "Full access to every record, setting, user and role in the workspace — always.",
-			Rules:       Rules{Objects: saObj, Rows: saRows, Capabilities: []string{CapDashboard, CapMetadata, CapAccessManage, CapMembersManage}}},
+			Rules:       Rules{Objects: saObj, Rows: saRows, Capabilities: AllCapabilities()}},
 		{Key: "ADMIN", Name: "Admin", Rank: RankAdmin,
-			Description: "Works every record in the workspace; can't export or customize.",
-			Rules:       Rules{Objects: adObj, Rows: adRows, Capabilities: []string{CapDashboard}}},
+			Description: "Works every record in the workspace; can't export, delete permanently or customize.",
+			Rules:       Rules{Objects: adObj, Rows: adRows, Capabilities: []string{CapDashboard, CapEmailSend}}},
 		{Key: "STAFF", Name: "Staff", Rank: RankStaff,
 			Description: "Views, creates and edits their own records.",
-			Rules:       Rules{Objects: stObj, Rows: stRows, Capabilities: []string{CapDashboard}}},
+			Rules:       Rules{Objects: stObj, Rows: stRows, Capabilities: []string{CapDashboard, CapEmailSend}}},
 		{Key: "END_USER", Name: "End user", Rank: RankEndUser,
 			Description: "No CRM access by itself — grant exactly what's needed with permission sets.",
 			Rules:       Rules{Objects: map[string][]string{}, Rows: map[string]map[string]string{}, Capabilities: []string{}}},
 	}
+}
+
+// AllCapabilities lists every capability key ("give all access").
+func AllCapabilities() []string {
+	out := make([]string, len(CapabilityCatalog))
+	for i, c := range CapabilityCatalog {
+		out[i] = c.Key
+	}
+	return out
 }
 
 func FindSystemRole(key string) (SystemRole, bool) {
@@ -383,7 +411,7 @@ func Exceeds(r Rules, limit *Effective) []string {
 func FullAccess() *Effective {
 	sa, _ := FindSystemRole("SUPER_ADMIN")
 	rules := sa.Rules
-	rules.Capabilities = []string{CapDashboard, CapMetadata, CapAccessManage, CapMembersManage}
+	rules.Capabilities = AllCapabilities()
 	modules := map[string]bool{}
 	for _, o := range CatalogObjects() {
 		modules[o.Module] = true
@@ -391,4 +419,11 @@ func FullAccess() *Effective {
 	e := Combine([]grantSource{{label: "Platform owner", rules: rules}}, modules, nil)
 	e.RoleKey, e.RoleName = "PLATFORM_OWNER", "Platform owner"
 	return e
+}
+
+// ParseRules reads stored rules JSON and normalises it (unknown objects/actions dropped).
+func ParseRules(raw []byte) Rules {
+	var r Rules
+	_ = json.Unmarshal(raw, &r)
+	return Normalize(r)
 }

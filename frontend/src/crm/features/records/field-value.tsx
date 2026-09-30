@@ -5,7 +5,7 @@ import type { FieldDef, LookupValue, ObjectMeta, RecordRow } from '@crm/api/type
 import { Badge } from '@crm/components/ui/card';
 import { Tooltip } from '@crm/components/ui/menu';
 import { cn, relativeTime } from '@crm/lib/utils';
-import { inr, isEmptyValue, parseLocalDate, statusOption } from './use-object-meta';
+import { humanize, inr, isEmptyValue, parseLocalDate, statusOption } from './use-object-meta';
 import { scopedLookupHref, useRecordScope } from './record-scope';
 
 export function EmptyValue() {
@@ -14,7 +14,8 @@ export function EmptyValue() {
 
 function optionLabel(field: FieldDef, v: unknown): string {
   const s = String(v);
-  return field.options?.find((o) => o.value === s)?.label ?? s;
+  // A value no longer in the pick-list (an older setup) still reads as words.
+  return field.options?.find((o) => o.value === s)?.label ?? humanize(s);
 }
 
 function formatDate(v: unknown): string {
@@ -62,9 +63,29 @@ export function formatValueText(field: FieldDef, value: unknown, lookup?: Lookup
       return value ? 'Yes' : 'No';
     case 'lookup':
       return lookup?.label ?? String(value);
+    case 'rating':
+      return '★'.repeat(Math.max(0, Math.min(5, Number(value) || 0)));
+    case 'address':
+    case 'fullName':
+      return partsText(value);
+    case 'emails':
+    case 'phones':
+    case 'links':
+      return (Array.isArray(value) ? value : [value]).map(String).join(', ');
+    case 'json':
+      return JSON.stringify(value);
+    case 'files':
+      return (Array.isArray(value) ? value : []).map((f) => (f as { name?: string }).name ?? '').join(', ');
     default:
       return String(value);
   }
+}
+
+function partsText(value: unknown): string {
+  if (!value || typeof value !== 'object') return String(value ?? '');
+  const v = value as Record<string, string>;
+  if ('firstName' in v || 'lastName' in v) return [v.firstName, v.lastName].filter(Boolean).join(' ');
+  return ['street', 'street2', 'city', 'state', 'postalCode', 'country'].map((k) => v[k]).filter(Boolean).join(', ');
 }
 
 /**
@@ -79,7 +100,7 @@ export function FieldValue({
   className
 }: {
   field: FieldDef;
-  record: Pick<RecordRow, 'values' | 'lookups'>;
+  record: Pick<RecordRow, 'values' | 'lookups'> & { links?: RecordRow['links'] };
   meta?: ObjectMeta;
   compact?: boolean;
   className?: string;
@@ -170,6 +191,69 @@ export function FieldValue({
         <Link to={href} className={cn(linkCls, compact && 'truncate', !lk && 'font-mono text-xs', className)} onClick={(e) => e.stopPropagation()}>
           {label}
         </Link>
+      );
+    }
+    case 'rating': {
+      const n = Math.max(0, Math.min(5, Number(value) || 0));
+      return (
+        <span className={cn('whitespace-nowrap text-sm leading-none', className)} aria-label={t('records.input.stars', { count: n })}>
+          <span className="text-amber-500">{'★'.repeat(n)}</span>
+          <span className="text-muted-foreground/30">{'★'.repeat(5 - n)}</span>
+        </span>
+      );
+    }
+    case 'address':
+    case 'fullName':
+      return <span className={cn(compact ? 'truncate' : 'whitespace-pre-wrap', className)}>{partsText(value)}</span>;
+    case 'emails':
+    case 'phones':
+    case 'links': {
+      const items = (Array.isArray(value) ? value : [value]).map(String);
+      const href = (v: string) =>
+        field.type === 'emails' ? `mailto:${v}` : field.type === 'phones' ? `tel:${v.replace(/\s+/g, '')}` : /^https?:\/\//i.test(v) ? v : `https://${v}`;
+      return (
+        <span className={cn('flex gap-x-2 gap-y-0.5', compact ? 'overflow-hidden' : 'flex-wrap', className)}>
+          {items.map((v) => (
+            <a key={v} href={href(v)} target={field.type === 'links' ? '_blank' : undefined} rel="noreferrer noopener" className={cn(linkCls, 'truncate')} onClick={(e) => e.stopPropagation()}>
+              {field.type === 'links' ? v.replace(/^https?:\/\//i, '').replace(/\/$/, '') : v}
+            </a>
+          ))}
+        </span>
+      );
+    }
+    case 'json':
+      return compact ? (
+        <code className={cn('truncate font-mono text-xs', className)}>{JSON.stringify(value)}</code>
+      ) : (
+        <pre className={cn('max-h-48 overflow-auto rounded bg-muted p-2 font-mono text-xs', className)}>{JSON.stringify(value, null, 2)}</pre>
+      );
+    case 'relations': {
+      const list = record.links?.[field.key] ?? (Array.isArray(value) ? value.map((id) => ({ id: String(id), label: String(id) })) : []);
+      return (
+        <span className={cn('flex gap-1', compact ? 'overflow-hidden' : 'flex-wrap', className)}>
+          {list.map((l) => {
+            const href = scopedLookupHref(scope, field.lookup, l.id);
+            return href ? (
+              <Link key={l.id} to={href} className="rounded bg-primary-soft px-1.5 py-0.5 text-xs font-medium text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
+                {l.label}
+              </Link>
+            ) : (
+              <Badge key={l.id}>{l.label}</Badge>
+            );
+          })}
+        </span>
+      );
+    }
+    case 'files': {
+      const files = (Array.isArray(value) ? value : []) as Array<{ id: string; name: string }>;
+      return (
+        <span className={cn('flex gap-x-2 gap-y-0.5', compact ? 'overflow-hidden' : 'flex-col', className)}>
+          {files.map((f) => (
+            <a key={f.id} href={scope.api.fileUrl(f.id)} className={cn(linkCls, 'truncate')} onClick={(e) => e.stopPropagation()}>
+              {f.name}
+            </a>
+          ))}
+        </span>
       );
     }
     default:

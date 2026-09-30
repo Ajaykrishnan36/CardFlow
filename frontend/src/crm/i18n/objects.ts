@@ -6,7 +6,7 @@ const strings = {
   loadError: 'Couldn’t load objects',
   notFound: 'This object doesn’t exist',
   yours: 'Custom objects',
-  yoursBody: 'Objects you created yourself. Switch one on for a setup in Setup → Modules & data.',
+  yoursBody: 'Objects you created yourself. Switch one on for a product in Product setup → Objects.',
   standard: 'Standard objects',
   standardBody: 'Behind the setup modules (Opportunities, Tasks, Calendar…). You can add fields and change their statuses too.',
   noneTitle: 'No custom objects yet',
@@ -81,6 +81,7 @@ const strings = {
   addOptions: 'Add at least one option.',
   helpText: 'Help text',
   required: 'Required',
+  uniqueHint: 'No two records can share the same value in this field.',
   types: {
     text: 'Text',
     textarea: 'Long text',

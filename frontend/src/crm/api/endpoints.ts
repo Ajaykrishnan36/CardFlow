@@ -1,4 +1,8 @@
-import { api, API_BASE } from './client';
+import { api, API_BASE, ApiError } from './client';
+import type {
+  ApiKey, ApiKeysResponse, AppNotification, BulkResult, Campaign, CampaignRecipient, Favorite, FileInfo, FilterNode, ImportResult, MailboxesResponse,
+  RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
+} from './types-features';
 import type {
   DashboardDetail,
   DashboardSummary,
@@ -94,6 +98,11 @@ export const authApi = {
     api<{ sent: boolean; expiresIn: number; channel: 'email'; devCode?: string }>('/auth/otp/request', { method: 'POST', body }),
   verifyOtp: (body: { identifier: string; code: string; audience: 'owner' | 'workspace' }) =>
     api<AuthStep>('/auth/otp/verify', { method: 'POST', body }),
+  /** Self sign-up (only products whose setup allows it): email a code, then create the account. */
+  requestSignup: (body: { product: string; name: string; email: string }) =>
+    api<{ sent: boolean; expiresIn: number; devCode?: string }>('/auth/signup/request', { method: 'POST', body }),
+  completeSignup: (body: { product: string; name: string; email: string; code: string; password?: string }) =>
+    api<AuthStep>('/auth/signup/verify', { method: 'POST', body }),
   logout: () => api<void>('/auth/logout', { method: 'POST' }),
   logoutAll: () => api<void>('/auth/logout-all', { method: 'POST' }),
   verifyMfa: (code: string) => api<NextStep>('/auth/mfa/verify', { method: 'POST', body: { code } }),
@@ -233,8 +242,77 @@ export function recordsApiFor(prefix: string) {
   remove: (object: ObjectKey, id: string) => api<void>(`${prefix}/crm/${object}/${enc(id)}`, { method: 'DELETE' }),
   convertLead: (id: string, body: ConvertBody, idempotencyKey: string) =>
     api<ConvertResult>(`${prefix}/crm/leads/${enc(id)}/convert`, { method: 'POST', body, headers: { 'Idempotency-Key': idempotencyKey } }),
-  lookup: (target: LookupTarget, q = '') => api<{ data: LookupValue[] }>(`${prefix}/lookup/${target}${qs({ q })}`).then((r) => r.data)
+  lookup: (target: LookupTarget, q = '') => api<{ data: LookupValue[] }>(`${prefix}/lookup/${target}${qs({ q })}`).then((r) => r.data),
+
+  // Lists: grouped boards, bulk actions, recycle bin, CSV, merge.
+  groups: (object: ObjectKey, params: RecordListParams & { field: string }) =>
+    api<{ field: string; groups: RecordGroup[] }>(`${prefix}/crm/${object}/groups${qs(params)}`),
+  bulk: (object: ObjectKey, body: { action: 'update' | 'delete' | 'restore' | 'destroy'; values?: Record<string, unknown>; query: BulkQuery }) =>
+    api<BulkResult>(`${prefix}/crm/${object}/bulk`, { method: 'POST', body }),
+  restore: (object: ObjectKey, id: string) => api<RecordRow>(`${prefix}/crm/${object}/${enc(id)}/restore`, { method: 'POST', body: {} }),
+  exportUrl: (object: ObjectKey, params: RecordListParams & { columns?: string }) => `${API_BASE}${prefix}/crm/${object}/export${qs(params)}`,
+  importRows: (object: ObjectKey, body: { rows: string[][]; mapping: string[]; mode: 'create' | 'upsert' | 'update'; matchField?: string; dryRun: boolean }) =>
+    api<ImportResult>(`${prefix}/crm/${object}/import`, { method: 'POST', body }),
+  duplicates: (object: ObjectKey, id: string) =>
+    api<{ data: Array<{ id: string; code?: string; title: string }> }>(`${prefix}/crm/${object}/${enc(id)}/duplicates`).then((r) => r.data),
+  merge: (object: ObjectKey, body: { primaryId: string; duplicateIds: string[]; values?: Record<string, unknown> }) =>
+    api<RecordRow>(`${prefix}/crm/${object}/merge`, { method: 'POST', body }),
+
+  // Saved views.
+  views: (object: ObjectKey) => api<{ data: SavedView[]; canShare: boolean }>(`${prefix}/crm/${object}/views`),
+  createView: (object: ObjectKey, body: Partial<Pick<SavedView, 'name' | 'kind' | 'visibility' | 'definition'>>) =>
+    api<SavedView>(`${prefix}/crm/${object}/views`, { method: 'POST', body }),
+  updateView: (object: ObjectKey, id: string, body: Partial<Pick<SavedView, 'name' | 'kind' | 'visibility' | 'definition' | 'position'>>) =>
+    api<SavedView>(`${prefix}/crm/${object}/views/${enc(id)}`, { method: 'PATCH', body }),
+  deleteView: (object: ObjectKey, id: string) => api<void>(`${prefix}/crm/${object}/views/${enc(id)}`, { method: 'DELETE' }),
+
+  // Record page: timeline, notes, files, email.
+  timeline: (object: ObjectKey, id: string, params: { before?: string; kind?: string; limit?: number } = {}) =>
+    api<{ data: TimelineItem[]; next?: string }>(`${prefix}/crm/${object}/${enc(id)}/timeline${qs(params)}`),
+  addNote: (object: ObjectKey, id: string, body: { body: string; kind?: 'note' | 'call' }) =>
+    api<{ ok: boolean }>(`${prefix}/crm/${object}/${enc(id)}/notes`, { method: 'POST', body }),
+  deleteTimelineItem: (itemId: string) => api<void>(`${prefix}/timeline/${enc(itemId)}`, { method: 'DELETE' }),
+  files: (object: ObjectKey, id: string) => api<{ data: FileInfo[] }>(`${prefix}/crm/${object}/${enc(id)}/files`).then((r) => r.data),
+  uploadFile: (object: ObjectKey, id: string, file: File, field?: string) => uploadForm<FileInfo>(`${prefix}/crm/${object}/${enc(id)}/files`, file, field),
+  fileUrl: (fileId: string, inline = false) => `${API_BASE}${prefix}/files/${enc(fileId)}${inline ? '?inline=1' : ''}`,
+  deleteFile: (fileId: string) => api<void>(`${prefix}/files/${enc(fileId)}`, { method: 'DELETE' }),
+  sendEmail: (object: ObjectKey, id: string, body: { to: string[]; cc?: string[]; subject: string; body: string; mailboxId?: string }) =>
+    api<{ id: string; status: string }>(`${prefix}/crm/${object}/${enc(id)}/email`, { method: 'POST', body }),
+  sendCommunication: (id: string, body: { mailboxId?: string; to?: string[] } = {}) =>
+    api<RecordRow>(`${prefix}/crm/communications/${enc(id)}/send`, { method: 'POST', body }),
+
+  // Everywhere: search, favorites, notifications, live stream.
+  search: (q: string, limit = 5) => api<{ data: SearchGroup[] }>(`${prefix}/search${qs({ q, limit })}`).then((r) => r.data),
+  favorites: () => api<{ data: Favorite[] }>(`${prefix}/favorites`).then((r) => r.data),
+  addFavorite: (body: { kind: 'record' | 'view'; object: ObjectKey; targetId: string }) =>
+    api<{ data: Favorite[] }>(`${prefix}/favorites`, { method: 'POST', body }).then((r) => r.data),
+  removeFavorite: (idOrTarget: string) => api<{ data: Favorite[] }>(`${prefix}/favorites/${enc(idOrTarget)}`, { method: 'DELETE' }).then((r) => r.data),
+  notifications: (params: { unread?: '1'; before?: number } = {}) =>
+    api<{ data: AppNotification[]; unread: number }>(`${prefix}/notifications${qs(params)}`),
+  readNotifications: (body: { ids?: number[]; all?: boolean }) =>
+    api<{ data: AppNotification[]; unread: number }>(`${prefix}/notifications/read`, { method: 'POST', body }),
+  streamUrl: () => `${API_BASE}${prefix}/stream`
   };
+}
+
+export interface BulkQuery {
+  ids?: string[];
+  filter?: FilterNode;
+  q?: string;
+  status?: string;
+  workspace?: string;
+}
+
+/** multipart upload with the CSRF header (fetch; the JSON client can't send files). */
+async function uploadForm<T>(path: string, file: File, field?: string): Promise<T> {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (field) fd.append('field', field);
+  const token = document.cookie.split('; ').find((c) => c.startsWith('crm_csrf='))?.split('=')[1] ?? '';
+  const res = await fetch(API_BASE + path, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': decodeURIComponent(token), Accept: 'application/json' } });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, data?.code ?? `http_${res.status}`, data?.message ?? 'Upload failed.', data?.fieldErrors ?? {}, data?.requestId);
+  return data as T;
 }
 
 export const recordsApi = recordsApiFor('/platform');
@@ -344,4 +422,84 @@ export function workspaceAppApi(code: string) {
 export const integrationsApi = {
   list: () => api<{ data: IntegrationInfo[] }>('/platform/integrations').then((r) => r.data),
   sync: (key: string) => api<IntegrationInfo>(`/platform/integrations/${enc(key)}/sync`, { method: 'POST', body: {} })
+};
+/** Product-level tools inside /w/<code>: developer, workflows, email, campaigns, teams, SSO. */
+export function workspaceToolsApi(code: string) {
+  const base = `/w/${enc(code)}`;
+  return {
+    apiKeys: () => api<ApiKeysResponse>(`${base}/developer/api-keys`),
+    createApiKey: (body: { name: string; access: 'full' | 'permission_set'; permissionSetId?: string; expiresInDays?: number }) =>
+      api<ApiKey>(`${base}/developer/api-keys`, { method: 'POST', body }),
+    revokeApiKey: (id: string) => api<void>(`${base}/developer/api-keys/${enc(id)}`, { method: 'DELETE' }),
+    webhooks: () => api<{ data: Webhook[]; enabled: boolean; events: string[] }>(`${base}/developer/webhooks`),
+    createWebhook: (body: { url: string; description?: string; events: string[]; objects?: string[] }) =>
+      api<Webhook>(`${base}/developer/webhooks`, { method: 'POST', body }),
+    updateWebhook: (id: string, body: Partial<{ url: string; description: string; events: string[]; objects: string[]; status: 'active' | 'paused' }>) =>
+      api<Webhook>(`${base}/developer/webhooks/${enc(id)}`, { method: 'PATCH', body }),
+    deleteWebhook: (id: string) => api<void>(`${base}/developer/webhooks/${enc(id)}`, { method: 'DELETE' }),
+    rotateWebhook: (id: string) => api<Webhook>(`${base}/developer/webhooks/${enc(id)}/rotate`, { method: 'POST', body: {} }),
+    testWebhook: (id: string) => api<{ status: number; ok: boolean; response: string }>(`${base}/developer/webhooks/${enc(id)}/test`, { method: 'POST', body: {} }),
+    deliveries: (id: string) => api<{ data: WebhookDelivery[] }>(`${base}/developer/webhooks/${enc(id)}/deliveries`).then((r) => r.data),
+    retryDelivery: (id: string, deliveryId: number) =>
+      api<{ ok: boolean }>(`${base}/developer/webhooks/${enc(id)}/deliveries/${deliveryId}/retry`, { method: 'POST', body: {} }),
+    openapi: () => api<Record<string, unknown>>(`${base}/developer/openapi.json`),
+    graphql: (query: string, variables?: Record<string, unknown>) => api<{ data?: unknown; errors?: Array<{ message: string }> }>(`${base}/graphql`, { method: 'POST', body: { query, variables } }),
+
+    workflows: () => api<{ data: Workflow[]; canManage: boolean }>(`${base}/workflows`),
+    workflow: (id: string) => api<Workflow>(`${base}/workflows/${enc(id)}`),
+    createWorkflow: (body: { name: string; description?: string; draft?: WorkflowDef }) => api<Workflow>(`${base}/workflows`, { method: 'POST', body }),
+    updateWorkflow: (id: string, body: { name?: string; description?: string; draft?: WorkflowDef }) =>
+      api<Workflow>(`${base}/workflows/${enc(id)}`, { method: 'PATCH', body }),
+    deleteWorkflow: (id: string) => api<void>(`${base}/workflows/${enc(id)}`, { method: 'DELETE' }),
+    publishWorkflow: (id: string) => api<Workflow>(`${base}/workflows/${enc(id)}/publish`, { method: 'POST', body: {} }),
+    setWorkflowStatus: (id: string, status: 'active' | 'inactive') => api<Workflow>(`${base}/workflows/${enc(id)}/status`, { method: 'POST', body: { status } }),
+    runWorkflow: (id: string, body: { recordIds?: string[]; input?: Record<string, unknown>; test?: boolean; record?: Record<string, unknown> }) =>
+      api<{ runs: string[] }>(`${base}/workflows/${enc(id)}/run`, { method: 'POST', body }),
+    workflowVersions: (id: string) =>
+      api<{ data: Array<{ version: number; definition: WorkflowDef; publishedBy: string; publishedAt: string }> }>(`${base}/workflows/${enc(id)}/versions`).then((r) => r.data),
+    restoreWorkflowVersion: (id: string, version: number) => api<Workflow>(`${base}/workflows/${enc(id)}/versions/${version}/restore`, { method: 'POST', body: {} }),
+    runs: (id: string, status?: string) => api<{ data: WorkflowRun[] }>(`${base}/workflows/${enc(id)}/runs${qs({ status })}`).then((r) => r.data),
+    stopRun: (id: string, runId: string) => api<WorkflowRun>(`${base}/workflows/${enc(id)}/runs/${enc(runId)}/stop`, { method: 'POST', body: {} }),
+    retryRun: (id: string, runId: string) => api<WorkflowRun>(`${base}/workflows/${enc(id)}/runs/${enc(runId)}/retry`, { method: 'POST', body: {} }),
+
+    mailboxes: () => api<MailboxesResponse>(`${base}/mailboxes`),
+    connectMailbox: (provider: 'google' | 'microsoft') => api<{ url: string }>(`${base}/mailboxes/connect/${provider}`),
+    connectImap: (body: { email: string; name?: string; imapHost: string; imapPort?: number; smtpHost?: string; smtpPort?: number; username?: string; password: string }) =>
+      api<MailboxesResponse>(`${base}/mailboxes/imap`, { method: 'POST', body }),
+    updateMailbox: (id: string, body: Partial<{ syncEmail: boolean; syncCalendar: boolean; visibility: string; autoCreateContacts: boolean; paused: boolean }>) =>
+      api<MailboxesResponse>(`${base}/mailboxes/${enc(id)}`, { method: 'PATCH', body }),
+    deleteMailbox: (id: string) => api<void>(`${base}/mailboxes/${enc(id)}`, { method: 'DELETE' }),
+    syncMailbox: (id: string) => api<{ emails: number; events: number; contactsCreated: number; error?: string }>(`${base}/mailboxes/${enc(id)}/sync`, { method: 'POST', body: {} }),
+    blocklist: (body: { add?: string; remove?: string }) => api<MailboxesResponse>(`${base}/mailboxes/blocklist`, { method: 'POST', body }),
+
+    campaigns: () => api<{ data: Campaign[]; sentToday: number; dailyLimit: number; senderReady: boolean }>(`${base}/campaigns`),
+    campaign: (id: string) => api<Campaign>(`${base}/campaigns/${enc(id)}`),
+    createCampaign: (body: Partial<Campaign>) => api<Campaign>(`${base}/campaigns`, { method: 'POST', body }),
+    updateCampaign: (id: string, body: Partial<Campaign> & { clearFilter?: boolean }) => api<Campaign>(`${base}/campaigns/${enc(id)}`, { method: 'PATCH', body }),
+    deleteCampaign: (id: string) => api<void>(`${base}/campaigns/${enc(id)}`, { method: 'DELETE' }),
+    audience: (id: string) => api<{ total: number; sample: Array<{ id: string; title: string; email: string }>; unsubscribed: number }>(`${base}/campaigns/${enc(id)}/audience`),
+    recipients: (id: string, status?: string) => api<{ data: CampaignRecipient[] }>(`${base}/campaigns/${enc(id)}/recipients${qs({ status })}`).then((r) => r.data),
+    testCampaign: (id: string, to: string) => api<{ ok: boolean }>(`${base}/campaigns/${enc(id)}/test`, { method: 'POST', body: { to } }),
+    sendCampaign: (id: string, at?: string) => api<Campaign>(`${base}/campaigns/${enc(id)}/send`, { method: 'POST', body: at ? { at } : {} }),
+    cancelCampaign: (id: string) => api<Campaign>(`${base}/campaigns/${enc(id)}/cancel`, { method: 'POST', body: {} }),
+
+    teams: () => api<{ data: Team[]; canManage: boolean }>(`${base}/teams`),
+    createTeam: (body: { name: string; description?: string; members?: string[] }) => api<{ data: Team[] }>(`${base}/teams`, { method: 'POST', body }),
+    updateTeam: (id: string, body: { name?: string; description?: string; members?: string[] }) =>
+      api<{ data: Team[] }>(`${base}/teams/${enc(id)}`, { method: 'PATCH', body }),
+    deleteTeam: (id: string) => api<void>(`${base}/teams/${enc(id)}`, { method: 'DELETE' }),
+
+    sso: () => api<SSOSettings>(`${base}/sso`),
+    saveSso: (body: { enabled: boolean; name?: string; idpMetadataXml?: string; idpMetadataUrl?: string; domains: string[]; jitProvisioning: boolean; defaultRoleKey: string }) =>
+      api<SSOSettings>(`${base}/sso`, { method: 'PUT', body }),
+    deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' })
+  };
+}
+export type WorkspaceToolsApi = ReturnType<typeof workspaceToolsApi>;
+
+export const signInApi = {
+  methods: (product?: string) => api<{ methods: string[]; product: string; signup?: boolean }>(`/auth/methods${qs({ product })}`),
+  providers: () => api<Record<'google' | 'microsoft' | 'linkedin', boolean>>('/oauth/providers'),
+  oauthStartUrl: (provider: string, params: { product?: string; audience?: 'owner' | 'workspace' }) => `${API_BASE}/auth/oauth/${provider}/start${qs(params)}`,
+  ssoStartUrl: (code: string) => `${API_BASE}/auth/saml/${enc(code)}/start`
 };

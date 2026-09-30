@@ -168,3 +168,6 @@ func nullIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+// Store exposes the database to the module's own routes (SSO sign-in).
+func (h *Handler) Store() *store.Store { return h.store }

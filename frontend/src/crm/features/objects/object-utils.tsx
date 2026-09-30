@@ -19,22 +19,10 @@ export const objectKeys = {
   one: (key: string) => ['platform', 'objects', key] as const
 };
 
-export const FIELD_TYPES: FieldType[] = [
-  'text',
-  'textarea',
-  'number',
-  'currency',
-  'percent',
-  'date',
-  'datetime',
-  'select',
-  'multiselect',
-  'boolean',
-  'email',
-  'phone',
-  'url',
-  'lookup'
-];
+export { CREATABLE_TYPES as FIELD_TYPES } from '@crm/features/records/field-dialog';
+
+export const UNIQUE_FIELD_TYPES = new Set<FieldType>(['text', 'email', 'phone', 'url', 'number']);
+export const isLinkField = (t: FieldType) => t === 'lookup' || t === 'relations';
 
 /** English plural for a suggested label: Property → Properties, Class → Classes. */
 export function pluralize(word: string): string {

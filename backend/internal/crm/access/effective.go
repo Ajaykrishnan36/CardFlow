@@ -359,3 +359,19 @@ func IdentitiesBelow(ctx context.Context, q Querier, membershipID uuid.UUID) ([]
 	}
 	return out, rows.Err()
 }
+
+// ForRules is the access one set of rules gives inside a workspace (API keys, D-61):
+// limited to the modules its products switch on, like a member's.
+func ForRules(ctx context.Context, q Querier, wsID uuid.UUID, label string, rules Rules) (*Effective, error) {
+	var isPlatform bool
+	if err := q.QueryRow(ctx, `SELECT is_platform FROM crm.workspaces WHERE id = $1`, wsID).Scan(&isPlatform); err != nil {
+		return nil, err
+	}
+	modules, products, err := workspaceModules(ctx, q, wsID, isPlatform, nil)
+	if err != nil {
+		return nil, err
+	}
+	e := Combine([]grantSource{{label: label, rules: rules}}, modules, products)
+	e.WorkspaceID = wsID
+	return e, nil
+}

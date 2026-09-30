@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Activity, ArrowRightLeft, ChevronDown, Copy, Ellipsis, KeyRound, LayoutTemplate, Lock, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { Activity, ArrowRightLeft, ChevronDown, Copy, Ellipsis, GitMerge, KeyRound, LayoutTemplate, Lock, Mail, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordDetail, RecordRow, RelatedList } from '@crm/api/types';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -16,6 +16,8 @@ import { cn, relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { GiveLoginDialog } from '@crm/features/access/give-login-dialog';
 import { ConvertLeadDialog } from './convert-dialog';
+import { RecordTimeline } from './record-timeline';
+import { EmailDialog, MergeDialog, RecordFiles, useDuplicates } from './record-extras';
 import { FieldEditor } from './field-input';
 import { FieldLabel, FieldValue } from './field-value';
 import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys, sameValue, statusOption, useObjectMeta } from './use-object-meta';
@@ -30,7 +32,7 @@ export function RecordDetailPage({ object }: { object: ObjectKey }) {
   return <RecordDetailView key={id} object={object} id={id} />;
 }
 
-type Tab = 'details' | 'related';
+type Tab = 'details' | 'activity' | 'related' | 'files';
 
 function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   const { t } = useTranslation();
@@ -48,7 +50,18 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   const record = detail?.record;
   useDocumentTitle(record?.title ?? meta?.labelSingular ?? t('records.common.loading'));
 
-  const [tab, setTab] = useState<Tab>('details');
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') as Tab) || 'details');
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const favQ = useQuery({ queryKey: ['favorites', prefix], queryFn: () => scope.api.favorites(), staleTime: 60_000 });
+  const isFav = (favQ.data ?? []).some((f) => f.kind === 'record' && f.targetId === id);
+  const toggleFav = useMutation({
+    mutationFn: () => (isFav ? scope.api.removeFavorite(id) : scope.api.addFavorite({ kind: 'record', object, targetId: id })),
+    onSuccess: (list) => {
+      qc.setQueryData(['favorites', prefix], list);
+      toast.success(isFav ? t('records.detail.unfavorited') : t('records.detail.favorited'));
+    }
+  });
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -253,7 +266,10 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
     return record.title;
   };
   const highlights = meta.layout.highlights.map((k) => byKey.get(k)).filter((f): f is FieldDef => Boolean(f));
-  const relatedCount = detail.related.reduce((n, r) => n + r.rows.length, 0);
+  // The activity list lives in the Activity tab now (timeline); the rest stays under Related.
+  const relatedLists = detail.related.filter((r) => r.object !== 'activities');
+  const relatedCount = relatedLists.reduce((n, r) => n + r.rows.length, 0);
+  const canEmail = Boolean(email) && scope.hasCapability('email.send');
 
   return (
     <PageContainer wide className={cn(editing && 'pb-0 lg:pb-0')}>
@@ -282,6 +298,13 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
               ) : null}
             </div>
             <div className="mt-0.5 flex items-center gap-1">
+              <Tooltip content={isFav ? t('records.detail.unfavorite') : t('records.detail.favorite')} side="top">
+                <button type="button" onClick={() => toggleFav.mutate()} aria-pressed={isFav}
+                  className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={isFav ? t('records.detail.unfavorite') : t('records.detail.favorite')}>
+                  <Star className={cn('size-3.5', isFav && 'fill-amber-400 text-amber-500')} />
+                </button>
+              </Tooltip>
               <span className="font-mono text-xs text-muted-foreground">{record.code}</span>
               <Tooltip content={t('records.detail.copyCode')} side="top">
                 <button
@@ -328,6 +351,11 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                 </Tooltip>
               )
             ) : null}
+            {canEmail ? (
+              <Button variant="outline" size="sm" onClick={() => setEmailOpen(true)} disabled={editing}>
+                <Mail /> {t('records.detail.sendEmail')}
+              </Button>
+            ) : null}
             {canConvert ? (
               <Button size="sm" onClick={() => setConvertOpen(true)} disabled={editing}>
                 <ArrowRightLeft /> {t('records.detail.convert')}
@@ -348,6 +376,11 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                 <MenuItem onSelect={() => void detailQ.refetch()}>
                   <RefreshCw /> {t('records.detail.refresh')}
                 </MenuItem>
+                {canEdit && canDelete ? (
+                  <MenuItem onSelect={() => setMergeOpen(true)}>
+                    <GitMerge /> {t('records.detail.merge')}
+                  </MenuItem>
+                ) : null}
                 {canDelete ? (
                   <>
                     <MenuSeparator />
@@ -375,6 +408,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
       </Card>
 
       {detail.conversion ? <ConversionBanner conversion={detail.conversion} /> : null}
+      <DuplicatesBanner object={object} id={id} enabled={canEdit && canDelete} onReview={() => setMergeOpen(true)} />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div ref={mainRef} className="min-w-0 lg:col-span-2">
@@ -385,6 +419,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
               onChange={setTab}
               items={[
                 { value: 'details', label: t('records.detail.tabDetails') },
+                { value: 'activity', label: t('records.detail.tabActivity') },
                 {
                   value: 'related',
                   label: (
@@ -393,7 +428,8 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                       {relatedCount ? <span className="rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-muted-foreground">{relatedCount}</span> : null}
                     </span>
                   )
-                }
+                },
+                { value: 'files', label: t('records.detail.tabFiles') }
               ]}
             />
             {tab === 'details' ? (
@@ -466,12 +502,16 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                   })
                 )}
               </div>
+            ) : tab === 'activity' ? (
+              <RecordTimeline object={object} id={id} canWrite={scope.can(object, 'read')} />
+            ) : tab === 'files' ? (
+              <RecordFiles object={object} id={id} canWrite={canEdit} />
             ) : (
               <div className="space-y-3 p-3 sm:p-4">
-                {detail.related.length === 0 ? (
+                {relatedLists.length === 0 ? (
                   <EmptyState icon={Icon} title={t('records.detail.noRelatedTitle')} body={t('records.detail.noRelatedBody')} />
                 ) : (
-                  detail.related.map((r) => <RelatedCard key={r.key} list={r} />)
+                  relatedLists.map((r) => <RelatedCard key={r.key} list={r} />)
                 )}
               </div>
             )}
@@ -479,7 +519,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
         </div>
 
         <aside className="min-w-0 space-y-4">
-          {detail.related.map((r) => (
+          {relatedLists.map((r) => (
             <RelatedCard key={r.key} list={r} compact onViewAll={() => setTab('related')} />
           ))}
           <RecordInfoCard record={record} meta={meta} />
@@ -523,6 +563,8 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
         loading={remove.isPending}
         onConfirm={() => remove.mutate()}
       />
+      {canEmail ? <EmailDialog object={object} record={record} open={emailOpen} onOpenChange={setEmailOpen} defaultTo={email} /> : null}
+      {canEdit && canDelete ? <MergeDialog object={object} meta={meta} record={record} open={mergeOpen} onOpenChange={setMergeOpen} /> : null}
       {/* Stays mounted after conversion so its success view survives the lead refetch. */}
       {isLead && scope.can('leads', 'convert') ? <ConvertLeadDialog lead={record} open={convertOpen} onOpenChange={setConvertOpen} /> : null}
       {isOwner ? (
@@ -572,7 +614,7 @@ function FieldCell({
   if (editing && canEdit && !field.readOnly) {
     return (
       <div data-field-key={field.key} className="py-2">
-        <FieldEditor field={field} value={value} onChange={onChange} error={error} disabled={disabled} lookupLabel={record.lookups[field.key]?.label} />
+        <FieldEditor field={field} value={value} onChange={onChange} error={error} disabled={disabled} lookupLabel={record.lookups[field.key]?.label} links={record.links?.[field.key]} />
       </div>
     );
   }
@@ -874,5 +916,19 @@ function DetailSkeleton() {
         </div>
       </div>
     </PageContainer>
+  );
+}
+
+function DuplicatesBanner({ object, id, enabled, onReview }: { object: ObjectKey; id: string; enabled: boolean; onReview: () => void }) {
+  const { t } = useTranslation();
+  const q = useDuplicates(object, id, enabled);
+  if (!q.data?.length) return null;
+  return (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning-soft px-4 py-2.5 text-[13px]">
+      <span>{t('records.detail.duplicates', { count: q.data.length })}</span>
+      <Button size="sm" variant="outline" onClick={onReview}>
+        <GitMerge /> {t('records.detail.reviewDuplicates')}
+      </Button>
+    </div>
   );
 }

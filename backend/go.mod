@@ -33,13 +33,27 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.40.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.47.1 // indirect
 	github.com/aws/smithy-go v1.28.1 // indirect
+	github.com/beevik/etree v1.5.0 // indirect
 	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/crewjam/saml v0.5.1 // indirect
+	github.com/dlclark/regexp2/v2 v2.5.2 // indirect
+	github.com/dop251/goja v0.0.0-20260926152631-39ec2650adc9 // indirect
+	github.com/emersion/go-imap v1.2.1 // indirect
+	github.com/emersion/go-sasl v0.0.0-20200509203442-7bfe0ed36a21 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
+	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
+	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect
+	github.com/graphql-go/graphql v0.8.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jonboulle/clockwork v0.2.2 // indirect
+	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
+	github.com/russellhaering/goxmldsig v1.4.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect

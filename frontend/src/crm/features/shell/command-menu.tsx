@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { recordsApiFor } from '@crm/api/endpoints';
 import { ArrowLeftRight, CornerDownLeft, LogOut, Search, UserRound } from 'lucide-react';
 import type { NavItem } from '@crm/api/types';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/components/ui/menu';
@@ -21,8 +23,13 @@ interface Command {
 export function CommandMenu({
   navigation,
   workspaces,
-  currentWorkspace
+  currentWorkspace,
+  apiPrefix,
+  routeBase
 }: {
+  /** Record search runs against this CRM ('/platform' or '/w/<code>'). */
+  apiPrefix?: string | null;
+  routeBase?: string;
   navigation: NavItem[];
   /** Workspace app only: other workspaces to switch to. */
   workspaces?: Array<{ code: string; name: string }>;
@@ -80,10 +87,37 @@ export function CommandMenu({
     ];
   }, [navigation, workspaces, currentWorkspace, navigate, signOut, t]);
 
+  // Records: search every object the viewer can read (debounced).
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const h = setTimeout(() => setDebounced(query.trim()), 200);
+    return () => clearTimeout(h);
+  }, [query]);
+  const recordsQ = useQuery({
+    queryKey: ['search', apiPrefix, debounced],
+    queryFn: () => recordsApiFor(apiPrefix!).search(debounced, 5),
+    enabled: open && Boolean(apiPrefix) && debounced.length >= 2,
+    staleTime: 15_000
+  });
+  const recordCommands = useMemo<Command[]>(
+    () =>
+      (recordsQ.data ?? []).flatMap((g) =>
+        g.rows.map((r) => ({
+          id: `rec:${g.object}:${r.id}`,
+          label: r.title || r.code || '—',
+          hint: [g.label, r.subtitle].filter(Boolean).join(' · '),
+          icon: navIcon(g.icon ?? (g.object === 'leads' ? 'user-plus' : g.object === 'accounts' ? 'briefcase' : g.object === 'contacts' ? 'contact' : 'box')),
+          run: () => navigate(`${routeBase}/${g.object}/${encodeURIComponent(r.id)}`)
+        }))
+      ),
+    [recordsQ.data, routeBase, navigate]
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? commands.filter((c) => c.label.toLowerCase().includes(q) || c.hint?.toLowerCase().includes(q)) : commands;
-  }, [commands, query]);
+    const pages = q ? commands.filter((c) => c.label.toLowerCase().includes(q) || c.hint?.toLowerCase().includes(q)) : commands;
+    return q.length >= 2 ? [...recordCommands, ...pages] : pages;
+  }, [commands, query, recordCommands]);
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -132,7 +166,7 @@ export function CommandMenu({
         </div>
         <ul ref={listRef} id="crm-command-list" role="listbox" className="crm-scroll max-h-[min(60vh,380px)] overflow-y-auto p-2">
           {filtered.length === 0 ? (
-            <li className="px-3 py-8 text-center text-[13px] text-muted-foreground">{t('shell.commandEmpty')}</li>
+            <li className="px-3 py-8 text-center text-[13px] text-muted-foreground">{recordsQ.isFetching ? t('shell.searching') : t('shell.commandEmpty')}</li>
           ) : (
             filtered.map((c, i) => {
               const Icon = c.icon;

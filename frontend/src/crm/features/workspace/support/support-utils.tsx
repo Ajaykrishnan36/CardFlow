@@ -19,8 +19,9 @@ export const SUPPORT_REFRESH_MS = 15_000;
 
 export const TICKET_STATUSES: TicketStatus[] = ['open', 'in_progress', 'resolved'];
 
-export function supportPath(code: string, id?: string): string {
-  return `${workspaceBase(code)}/support${id ? `/${encodeURIComponent(id)}` : ''}`;
+/** App tickets are Cases (D-72): the case page, or the Cases list while it's being created. */
+export function supportPath(code: string, _ticketId?: string, caseId?: string): string {
+  return `${workspaceBase(code)}/cases${caseId ? `/${encodeURIComponent(caseId)}` : ''}`;
 }
 
 const statusTone: Record<TicketStatus, 'primary' | 'warning' | 'success'> = { open: 'primary', in_progress: 'warning', resolved: 'success' };

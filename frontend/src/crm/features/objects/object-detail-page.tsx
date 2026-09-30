@@ -18,7 +18,7 @@ import { Breadcrumbs, ConfirmDialog, PageContainer } from '@crm/components/page'
 import { ErrorState } from '@crm/components/states';
 import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
-import { FIELD_TYPES, fieldErrorText, IconPicker, ObjectIcon, objectKeys } from './object-utils';
+import { FIELD_TYPES, UNIQUE_FIELD_TYPES, fieldErrorText, isLinkField, IconPicker, ObjectIcon, objectKeys } from './object-utils';
 
 const TONES: StatusOption['tone'][] = ['neutral', 'primary', 'success', 'warning', 'danger'];
 const toneDot: Record<StatusOption['tone'], string> = {
@@ -285,7 +285,7 @@ function FieldsCard({
       <ul className="divide-y border-t">
         <li className="flex items-center gap-3 bg-muted/30 px-4 py-2.5 text-[13px]">
           <span className="min-w-0 flex-1 font-medium">{def.nameLabel}</span>
-          <Badge tone="neutral">{t('objects.types.text')}</Badge>
+          <Badge tone="neutral">{t('records.types.text')}</Badge>
           <span className="w-24 text-right text-xs text-muted-foreground">{t('objects.requiredAlways')}</span>
         </li>
         {list.map((f, i) => (
@@ -298,7 +298,7 @@ function FieldsCard({
               <p className="truncate font-mono text-[11px] text-muted-foreground">{f.key || t('objects.newField')}</p>
             </div>
             <Badge tone={f.type === 'lookup' ? 'primary' : 'neutral'}>
-              {f.type === 'lookup' ? t('objects.linksTo', { name: targetLabel(f.lookup) }) : t(`objects.types.${f.type}`)}
+              {isLinkField(f.type) ? t('objects.linksTo', { name: targetLabel(f.lookup) }) : t(`records.types.${f.type}`)}
             </Badge>
             <div className="flex shrink-0 items-center">
               <Button variant="ghost" size="icon" aria-label={t('objects.moveUp')} disabled={i === 0} onClick={() => move(i, -1)}>
@@ -375,7 +375,7 @@ function FieldDialog({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!f.label.trim()) return setError(t('common.required'));
-    if (f.type === 'lookup' && !f.lookup) return setError(t('objects.pickTarget'));
+    if (isLinkField(f.type) && !f.lookup) return setError(t('objects.pickTarget'));
     const opts = options
       .split('\n')
       .map((s) => s.trim())
@@ -386,7 +386,8 @@ function FieldDialog({
       ...f,
       label: f.label.trim(),
       options: choice ? opts.map((label) => ({ label, value: prev.get(label) ?? '' })) : undefined,
-      lookup: f.type === 'lookup' ? f.lookup : undefined
+      lookup: isLinkField(f.type) ? f.lookup : undefined,
+      unique: UNIQUE_FIELD_TYPES.has(f.type) ? f.unique : undefined
     });
   };
   return (
@@ -398,10 +399,10 @@ function FieldDialog({
           <Field label={t('objects.fieldLabel')} error={error ?? undefined}>
             <Input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} maxLength={80} autoFocus placeholder={t('objects.fieldLabelPlaceholder')} />
           </Field>
-          <Field label={t('objects.fieldType')} hint={field?.key ? t('objects.typeChangeHint') : undefined}>
-            <Select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as FieldType })} options={FIELD_TYPES.map((x) => ({ value: x, label: t(`objects.types.${x}`) }))} />
+          <Field label={t('objects.fieldType')} hint={field?.key ? t('objects.typeChangeHint') : t(`records.typeHints.${f.type}`)}>
+            <Select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value as FieldType })} options={FIELD_TYPES.map((x) => ({ value: x, label: t(`records.types.${x}`) }))} />
           </Field>
-          {f.type === 'lookup' ? (
+          {isLinkField(f.type) ? (
             <Field label={t('objects.linksToLabel')}>
               <Select
                 value={f.lookup ?? ''}
@@ -420,6 +421,9 @@ function FieldDialog({
             <Input value={f.helpText ?? ''} onChange={(e) => setF({ ...f, helpText: e.target.value })} maxLength={300} />
           </Field>
           <Checkbox checked={Boolean(f.required)} onCheckedChange={(v) => setF({ ...f, required: v })} label={t('objects.required')} />
+          {UNIQUE_FIELD_TYPES.has(f.type) ? (
+            <Checkbox checked={Boolean(f.unique)} onCheckedChange={(v) => setF({ ...f, unique: v })} label={t('records.fieldDialog.unique')} description={t('objects.uniqueHint')} />
+          ) : null}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}

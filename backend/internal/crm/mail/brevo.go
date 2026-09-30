@@ -36,13 +36,25 @@ func (b brevoMailer) Send(ctx context.Context, m Message) error {
 	if err != nil {
 		from = &netmail.Address{Address: extractAddress(b.cfg.SMTPFrom)}
 	}
+	name := from.Name
+	if m.FromName != "" {
+		name = m.FromName
+	}
 	body := map[string]any{
-		"sender":      brevoAddress{Email: from.Address, Name: from.Name},
+		"sender":      brevoAddress{Email: from.Address, Name: name},
 		"to":          []brevoAddress{{Email: m.To}},
 		"subject":     m.Subject,
 		"textContent": plainText(m),
 	}
-	if m.Heading != "" {
+	if m.ReplyTo != "" {
+		body["replyTo"] = brevoAddress{Email: m.ReplyTo}
+	}
+	if len(m.Headers) > 0 {
+		body["headers"] = m.Headers
+	}
+	if m.HTML != "" {
+		body["htmlContent"] = m.HTML
+	} else if m.Heading != "" {
 		html, err := renderHTML(m, b.cfg.AppName)
 		if err != nil {
 			return err

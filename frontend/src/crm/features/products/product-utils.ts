@@ -65,11 +65,14 @@ export function normalizeConfig(c: Partial<ProductConfig> | undefined): ProductC
     leadStatuses: c?.leadStatuses ?? [],
     pipelineStages: c?.pipelineStages ?? [],
     conversion: { createContact: true, createOpportunity: false, requireQualified: false, ...c?.conversion },
-    loginMethods: { otp: false, google: false, linkedin: false, ...c?.loginMethods, password: true },
+    loginMethods: { password: true, otp: true, google: false, microsoft: false, linkedin: false, sso: false, ...c?.loginMethods, enforced: true },
     selfRegistration: c?.selfRegistration ?? false,
     integrations: { apiAccess: false, webhooks: false, ...c?.integrations }
   };
 }
+
+/** Sign-in methods a product can allow (D-64), in the order the setup shows them. */
+export const LOGIN_METHODS = ['password', 'otp', 'google', 'microsoft', 'linkedin', 'sso'] as const;
 
 export type SetupStep = 'general' | 'modules' | 'roles' | 'pipeline' | 'login' | 'review';
 export const SETUP_STEPS: SetupStep[] = ['general', 'modules', 'roles', 'pipeline', 'login', 'review'];

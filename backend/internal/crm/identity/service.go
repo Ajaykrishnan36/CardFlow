@@ -612,6 +612,9 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 		if !row.isOwner {
 			return nil, s.failLogin(ctx, identKey, &row.identityID, meta, "not_owner")
 		}
+		if method != "password" && method != "otp" && method != "google" && method != "microsoft" && method != "linkedin" {
+			return nil, shared.Forbidden("sign_in_method_not_allowed", "The owner console signs in with a password, an email code, Google, Microsoft or LinkedIn.")
+		}
 	case "workspace":
 		if code := strings.ToLower(strings.TrimSpace(workspaceCode)); code != "" && !row.isOwner {
 			found := false
@@ -622,6 +625,10 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 			}
 			if !found {
 				return nil, s.failLogin(ctx, identKey, &row.identityID, meta, "no_membership")
+			}
+			// The product's setup decides how its users sign in (D-64).
+			if err := CheckMethod(ctx, code, method); err != nil {
+				return nil, err
 			}
 		}
 		if !row.isOwner && len(memberships) == 0 {

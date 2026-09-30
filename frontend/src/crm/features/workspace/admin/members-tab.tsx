@@ -134,7 +134,10 @@ export function MembersTab({ code, options }: { code: string; options: Workspace
                           {!m.editable ? <LockMark reason={m.lockedReason} /> : null}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-foreground">{limits.roleName(m.roleKey, m.roleName)}</td>
+                      <td className="px-3 py-2 text-foreground">
+                        {limits.roleName(m.roleKey, m.roleName)}
+                        {m.userType ? <span className="block text-xs text-muted-foreground">{options.userTypes?.find((u) => u.key === m.userType)?.label ?? m.userType}</span> : null}
+                      </td>
                       <td className="max-w-[220px] px-3 py-2">
                         <span className="block truncate text-muted-foreground" title={m.permissionSets.map((s) => s.name).join(', ')}>
                           {m.permissionSets.length ? m.permissionSets.map((s) => s.name).join(', ') : '—'}
@@ -427,6 +430,7 @@ interface InviteDraft {
   permissionSetIds: string[];
   method: 'invite' | 'password';
   password: string;
+  userType: string;
 }
 
 type InviteResult = { identityId: string; membershipId: string; invitation?: Invitation; existingLogin?: boolean };
@@ -443,7 +447,8 @@ function InviteDialog({ code, options, open, onOpenChange }: { code: string; opt
     productIds: options.products.map((p) => p.id),
     permissionSetIds: [],
     method: 'invite',
-    password: ''
+    password: '',
+    userType: ''
   });
   const [d, setD] = useState<InviteDraft>(blank);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -504,11 +509,14 @@ function InviteDialog({ code, options, open, onOpenChange }: { code: string; opt
       productIds: options.isPlatform ? undefined : d.productIds,
       permissionSetIds: d.permissionSetIds,
       method: d.method,
-      password: d.method === 'password' ? d.password : undefined
+      password: d.method === 'password' ? d.password : undefined,
+      userType: d.userType || undefined
     });
   };
 
   const busy = invite.isPending;
+  const userTypes = options.userTypes ?? [];
+  const pickedType = userTypes.find((u) => u.key === d.userType);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
@@ -567,10 +575,29 @@ function InviteDialog({ code, options, open, onOpenChange }: { code: string; opt
                   <Field label={t('workspaceApp.admin.invite.phone')} error={errors.phone} hint={t('workspaceApp.admin.invite.optional')}>
                     <Input type="tel" inputMode="tel" value={d.phone} onChange={(e) => patch({ phone: e.target.value })} disabled={busy} autoComplete="off" />
                   </Field>
+                  {userTypes.length ? (
+                    <Field label={t('workspaceApp.admin.invite.userType')} error={errors.userType} hint={t('workspaceApp.admin.invite.userTypeHint')}>
+                      <Select
+                        value={d.userType}
+                        onChange={(e) => {
+                          const ut = userTypes.find((u) => u.key === e.target.value);
+                          patch({ userType: e.target.value, roleKey: ut && !ut.allowedRoles.includes(d.roleKey) ? ut.allowedRoles[0] ?? '' : d.roleKey });
+                        }}
+                        disabled={busy}
+                      >
+                        <option value="">{t('workspaceApp.admin.invite.noUserType')}</option>
+                        {userTypes.map((u) => (
+                          <option key={u.key} value={u.key}>
+                            {u.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  ) : null}
                   <Field label={t('workspaceApp.admin.users.role')} error={errors.roleKey}>
                     <Select value={d.roleKey} onChange={(e) => patch({ roleKey: e.target.value })} disabled={busy}>
                       <option value="">{t('workspaceApp.admin.users.chooseRole')}</option>
-                      {options.roles.map((r) => {
+                      {options.roles.filter((r) => !pickedType || pickedType.allowedRoles.includes(r.key)).map((r) => {
                         const beyond = limits.roleExceeds(r.key);
                         return (
                           <option key={r.key} value={r.key} disabled={beyond}>

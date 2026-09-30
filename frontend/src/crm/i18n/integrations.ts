@@ -1,5 +1,22 @@
 // 'integrations' i18n namespace (merged into the crm bundle as integrations.*).
 const strings = {
+  providers: {
+    title: 'Sign-in & mailbox providers',
+    body: 'Connect Google, Microsoft and LinkedIn once for the whole platform. Each product then chooses which to allow in Product setup → Sign-in & integrations.',
+    google: 'Google',
+    microsoft: 'Microsoft 365',
+    linkedin: 'LinkedIn',
+    googleUse: '“Continue with Google” sign-in, plus Gmail and Google Calendar sync in Email & calendar.',
+    microsoftUse: '“Continue with Microsoft” sign-in, plus Outlook mail and calendar sync.',
+    linkedinUse: '“Continue with LinkedIn” sign-in.',
+    connected: 'Connected',
+    notSetUp: 'Not set up',
+    step1: '1. Create an OAuth app in {{where}}.',
+    step2: '2. Add this redirect URL:',
+    step3: '3. Put its ID and secret in the server’s environment (Render → Environment), then redeploy:',
+    sso: 'Single sign-on (SAML)',
+    ssoUse: 'Set up per product by its admin in Settings → Single sign-on (Okta, Entra ID, Google Workspace…). Nothing to add here.'
+  },
   page: {
     title: 'Integrations',
     description: 'Apps connected to your CRM',

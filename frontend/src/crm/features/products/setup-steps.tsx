@@ -13,7 +13,7 @@ import { Field } from '@crm/components/ui/field';
 import { Checkbox, Switch, Textarea } from '@crm/components/ui/form-controls';
 import { cn } from '@crm/lib/utils';
 import { ACCENT_COLORS, PRODUCT_ICON_KEYS, PRODUCT_ICONS, ProductIcon } from './product-icon';
-import { moveItem, stepForField, syncedKey, type SetupStep } from './product-utils';
+import { LOGIN_METHODS, moveItem, stepForField, syncedKey, type SetupStep } from './product-utils';
 import type { ProductDraft } from './use-product-draft';
 
 type UpdateConfig = (patch: Partial<ProductConfig>) => void;
@@ -360,7 +360,7 @@ export function RolesStep({ config, updateConfig }: { config: ProductConfig; upd
   );
 }
 
-// ---------------------------------------------------------------- 4. Pipeline & conversion
+// ---------------------------------------------------------------- 4. Sales process
 export function PipelineStep({ config, updateConfig }: { config: ProductConfig; updateConfig: UpdateConfig }) {
   const { t } = useTranslation();
   const statuses = config.leadStatuses;
@@ -488,38 +488,27 @@ export function PipelineStep({ config, updateConfig }: { config: ProductConfig; 
   );
 }
 
-// ---------------------------------------------------------------- 5. Login & integrations
+// ---------------------------------------------------------------- 5. Sign-in & integrations
 export function LoginStep({ config, updateConfig }: { config: ProductConfig; updateConfig: UpdateConfig }) {
   const { t } = useTranslation();
   return (
     <div className="space-y-8">
       <StepSection title={t('products.setup.login.methodsTitle')} description={t('products.setup.login.methodsBody')}>
+        {!LOGIN_METHODS.some((k) => config.loginMethods[k]) ? <Alert tone="warning">{t('products.setup.login.pickOne')}</Alert> : null}
         <div className="divide-y rounded-lg border">
-          <Switch
-            id="login-password"
-            className="px-3 py-3"
-            label={
-              <span className="inline-flex items-center gap-1.5">
-                {t('products.setup.login.password')} <Lock className="size-3 text-muted-foreground" aria-hidden />
-              </span>
-            }
-            description={t('products.setup.login.passwordHint')}
-            checked
-            disabled
-            onCheckedChange={() => undefined}
-          />
-          {(['otp', 'google', 'linkedin'] as const).map((k) => (
+          {LOGIN_METHODS.map((k) => (
             <Switch
               key={k}
               id={`login-${k}`}
               className="px-3 py-3"
               label={t(`products.setup.login.${k}`)}
-              description={t('products.setup.login.notYetEnforced')}
+              description={t(`products.setup.login.${k}Hint`)}
               checked={config.loginMethods[k]}
-              onCheckedChange={(v) => updateConfig({ loginMethods: { ...config.loginMethods, [k]: v, password: true } })}
+              onCheckedChange={(v) => updateConfig({ loginMethods: { ...config.loginMethods, [k]: v, enforced: true } })}
             />
           ))}
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">{t('products.setup.login.providersNote')}</p>
       </StepSection>
 
       <StepSection title={t('products.setup.login.accessTitle')}>
@@ -690,7 +679,7 @@ export function ReviewStep({
       <ReviewBlock title={t('products.setup.steps.login.title')} onEdit={() => goTo('login')}>
         <Row label={t('products.setup.login.methodsTitle')}>
           <Chips
-            items={(['password', 'otp', 'google', 'linkedin'] as const).filter((k) => c.loginMethods[k]).map((k) => t(`products.setup.login.${k}`))}
+            items={LOGIN_METHODS.filter((k) => c.loginMethods[k]).map((k) => t(`products.setup.login.${k}`))}
             empty={none}
           />
         </Row>

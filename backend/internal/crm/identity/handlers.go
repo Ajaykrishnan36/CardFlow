@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"cardflow-backend/internal/crm/access"
@@ -32,6 +33,41 @@ func Meta(r *http.Request) RequestMeta {
 		RequestID: chiMiddleware.GetReqID(r.Context()),
 	}
 }
+
+// APIKeyResolver turns an API key (Authorization: Bearer crm_…) into a session for the
+// key's creator plus request context the record engine uses to limit the key (D-61).
+type APIKeyResolver func(ctx context.Context, token string, r *http.Request) (context.Context, *Session, error)
+
+var apiKeyResolver APIKeyResolver
+
+// SetAPIKeyResolver installs the API key lookup (called once at start-up).
+func SetAPIKeyResolver(f APIKeyResolver) { apiKeyResolver = f }
+
+// bearerToken returns an API key sent as a bearer token, or "".
+func bearerToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	if len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
+		t := strings.TrimSpace(h[7:])
+		if strings.HasPrefix(t, "crm_") {
+			return t
+		}
+	}
+	return ""
+}
+
+// csrfExempt: calls from other systems that carry their own secret (workflow webhooks,
+// unsubscribe links, SAML responses posted by the identity provider).
+func csrfExempt(path string) bool {
+	for _, p := range []string{"/api/crm/v1/hooks/", "/api/crm/v1/public/", "/api/crm/v1/auth/saml/"} {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsAPIRequest reports whether the request authenticates with an API key.
+func IsAPIRequest(r *http.Request) bool { return bearerToken(r) != "" }
 
 func isSafeMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
@@ -63,7 +99,8 @@ func (s *Service) CSRF(next http.Handler) http.Handler {
 				SameSite: http.SameSiteLaxMode,
 			})
 		}
-		if !isSafeMethod(r.Method) {
+		// API keys aren't sent by browsers automatically, so they need no CSRF token.
+		if !isSafeMethod(r.Method) && !IsAPIRequest(r) && !csrfExempt(r.URL.Path) {
 			header := r.Header.Get(CSRFHeader)
 			if cookieVal == "" || header == "" || !shared.ConstantTimeEqual(header, cookieVal) {
 				shared.WriteError(w, r, shared.Forbidden("csrf_failed", "Your security token expired. Refresh the page and try again."))
@@ -77,6 +114,19 @@ func (s *Service) CSRF(next http.Handler) http.Handler {
 // LoadSession attaches the session (if any) to the request context.
 func (s *Service) LoadSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if tok := bearerToken(r); tok != "" {
+			if apiKeyResolver == nil {
+				shared.WriteError(w, r, shared.NewError(http.StatusUnauthorized, "invalid_api_key", "API keys aren't enabled."))
+				return
+			}
+			ctx, sess, err := apiKeyResolver(r.Context(), tok, r)
+			if err != nil {
+				shared.WriteError(w, r, err)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, sessionKey, sess)))
+			return
+		}
 		c, err := r.Cookie(SessionCookie)
 		if err != nil || c.Value == "" {
 			next.ServeHTTP(w, r)
@@ -150,8 +200,12 @@ func RequireOwner(next http.Handler) http.Handler {
 func (s *Service) Routes(r chi.Router) {
 	r.Get("/auth/csrf", s.handleCSRF)
 	r.Post("/auth/login", s.handleLogin)
+	r.Get("/auth/methods", s.handleMethods)
+	r.Get("/auth/oauth/{provider}/start", s.handleOAuthStart)
 	r.Post("/auth/password/forgot", s.handleForgot)
 	r.Post("/auth/password/reset", s.handleReset)
+	r.Post("/auth/signup/request", s.handleSignupRequest)
+	r.Post("/auth/signup/verify", s.handleSignupVerify)
 	r.Post("/auth/otp/request", s.handleOTPRequest)
 	r.Post("/auth/otp/verify", s.handleOTPVerify)
 	r.Get("/invitations/preview", s.handleInvitationPreview)

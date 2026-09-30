@@ -63,11 +63,6 @@ export function OwnerDashboardPage() {
           </Link>
         </Button>
         <Button asChild variant="outline" size="sm">
-          <Link to="/crm/owner/products?new=1">
-            <Plus /> {t('owner.dashboard.newProduct')}
-          </Link>
-        </Button>
-        <Button asChild variant="outline" size="sm">
           <Link to="/crm/owner/workspaces/new">
             <Building2 /> {t('owner.dashboard.provisionWorkspace')}
           </Link>
@@ -257,7 +252,7 @@ function RecentWorkspaces({ rows }: { rows?: RecentWorkspace[] }) {
                 <tr className="border-b text-xs text-muted-foreground">
                   <th className="px-5 py-2.5 font-medium">{t('owner.dashboard.colWorkspace')}</th>
                   <th className="px-3 py-2.5 font-medium">{t('owner.dashboard.colStatus')}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t('owner.dashboard.colProducts')}</th>
+                  <th className="px-3 py-2.5 text-left font-medium">{t('owner.dashboard.colProducts')}</th>
                   <th className="px-3 py-2.5 text-right font-medium">{t('owner.dashboard.colMembers')}</th>
                   <th className="px-5 py-2.5 text-right font-medium">{t('owner.dashboard.colCreated')}</th>
                 </tr>
@@ -282,7 +277,7 @@ function RecentWorkspaces({ rows }: { rows?: RecentWorkspace[] }) {
                     <td className="px-3 py-3">
                       <Badge tone={statusTone[w.status] ?? 'neutral'}>{t(`status.${w.status}`, { defaultValue: w.status })}</Badge>
                     </td>
-                    <td className="px-3 py-3 text-right tabular-nums">{w.products}</td>
+                    <td className="max-w-[200px] truncate px-3 py-3 text-[13px]" title={w.setupNames?.join(', ')}>{w.setupNames?.length ? w.setupNames.join(', ') : '—'}</td>
                     <td className="px-3 py-3 text-right tabular-nums">{w.members}</td>
                     <td className="px-5 py-3 text-right text-muted-foreground">{relativeTime(w.createdAt)}</td>
                   </tr>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,11 +28,31 @@ type Handler struct {
 	wsID   uuid.UUID
 
 	extensions []Extension
+	bus        *Bus
+	mailer     Mailer
 }
 
-func NewHandler(st *store.Store, cfg shared.Config, p *platform.Handler) *Handler {
-	return &Handler{store: st, cfg: cfg, platform: p}
+// Mailer sends the CRM's own emails (record emails, campaigns, workflow emails).
+type Mailer interface {
+	SendHTML(ctx context.Context, to, subject, html, text string, opts MailOptions) error
+	From() string
 }
+
+// MailOptions are optional headers of a CRM email.
+type MailOptions struct {
+	FromName string
+	ReplyTo  string
+	Headers  map[string]string
+}
+
+func NewHandler(st *store.Store, cfg shared.Config, p *platform.Handler, m Mailer) *Handler {
+	h := &Handler{store: st, cfg: cfg, platform: p, bus: newBus(), mailer: m}
+	eventHandler = h
+	return h
+}
+
+// Bus is the live-update and event hub (for connectors that change records).
+func (h *Handler) Bus() *Bus { return h.bus }
 
 // Routes mounts the record engine twice: for the owner's Platform CRM (/platform/…,
 // everything allowed) and for workspace members (/w/{code}/…, limited by role +
@@ -55,6 +76,7 @@ func (h *Handler) Routes(r chi.Router) {
 				ext.MemberRoutes(r)
 			}
 		}
+		h.workspaceRoutes(r)
 		h.platform.AdminRoutes(r, func(r *http.Request) *platform.AdminScope {
 			sc := scopeFrom(r.Context())
 			return &platform.AdminScope{WS: sc.WS, Code: sc.Code, IsPlatform: sc.IsPlatformWS, MembershipID: sc.MembershipID, Limit: sc.Eff}
@@ -72,12 +94,108 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 
 	r.Get(prefix+"/crm/{object}", h.handleList)
 	r.Post(prefix+"/crm/{object}", h.handleCreate)
+	r.Get(prefix+"/crm/{object}/groups", h.handleGroups)
+	r.Post(prefix+"/crm/{object}/bulk", h.handleBulk)
+	r.Get(prefix+"/crm/{object}/export", h.handleExport)
+	r.Post(prefix+"/crm/{object}/import", h.handleImport)
+	r.Post(prefix+"/crm/{object}/merge", h.handleMerge)
+	r.Get(prefix+"/crm/{object}/views", h.handleListViews)
+	r.Post(prefix+"/crm/{object}/views", h.handleCreateView)
+	r.Patch(prefix+"/crm/{object}/views/{viewId}", h.handleUpdateView)
+	r.Delete(prefix+"/crm/{object}/views/{viewId}", h.handleDeleteView)
 	r.Get(prefix+"/crm/{object}/{id}", h.handleGet)
 	r.Patch(prefix+"/crm/{object}/{id}", h.handleUpdate)
 	r.Delete(prefix+"/crm/{object}/{id}", h.handleDelete)
+	r.Post(prefix+"/crm/{object}/{id}/restore", h.handleRestore)
+	r.Get(prefix+"/crm/{object}/{id}/timeline", h.handleTimeline)
+	r.Post(prefix+"/crm/{object}/{id}/notes", h.handleAddNote)
+	r.Get(prefix+"/crm/{object}/{id}/files", h.handleListFiles)
+	r.Post(prefix+"/crm/{object}/{id}/files", h.handleUploadFile)
+	r.Get(prefix+"/crm/{object}/{id}/duplicates", h.handleDuplicates)
+	r.Post(prefix+"/crm/{object}/{id}/email", h.handleSendRecordEmail)
 	r.Post(prefix+"/crm/leads/{id}/convert", h.handleConvert)
+	r.Post(prefix+"/crm/communications/{id}/send", h.handleSendCommunication)
 
 	r.Get(prefix+"/lookup/{target}", h.handleLookup)
+	r.Get(prefix+"/search", h.handleSearch)
+	r.Get(prefix+"/files/{fileId}", h.handleDownloadFile)
+	r.Delete(prefix+"/files/{fileId}", h.handleDeleteFile)
+	r.Delete(prefix+"/timeline/{itemId}", h.handleDeleteTimelineItem)
+	r.Get(prefix+"/favorites", h.handleListFavorites)
+	r.Post(prefix+"/favorites", h.handleAddFavorite)
+	r.Put(prefix+"/favorites/order", h.handleReorderFavorites)
+	r.Delete(prefix+"/favorites/{favId}", h.handleRemoveFavorite)
+	r.Get(prefix+"/notifications", h.handleListNotifications)
+	r.Post(prefix+"/notifications/read", h.handleReadNotifications)
+	r.Get(prefix+"/stream", h.handleStream)
+}
+
+// workspaceRoutes are the product-level tools inside /w/{code}.
+func (h *Handler) workspaceRoutes(r chi.Router) {
+	r.Get("/developer/api-keys", h.handleListAPIKeys)
+	r.Post("/developer/api-keys", h.handleCreateAPIKey)
+	r.Delete("/developer/api-keys/{keyId}", h.handleRevokeAPIKey)
+	r.Get("/developer/webhooks", h.handleListWebhooks)
+	r.Post("/developer/webhooks", h.handleCreateWebhook)
+	r.Patch("/developer/webhooks/{hookId}", h.handleUpdateWebhook)
+	r.Delete("/developer/webhooks/{hookId}", h.handleDeleteWebhook)
+	r.Post("/developer/webhooks/{hookId}/rotate", h.handleRotateWebhookSecret)
+	r.Post("/developer/webhooks/{hookId}/test", h.handleTestWebhook)
+	r.Get("/developer/webhooks/{hookId}/deliveries", h.handleListDeliveries)
+	r.Post("/developer/webhooks/{hookId}/deliveries/{deliveryId}/retry", h.handleRetryDelivery)
+	r.Get("/developer/openapi.json", h.handleOpenAPI)
+	r.Post("/graphql", h.handleGraphQL)
+	r.Get("/graphql/schema", h.handleGraphQLSchema)
+
+	r.Get("/workflows", h.handleListWorkflows)
+	r.Post("/workflows", h.handleCreateWorkflow)
+	r.Get("/workflows/{wfId}", h.handleGetWorkflow)
+	r.Patch("/workflows/{wfId}", h.handleUpdateWorkflow)
+	r.Delete("/workflows/{wfId}", h.handleDeleteWorkflow)
+	r.Post("/workflows/{wfId}/publish", h.handlePublishWorkflow)
+	r.Post("/workflows/{wfId}/status", h.handleWorkflowStatus)
+	r.Post("/workflows/{wfId}/run", h.handleRunWorkflow)
+	r.Get("/workflows/{wfId}/versions", h.handleWorkflowVersions)
+	r.Post("/workflows/{wfId}/versions/{version}/restore", h.handleRestoreWorkflowVersion)
+	r.Get("/workflows/{wfId}/runs", h.handleListRuns)
+	r.Post("/workflows/{wfId}/runs/{runId}/stop", h.runAction("stop"))
+	r.Post("/workflows/{wfId}/runs/{runId}/retry", h.runAction("retry"))
+
+	r.Get("/mailboxes", h.handleListMailboxes)
+	r.Get("/mailboxes/connect/{provider}", h.handleConnectMailbox)
+	r.Post("/mailboxes/imap", h.handleConnectIMAP)
+	r.Post("/mailboxes/blocklist", h.handleBlocklist)
+	r.Patch("/mailboxes/{mailboxId}", h.handleUpdateMailbox)
+	r.Delete("/mailboxes/{mailboxId}", h.handleDeleteMailbox)
+	r.Post("/mailboxes/{mailboxId}/sync", h.handleSyncMailbox)
+
+	r.Get("/campaigns", h.handleListCampaigns)
+	r.Post("/campaigns", h.handleCreateCampaign)
+	r.Get("/campaigns/{campaignId}", h.handleGetCampaign)
+	r.Patch("/campaigns/{campaignId}", h.handleUpdateCampaign)
+	r.Delete("/campaigns/{campaignId}", h.handleDeleteCampaign)
+	r.Get("/campaigns/{campaignId}/audience", h.handleCampaignAudience)
+	r.Get("/campaigns/{campaignId}/recipients", h.handleCampaignRecipients)
+	r.Post("/campaigns/{campaignId}/test", h.handleTestCampaign)
+	r.Post("/campaigns/{campaignId}/send", h.handleSendCampaign)
+	r.Post("/campaigns/{campaignId}/cancel", h.handleCancelCampaign)
+
+	r.Get("/sso", h.handleGetSSO)
+	r.Put("/sso", h.handleSaveSSO)
+	r.Delete("/sso", h.handleDeleteSSO)
+
+	r.Get("/teams", h.handleListTeams)
+	r.Post("/teams", h.handleCreateTeam)
+	r.Patch("/teams/{teamId}", h.handleUpdateTeam)
+	r.Delete("/teams/{teamId}", h.handleDeleteTeam)
+}
+
+// PublicRoutes need no sign-in: incoming workflow webhooks and unsubscribe links.
+func (h *Handler) PublicRoutes(r chi.Router) {
+	r.Post("/hooks/workflows/{token}", h.HandleWorkflowWebhook)
+	r.Get("/hooks/workflows/{token}", h.HandleWorkflowWebhook)
+	r.Get("/public/unsubscribe/{token}", h.HandleUnsubscribe)
+	r.Post("/public/unsubscribe/{token}", h.HandleUnsubscribe)
 }
 
 func (h *Handler) workspace(ctx context.Context) (uuid.UUID, error) {
@@ -247,6 +365,17 @@ func (h *Handler) handleCreateField(w http.ResponseWriter, r *http.Request) {
 	if !customTypes[in.Type] {
 		fe["type"] = "Pick a field type."
 	}
+	lookupTo := ""
+	if isLinkType(in.Type) {
+		lookupTo = strings.TrimSpace(in.Lookup)
+		if !h.isLookupTarget(lookupTo) {
+			fe["lookup"] = "Pick the object this field links to."
+		}
+	}
+	unique := in.Unique != nil && *in.Unique
+	if unique && !uniqueTypes[in.Type] {
+		fe["unique"] = "Only text, email, phone, URL and number fields can require unique values."
+	}
 	var options []Option
 	if in.Options != nil {
 		var msg string
@@ -290,17 +419,17 @@ func (h *Handler) handleCreateField(w http.ResponseWriter, r *http.Request) {
 		// An archived field with the same key is revived rather than duplicated.
 		tag, err := tx.Exec(r.Context(), `
 			UPDATE crm.field_definitions SET label = $4, type = $5, is_required = $6, options = $7, help_text = NULLIF($8, ''),
-			       status = 'published', updated_at = now()
+			       is_unique = $9, lookup_target = NULLIF($10, ''), status = 'published', updated_at = now()
 			WHERE workspace_id = $1 AND object_key = $2 AND key = $3 AND status = 'archived'`,
-			ws, spec.Key, key, label, in.Type, required, optJSON, helpText)
+			ws, spec.Key, key, label, in.Type, required, optJSON, helpText, unique, lookupTo)
 		if err != nil {
 			return err
 		}
 		if tag.RowsAffected() == 0 {
 			if _, err := tx.Exec(r.Context(), `
-				INSERT INTO crm.field_definitions (workspace_id, object_key, key, label, type, is_required, options, help_text, position, created_by)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), $9, $10)`,
-				ws, spec.Key, key, label, in.Type, required, optJSON, helpText, count, actor(r)); err != nil {
+				INSERT INTO crm.field_definitions (workspace_id, object_key, key, label, type, is_required, options, help_text, position, created_by, is_unique, lookup_target)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), $9, $10, $11, NULLIF($12, ''))`,
+				ws, spec.Key, key, label, in.Type, required, optJSON, helpText, count, actor(r), unique, lookupTo); err != nil {
 				return err
 			}
 		}
@@ -349,12 +478,12 @@ func (h *Handler) handleUpdateField(w http.ResponseWriter, r *http.Request) {
 	}
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
 		var label, typ, helpText string
-		var required bool
+		var required, unique bool
 		var raw []byte
 		err := tx.QueryRow(r.Context(), `
-			SELECT label, type, is_required, options, COALESCE(help_text, '') FROM crm.field_definitions
+			SELECT label, type, is_required, options, COALESCE(help_text, ''), is_unique FROM crm.field_definitions
 			WHERE workspace_id = $1 AND object_key = $2 AND key = $3 AND status = 'published' FOR UPDATE`, ws, spec.Key, key).
-			Scan(&label, &typ, &required, &raw, &helpText)
+			Scan(&label, &typ, &required, &raw, &helpText, &unique)
 		if errors.Is(err, pgx.ErrNoRows) {
 			if _, std := spec.field(key); std {
 				return shared.Forbidden("standard_field", "Standard fields can't be changed; hide them from the layout instead.")
@@ -380,6 +509,22 @@ func (h *Handler) handleUpdateField(w http.ResponseWriter, r *http.Request) {
 				fe["helpText"] = "Use at most 300 characters."
 			}
 		}
+		if in.Unique != nil && *in.Unique != unique {
+			unique = *in.Unique
+			if unique && !uniqueTypes[typ] {
+				fe["unique"] = "Only text, email, phone, URL and number fields can require unique values."
+			} else if unique {
+				var dupes int
+				if err := tx.QueryRow(r.Context(), fmt.Sprintf(`
+					SELECT count(*) FROM (SELECT lower(custom->>$2::text) FROM crm.%s WHERE workspace_id = $1 AND deleted_at IS NULL
+					AND COALESCE(custom->>$2::text, '') <> '' GROUP BY 1 HAVING count(*) > 1) d`, spec.Table), ws, key).Scan(&dupes); err != nil {
+					return err
+				}
+				if dupes > 0 {
+					fe["unique"] = fmt.Sprintf("%d values are already used by more than one record — fix or merge those first.", dupes)
+				}
+			}
+		}
 		if in.Options != nil {
 			opts, msg := validateOptions(typ, *in.Options)
 			if msg != "" {
@@ -391,8 +536,8 @@ func (h *Handler) handleUpdateField(w http.ResponseWriter, r *http.Request) {
 			return shared.Validation(fe)
 		}
 		if _, err := tx.Exec(r.Context(), `
-			UPDATE crm.field_definitions SET label = $4, is_required = $5, options = $6, help_text = NULLIF($7, ''), updated_at = now()
-			WHERE workspace_id = $1 AND object_key = $2 AND key = $3`, ws, spec.Key, key, label, required, raw, helpText); err != nil {
+			UPDATE crm.field_definitions SET label = $4, is_required = $5, options = $6, help_text = NULLIF($7, ''), is_unique = $8, updated_at = now()
+			WHERE workspace_id = $1 AND object_key = $2 AND key = $3`, ws, spec.Key, key, label, required, raw, helpText, unique); err != nil {
 			return err
 		}
 		return shared.WriteAudit(r.Context(), tx, audit(r, ws, "field.updated", "field", nil, nil,
@@ -464,55 +609,6 @@ func queryInt(r *http.Request, name string, def, min, max int) int {
 		return max
 	}
 	return v
-}
-
-func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
-	spec, ws, err := h.scope(r, "read")
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
-	}
-	q := r.URL.Query()
-	p := listParams{
-		Q:      strings.TrimSpace(q.Get("q")),
-		Status: q.Get("status"),
-		Sort:   q.Get("sort"),
-		Desc:   q.Get("dir") != "asc",
-		Limit:  queryInt(r, "limit", 50, 1, 200),
-		Offset: queryInt(r, "offset", 0, 0, 1_000_000),
-	}
-	if p.Sort == "" {
-		p.Sort, p.Desc = "createdAt", true
-	}
-	p.Owners = ownerFilter(r, spec)
-	resp := map[string]any{}
-	// The owner console lists every workspace by default (?workspace=all|platform|<code>).
-	if sc := scopeFrom(r.Context()); sc.OwnerConsole {
-		facets, err := h.workspaceFacets(r.Context(), spec)
-		if err != nil {
-			shared.WriteError(w, r, err)
-			return
-		}
-		resp["workspaces"] = facets
-		switch sel := q.Get("workspace"); sel {
-		case "platform":
-		case "", "all":
-			p.Workspaces = []uuid.UUID{}
-			for _, f := range facets {
-				p.Workspaces = append(p.Workspaces, uuid.MustParse(f.ID))
-			}
-		default:
-			p.Workspaces = []uuid.UUID{}
-			for _, f := range facets {
-				if f.Code == sel {
-					p.Workspaces = append(p.Workspaces, uuid.MustParse(f.ID))
-				}
-			}
-		}
-	}
-	rows, total, err := h.list(r.Context(), ws, spec, p)
-	resp["data"], resp["total"] = rows, total
-	respond(w, r, http.StatusOK, resp, err)
 }
 
 type workspaceFacet struct {
@@ -587,32 +683,15 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	if in.Values == nil {
-		in.Values = map[string]any{}
-	}
-	var id uuid.UUID
+	var row *Row
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
-		fields, err := allFields(r.Context(), tx, ws, spec)
-		if err != nil {
-			return err
-		}
-		cs, fe := buildChanges(r.Context(), tx, ws, fields, in.Values, true)
-		for k, v := range objectRules(spec, in.Values, map[string]any{}, true) {
-			fe[k] = v
-		}
-		if len(fe) > 0 {
-			return shared.Validation(fe)
-		}
-		if id, err = insertRecord(r.Context(), tx, ws, spec, actor(r), cs); err != nil {
-			return err
-		}
-		return shared.WriteAudit(r.Context(), tx, audit(r, ws, "record.created", strings.TrimSuffix(spec.Key, "s"), &id, nil, cs.after))
+		var err error
+		row, err = h.createRecord(r.Context(), tx, ws, spec, actorFromRequest(r, "ui"), in.Values)
+		return err
 	})
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
+	if err == nil {
+		h.bus.Kick()
 	}
-	row, _, err := h.getRow(r.Context(), h.store.Pool, ws, spec, id, nil)
 	respond(w, r, http.StatusCreated, row, err)
 }
 
@@ -636,38 +715,15 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, shared.Validation(map[string]string{"expectedVersion": "expectedVersion is required."}))
 		return
 	}
+	var row *Row
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
-		current, fields, err := h.getRow(r.Context(), tx, ws, spec, id, ownerFilter(r, spec))
-		if err != nil {
-			return err
-		}
-		if current.Version != *in.ExpectedVersion {
-			return shared.NewError(http.StatusConflict, "version_conflict", "Someone else changed this record. Reload to see the latest version.")
-		}
-		if len(in.Values) == 0 {
-			return nil
-		}
-		cs, fe := buildChanges(r.Context(), tx, ws, fields, in.Values, false)
-		for k, v := range objectRules(spec, in.Values, current.Values, false) {
-			fe[k] = v
-		}
-		if len(fe) > 0 {
-			return shared.Validation(fe)
-		}
-		before := map[string]any{}
-		for k := range in.Values {
-			before[k] = current.Values[k]
-		}
-		if err := updateRecord(r.Context(), tx, ws, spec, id, actor(r), *in.ExpectedVersion, cs); err != nil {
-			return err
-		}
-		return shared.WriteAudit(r.Context(), tx, audit(r, ws, "record.updated", strings.TrimSuffix(spec.Key, "s"), &id, before, cs.after))
+		var err error
+		row, err = h.updateValues(r.Context(), tx, ws, spec, id, actorFromRequest(r, "ui"), in.Values, in.ExpectedVersion, ownerFilter(r, spec))
+		return err
 	})
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
+	if err == nil {
+		h.bus.Kick()
 	}
-	row, _, err := h.getRow(r.Context(), h.store.Pool, ws, spec, id, nil)
 	respond(w, r, http.StatusOK, row, err)
 }
 
@@ -683,20 +739,13 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
-		tag, err := tx.Exec(r.Context(), "UPDATE crm."+spec.Table+" SET deleted_at = now(), updated_by = $3 WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL"+
-			" AND ($4::uuid[] IS NULL OR owner_id = ANY($4))", id, ws, actor(r), ownerFilter(r, spec))
-		if err != nil {
-			return err
-		}
-		if tag.RowsAffected() == 0 {
-			return shared.NotFound("record_not_found")
-		}
-		return shared.WriteAudit(r.Context(), tx, audit(r, ws, "record.deleted", strings.TrimSuffix(spec.Key, "s"), &id, nil, nil))
+		return h.deleteRecord(r.Context(), tx, ws, spec, id, actorFromRequest(r, "ui"), ownerFilter(r, spec))
 	})
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
+	h.bus.Kick()
 	w.WriteHeader(http.StatusNoContent)
 }
 

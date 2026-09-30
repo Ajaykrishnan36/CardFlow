@@ -16,7 +16,7 @@ import { ConfirmDialog, DetailItem, PageContainer, PageHeader, Tabs } from '@crm
 import { cn, relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { ProductIcon } from './product-icon';
-import { canPublish, nextVersion, productStatusTone, SETUP_STEPS, type SetupStep } from './product-utils';
+import { canPublish, LOGIN_METHODS, nextVersion, productStatusTone, SETUP_STEPS, type SetupStep } from './product-utils';
 import { draftFromProduct, useProductDraft } from './use-product-draft';
 import { ProductSetupWizard } from './product-setup-wizard';
 
@@ -370,7 +370,7 @@ function StatCard({ icon: Icon, label, value }: { icon: typeof Boxes; label: str
 }
 
 function enabledLoginMethods(c: ProductConfig): string[] {
-  return (Object.keys(c.loginMethods) as Array<keyof ProductConfig['loginMethods']>).filter((k) => c.loginMethods[k]);
+  return LOGIN_METHODS.filter((k) => c.loginMethods[k]);
 }
 
 function OverviewTab({ product, onEdit }: { product: ProductDetail; onEdit: () => void }) {

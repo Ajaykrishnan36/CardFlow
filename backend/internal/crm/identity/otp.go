@@ -184,7 +184,7 @@ func (s *Service) VerifyOTP(ctx context.Context, in OTPVerifyInput, meta Request
 	// A code proves the mailbox, not a password: nothing to change on first sign-in here.
 	row.mustChange = row.mustChange && row.hash != nil
 	s.identLimiter.clear(identKey)
-	return s.finishSignIn(ctx, row, audience, in.WorkspaceCode, identKey, "email_code", meta)
+	return s.finishSignIn(ctx, row, audience, in.WorkspaceCode, identKey, "otp", meta)
 }
 
 func (s *Service) handleOTPRequest(w http.ResponseWriter, r *http.Request) {

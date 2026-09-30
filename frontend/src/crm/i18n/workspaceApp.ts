@@ -3,6 +3,8 @@
 const strings = {
   layout: {
     errorTitle: "Couldn't open this product",
+    methodTitle: 'Sign in another way to open this product',
+    methodAction: 'Sign in again',
     forbiddenTitle: "You can't open this product",
     forbiddenBody: 'You’re not an active member of it. If you think this is a mistake, ask its administrator to check your access.',
     notFoundTitle: 'Product not found',
@@ -143,6 +145,9 @@ const strings = {
       expires: 'expires {{time}}'
     },
     invite: {
+      userType: 'User type',
+      userTypeHint: 'From the product setup; it limits the roles you can pick.',
+      noUserType: 'No specific type',
       title: 'Invite user',
       name: 'Full name',
       email: 'Email',

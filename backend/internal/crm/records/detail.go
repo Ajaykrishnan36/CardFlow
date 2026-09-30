@@ -76,7 +76,7 @@ func (h *Handler) related(ctx context.Context, ws uuid.UUID, spec *objectSpec, r
 			{"children", "Child accounts", "accounts", `
 				SELECT id::text, code, name, COALESCE(type, ''), lifecycle
 				FROM crm.accounts WHERE parent_account_id = $1 AND workspace_id = $2 AND deleted_at IS NULL ORDER BY name LIMIT 50`},
-			{"workspaces", "Customer workspace", "workspaces", `
+			{"workspaces", "Product", "workspaces", `
 				SELECT w.id::text, w.code, w.name, w.code, w.status
 				FROM crm.accounts a JOIN crm.workspaces w ON w.id = a.customer_workspace_id
 				WHERE a.id = $1 AND a.workspace_id = $2`},

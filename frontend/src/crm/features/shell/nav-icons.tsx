@@ -49,6 +49,11 @@ import {
   UserPlus,
   Users,
   UsersRound,
+  Workflow,
+  Megaphone,
+  Mail,
+  KeyRound,
+  Code2,
   type LucideIcon
 } from 'lucide-react';
 
@@ -75,6 +80,11 @@ const icons: Record<string, LucideIcon> = {
   'id-card': IdCard,
   smartphone: Smartphone,
   store: Store,
+  workflow: Workflow,
+  megaphone: Megaphone,
+  mail: Mail,
+  'key-round': KeyRound,
+  code: Code2,
   // Object icons (records/objects.go ObjectIcons)
   box: Box,
   handshake: Handshake,

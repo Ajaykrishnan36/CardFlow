@@ -38,9 +38,6 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 		if o.Key == "ticket" || o.App {
 			continue
 		}
-		if o.Custom && o.Key == "cases" && hasSupport {
-			continue // the connected app's Support replaces cases there
-		}
 		if e.Can(o.Key, "read") {
 			if o.Custom {
 				nav = append(nav, NavItem{Key: o.Key, Label: o.Label, Path: base + "/" + o.Route, Icon: o.Icon, Group: "CRM", Available: true})
@@ -49,10 +46,7 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 			nav = append(nav, NavItem{Key: o.Module, Label: o.Label, Path: base + "/" + o.Module, Icon: icons[o.Key], Group: "CRM", Available: true})
 		}
 	}
-	// Support tickets come from a connected app; the module is shown only where one is attached.
-	if hasSupport && e.Can("ticket", "read") {
-		nav = append(nav, NavItem{Key: "support", Label: "Support", Path: base + "/support", Icon: "life-buoy", Group: "CRM", Available: true})
-	}
+	// A connected app's support tickets are Cases like in every other product (D-72).
 	// The connected app's own data (Business Card Snap): users with their access, and business listings.
 	if hasSupport && e.Can("app_user", "read") {
 		nav = append(nav, NavItem{Key: "app-users", Label: "App users", Path: base + "/app-users", Icon: "smartphone", Group: "App", Available: true})
@@ -67,8 +61,27 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 			NavItem{Key: "dashboards", Label: "Dashboards", Path: base + "/dashboards", Icon: "layout-grid", Group: "Analytics", Available: true},
 		)
 	}
+	// Automation & outreach (D-63, D-65, D-66).
+	if e.HasCapability(CapWorkflows) {
+		nav = append(nav, NavItem{Key: "workflows", Label: "Workflows", Path: base + "/workflows", Icon: "workflow", Group: "Automation", Available: true})
+	}
+	if e.HasCapability(CapCampaigns) {
+		nav = append(nav, NavItem{Key: "campaigns", Label: "Email campaigns", Path: base + "/campaigns", Icon: "megaphone", Group: "Automation", Available: true})
+	}
+	if e.HasCapability(CapEmailSend) {
+		nav = append(nav, NavItem{Key: "mailboxes", Label: "Email & calendar", Path: base + "/settings/email", Icon: "mail", Group: "Settings", Available: true})
+	}
 	if e.HasCapability(CapAccessManage) || e.HasCapability(CapMembersManage) {
-		nav = append(nav, NavItem{Key: "admin", Label: "Users & access", Path: base + "/settings/access", Icon: "shield-check", Group: "Settings", Available: true})
+		nav = append(nav,
+			NavItem{Key: "admin", Label: "Users & access", Path: base + "/settings/access", Icon: "shield-check", Group: "Settings", Available: true},
+			NavItem{Key: "teams", Label: "Teams", Path: base + "/settings/teams", Icon: "users", Group: "Settings", Available: true},
+		)
+	}
+	if e.HasCapability(CapAccessManage) {
+		nav = append(nav, NavItem{Key: "sso", Label: "Single sign-on", Path: base + "/settings/sso", Icon: "key-round", Group: "Settings", Available: true})
+	}
+	if e.HasCapability(CapDeveloper) {
+		nav = append(nav, NavItem{Key: "developer", Label: "API & webhooks", Path: base + "/settings/developer", Icon: "code", Group: "Settings", Available: true})
 	}
 	nav = append(nav, NavItem{Key: "settings", Label: "Profile & security", Path: "/crm/me", Icon: "settings", Group: "Account", Available: true})
 	return nav

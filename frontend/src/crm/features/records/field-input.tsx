@@ -24,13 +24,15 @@ export interface FieldInputProps extends ControlProps {
   onChange: (value: unknown) => void;
   /** Current display label of a lookup value. */
   lookupLabel?: string;
+  /** Current labels of a many-record link (relations). */
+  links?: LookupValue[];
   disabled?: boolean;
 }
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
 /** Editor control for one field, chosen by FieldType. */
-export function FieldInput({ field, value, onChange, lookupLabel, disabled, ...control }: FieldInputProps) {
+export function FieldInput({ field, value, onChange, lookupLabel, links, disabled, ...control }: FieldInputProps) {
   const { t } = useTranslation();
   const scope = useRecordScope();
   const text = (type: string, inputMode?: 'email' | 'tel' | 'url' | 'text') => (
@@ -98,6 +100,22 @@ export function FieldInput({ field, value, onChange, lookupLabel, disabled, ...c
           <Switch id={control.id} checked={Boolean(value)} disabled={disabled} onCheckedChange={(c) => onChange(c)} aria-label={field.label} />
         </div>
       );
+    case 'rating':
+      return <RatingInput value={value} onChange={onChange} disabled={disabled} label={field.label} />;
+    case 'address':
+      return <PartsInput value={value} onChange={onChange} disabled={disabled} invalid={control.invalid} parts={ADDRESS_PARTS} />;
+    case 'fullName':
+      return <PartsInput value={value} onChange={onChange} disabled={disabled} invalid={control.invalid} parts={NAME_PARTS} />;
+    case 'emails':
+    case 'phones':
+    case 'links':
+      return <MultiselectInput {...control} field={{ ...field, options: [] }} disabled={disabled} value={value} onChange={onChange} placeholder={t(`records.input.${field.type}Placeholder`)} />;
+    case 'json':
+      return <JsonInput {...control} value={value} onChange={onChange} disabled={disabled} />;
+    case 'relations':
+      return field.lookup ? <RelationsInput {...control} target={field.lookup} value={value} links={links} onChange={onChange} disabled={disabled} /> : text('text');
+    case 'files':
+      return <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">{t('records.input.filesHint')}</p>;
     case 'lookup':
       if (field.lookup && !canLookup(scope, field.lookup)) {
         // Members can't search this target (e.g. workspaces / products): show the value, read-only.
@@ -151,8 +169,9 @@ function MultiselectInput({
   onChange,
   disabled,
   invalid,
+  placeholder,
   ...control
-}: ControlProps & { field: FieldDef; value: unknown; onChange: (v: unknown) => void; disabled?: boolean }) {
+}: ControlProps & { field: FieldDef; value: unknown; onChange: (v: unknown) => void; disabled?: boolean; placeholder?: string }) {
   const { t } = useTranslation();
   const listId = useId();
   const [text, setText] = useState('');
@@ -223,7 +242,7 @@ function MultiselectInput({
           }}
           onKeyDown={onKeyDown}
           onBlur={() => add(text)}
-          placeholder={values.length ? '' : t('records.input.tagsPlaceholder')}
+          placeholder={values.length ? '' : placeholder ?? t('records.input.tagsPlaceholder')}
           className="h-7 min-w-[8rem] flex-1 bg-transparent px-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
         />
         {options.length ? (
@@ -420,6 +439,149 @@ export function LookupCombobox({
           )}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+// ---- Rating: 1–5 stars ----
+
+function RatingInput({ value, onChange, disabled, label }: { value: unknown; onChange: (v: unknown) => void; disabled?: boolean; label: string }) {
+  const { t } = useTranslation();
+  const n = typeof value === 'number' ? value : Number(value) || 0;
+  const [hover, setHover] = useState(0);
+  const shown = hover || n;
+  return (
+    <div className="flex h-9 items-center gap-0.5" role="radiogroup" aria-label={label} onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <button
+          key={i}
+          type="button"
+          role="radio"
+          aria-checked={n === i}
+          aria-label={t('records.input.stars', { count: i })}
+          disabled={disabled}
+          onMouseEnter={() => setHover(i)}
+          onClick={() => onChange(n === i ? null : i)}
+          className="grid size-7 place-items-center rounded text-lg leading-none transition-transform hover:scale-110 disabled:opacity-60"
+        >
+          <span className={i <= shown ? 'text-amber-500' : 'text-muted-foreground/40'} aria-hidden>
+            ★
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---- Address / full name: several short parts in one value ----
+
+const ADDRESS_PARTS = ['street', 'street2', 'city', 'state', 'postalCode', 'country'] as const;
+const NAME_PARTS = ['firstName', 'lastName'] as const;
+
+function PartsInput({ value, onChange, disabled, invalid, parts }: { value: unknown; onChange: (v: unknown) => void; disabled?: boolean; invalid?: boolean; parts: readonly string[] }) {
+  const { t } = useTranslation();
+  const v = (value && typeof value === 'object' ? value : {}) as Record<string, string>;
+  const set = (k: string, s: string) => {
+    const next = { ...v, [k]: s };
+    const empty = Object.values(next).every((x) => !x);
+    onChange(empty ? null : next);
+  };
+  return (
+    <div className={cn('grid gap-2', parts.length > 2 ? 'grid-cols-2' : 'grid-cols-2')}>
+      {parts.map((k) => (
+        <Input
+          key={k}
+          aria-label={t(`records.input.part.${k}`)}
+          placeholder={t(`records.input.part.${k}`)}
+          disabled={disabled}
+          invalid={invalid}
+          value={v[k] ?? ''}
+          className={k === 'street' || k === 'street2' ? 'col-span-2' : undefined}
+          onChange={(e) => set(k, e.target.value)}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ---- JSON: text until it parses ----
+
+function JsonInput({ value, onChange, disabled, ...control }: ControlProps & { value: unknown; onChange: (v: unknown) => void; disabled?: boolean }) {
+  const { t } = useTranslation();
+  const [text, setText] = useState(() => (value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value, null, 2)));
+  const [bad, setBad] = useState(false);
+  return (
+    <div className="space-y-1">
+      <Textarea
+        {...control}
+        rows={4}
+        disabled={disabled}
+        className="font-mono text-xs"
+        value={text}
+        invalid={bad || control.invalid}
+        onChange={(e) => {
+          const s = e.target.value;
+          setText(s);
+          if (!s.trim()) {
+            setBad(false);
+            return onChange(null);
+          }
+          try {
+            onChange(JSON.parse(s));
+            setBad(false);
+          } catch {
+            setBad(true);
+          }
+        }}
+      />
+      {bad ? <p className="text-xs text-danger">{t('records.input.jsonInvalid')}</p> : null}
+    </div>
+  );
+}
+
+// ---- Relations: several linked records ----
+
+function RelationsInput({
+  target,
+  value,
+  links,
+  onChange,
+  disabled,
+  ...control
+}: ControlProps & { target: LookupTarget; value: unknown; links?: LookupValue[]; onChange: (v: unknown) => void; disabled?: boolean }) {
+  const { t } = useTranslation();
+  const ids = Array.isArray(value) ? value.map(String) : [];
+  const [labels, setLabels] = useState<Record<string, string>>(() => Object.fromEntries((links ?? []).map((l) => [l.id, l.label])));
+  const remove = (id: string) => {
+    const next = ids.filter((x) => x !== id);
+    onChange(next.length ? next : null);
+  };
+  return (
+    <div className="space-y-1.5">
+      {ids.length ? (
+        <div className="flex flex-wrap gap-1">
+          {ids.map((id) => (
+            <span key={id} className="inline-flex items-center gap-0.5 rounded bg-muted py-0.5 pl-2 pr-0.5 text-xs font-medium">
+              {labels[id] ?? t('records.common.untitled')}
+              <button type="button" disabled={disabled} onClick={() => remove(id)} className="grid size-4 place-items-center rounded text-muted-foreground hover:bg-background" aria-label={t('records.input.clear')}>
+                <X className="size-3" aria-hidden />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <LookupCombobox
+        {...control}
+        target={target}
+        value={null}
+        disabled={disabled || ids.length >= 100}
+        placeholder={t('records.input.addLink')}
+        onChange={(v) => {
+          if (!v || ids.includes(v.id)) return;
+          setLabels((m) => ({ ...m, [v.id]: v.label }));
+          onChange([...ids, v.id]);
+        }}
+      />
     </div>
   );
 }

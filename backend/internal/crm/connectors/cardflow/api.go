@@ -43,13 +43,17 @@ type Ticket struct {
 	Account *LookupValue `json:"account,omitempty"`
 	Contact *LookupValue `json:"contact,omitempty"`
 	Source  string       `json:"source"`
+	// CaseID is the Case that mirrors this ticket (D-72).
+	CaseID *string `json:"caseId,omitempty"`
 }
 
 const ticketSelect = `
 	SELECT t.id, t.subject, t.message, t.category, t.status, COALESCE(t.admin_reply, ''), t.replied_at, t.created_at, t.updated_at,
 	       t.user_name, t.user_phone, t.user_role, COALESCE(t.user_id::text, ''),
 	       a.id::text, a.name || ' · ' || a.code, c.id::text,
-	       COALESCE(NULLIF(trim(concat_ws(' ', c.first_name, c.last_name)), ''), c.code) || ' · ' || c.code
+	       COALESCE(NULLIF(trim(concat_ws(' ', c.first_name, c.last_name)), ''), c.code) || ' · ' || c.code,
+	       (SELECT r.id::text FROM crm.object_records r WHERE r.object_key = 'cases' AND r.deleted_at IS NULL
+	          AND r.custom->>'app_ticket_id' = t.id LIMIT 1)
 	FROM public.support_tickets t
 	LEFT JOIN crm.external_links l ON l.system = 'cardflow' AND l.external_type = 'user' AND l.external_id = t.user_id::text
 	LEFT JOIN crm.accounts a ON a.id = l.account_id AND a.deleted_at IS NULL
@@ -59,7 +63,7 @@ func scanTicket(row pgx.Row) (Ticket, error) {
 	var t Ticket
 	var accID, accLabel, conID, conLabel *string
 	err := row.Scan(&t.ID, &t.Subject, &t.Message, &t.Category, &t.Status, &t.Reply, &t.RepliedAt, &t.CreatedAt, &t.UpdatedAt,
-		&t.User.Name, &t.User.Phone, &t.User.Role, &t.User.ExternalID, &accID, &accLabel, &conID, &conLabel)
+		&t.User.Name, &t.User.Phone, &t.User.Role, &t.User.ExternalID, &accID, &accLabel, &conID, &conLabel, &t.CaseID)
 	if err != nil {
 		return t, err
 	}
@@ -244,28 +248,14 @@ func (c *Connector) Extension() records.Extension {
 			if sc.WS != c.WorkspaceID() || object == "leads" {
 				return nil, nil
 			}
-			app, err := c.appRelated(ctx, sc, object, recordID)
-			if err != nil || !c.hasTickets {
-				return app, err
+			// App tickets show in the standard Cases related list (D-72).
+			return c.appRelated(ctx, sc, object, recordID)
+		},
+		OnEvent: c.onCaseEvent,
+		BeforeList: func(ws uuid.UUID, object string) {
+			if object == "cases" && ws == c.WorkspaceID() && c.hasTickets {
+				c.SyncOnDemand()
 			}
-			col := map[string]string{"accounts": "account_id", "contacts": "contact_id"}[object]
-			rows, err := c.store.Pool.Query(ctx, `
-				SELECT t.id, t.id, t.subject, t.category, t.status FROM public.support_tickets t
-				JOIN crm.external_links l ON l.system = 'cardflow' AND l.external_type = 'user' AND l.external_id = t.user_id::text
-				WHERE l.`+col+` = $1 ORDER BY t.created_at DESC LIMIT 50`, recordID)
-			if err != nil {
-				return nil, err
-			}
-			defer rows.Close()
-			list := records.RelatedList{Key: "tickets", Label: "Support tickets", Object: "tickets", Rows: []records.RelatedRow{}}
-			for rows.Next() {
-				var rr records.RelatedRow
-				if err := rows.Scan(&rr.ID, &rr.Code, &rr.Title, &rr.Subtitle, &rr.Status); err != nil {
-					return nil, err
-				}
-				list.Rows = append(list.Rows, rr)
-			}
-			return append(app, list), rows.Err()
 		},
 		KPIs: func(ctx context.Context, sc *records.Scope) ([]records.KPI, error) {
 			if sc.WS != c.WorkspaceID() {
@@ -307,7 +297,7 @@ func (c *Connector) Extension() records.Extension {
 				FROM public.support_tickets`).Scan(&open, &today); err != nil {
 				return nil, err
 			}
-			k := records.KPI{Key: "tickets", Label: "Open tickets", Value: open, Path: "/crm/w/" + sc.Code + "/support", Icon: "life-buoy"}
+			k := records.KPI{Key: "tickets", Label: "Open cases", Value: open, Path: "/crm/w/" + sc.Code + "/cases", Icon: "life-buoy"}
 			if today > 0 {
 				k.Hint = strconv.Itoa(today) + " new today"
 			}
@@ -395,6 +385,7 @@ func (c *Connector) OwnerRoutes(r chi.Router) {
 	})
 	r.Post("/platform/integrations/cardflow/sync", func(w http.ResponseWriter, r *http.Request) {
 		c.setError(c.Sync(r.Context()))
+		records.KickEvents()
 		shared.WriteJSON(w, http.StatusOK, c.Info(r.Context()))
 	})
 }

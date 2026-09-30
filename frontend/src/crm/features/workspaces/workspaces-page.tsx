@@ -117,7 +117,7 @@ export function WorkspacesPage() {
                   <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
                     <th className="px-5 py-2.5 font-medium">{t('workspaces.list.colWorkspace')}</th>
                     <th className="px-3 py-2.5 font-medium">{t('workspaces.list.colStatus')}</th>
-                    <th className="px-3 py-2.5 text-right font-medium">{t('workspaces.list.colProducts')}</th>
+                    <th className="px-3 py-2.5 text-left font-medium">{t('workspaces.list.colProducts')}</th>
                     <th className="px-3 py-2.5 text-right font-medium">{t('workspaces.list.colMembers')}</th>
                     <th className="px-3 py-2.5 text-right font-medium">{t('workspaces.list.colInvites')}</th>
                     <th className="px-5 py-2.5 text-right font-medium">{t('workspaces.list.colCreated')}</th>
@@ -144,7 +144,15 @@ export function WorkspacesPage() {
                       <td className="px-3 py-3">
                         <WorkspaceStatusBadge status={w.status} />
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums">{w.products}</td>
+                      <td className="max-w-[220px] px-3 py-3">
+                        {w.setupNames?.length ? (
+                          <span className="block truncate text-[13px] text-foreground" title={w.setupNames.join(', ')}>
+                            {w.setupNames.join(', ')}
+                          </span>
+                        ) : (
+                          <span className="text-[13px] text-warning">{t('workspaces.list.noSetup')}</span>
+                        )}
+                      </td>
                       <td className="px-3 py-3 text-right tabular-nums">{w.members}</td>
                       <td className="px-3 py-3 text-right tabular-nums">
                         {w.pendingInvites > 0 ? <span className="font-medium text-primary">{w.pendingInvites}</span> : <span className="text-muted-foreground">0</span>}
@@ -167,7 +175,7 @@ export function WorkspacesPage() {
                       </div>
                       <p className="truncate font-mono text-xs text-muted-foreground">{w.code}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {t('workspaces.list.productsCount', { count: w.products })} · {t('workspaces.list.membersCount', { count: w.members })}
+                        {w.setupNames?.length ? w.setupNames.join(', ') : t('workspaces.list.noSetup')} · {t('workspaces.list.membersCount', { count: w.members })}
                         {w.pendingInvites > 0 ? ` · ${t('workspaces.list.invitesCount', { count: w.pendingInvites })}` : ''}
                       </p>
                     </div>

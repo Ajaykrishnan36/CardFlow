@@ -112,6 +112,7 @@ func (c *Connector) Start(ctx context.Context) {
 		defer t.Stop()
 		for {
 			c.setError(c.Sync(ctx))
+			records.KickEvents()
 			select {
 			case <-ctx.Done():
 				return
@@ -183,7 +184,7 @@ func (c *Connector) bootstrap(ctx context.Context) error {
 			// "Give all access": the workspace's Super Admin also manages roles and users.
 			sa, _ := access.FindSystemRole("SUPER_ADMIN")
 			rules := sa.Rules
-			rules.Capabilities = []string{access.CapDashboard, access.CapMetadata, access.CapAccessManage, access.CapMembersManage}
+			rules.Capabilities = access.AllCapabilities()
 			raw, _ := json.Marshal(rules)
 			if _, err := tx.Exec(ctx, `UPDATE crm.roles SET base_rules = $2, customized = true, updated_at = now() WHERE workspace_id = $1 AND key = 'SUPER_ADMIN'`,
 				wsID, raw); err != nil {
@@ -204,6 +205,9 @@ func (c *Connector) bootstrap(ctx context.Context) error {
 			return err
 		}
 		if err := ensureLayouts(ctx, tx, wsID, ownerID); err != nil {
+			return err
+		}
+		if err := upgradeStandardModules(ctx, tx, productID); err != nil {
 			return err
 		}
 		return upgradeAppAccess(ctx, tx, wsID, productID)
@@ -256,7 +260,7 @@ var appFields = []fieldDef{
 }
 
 func ensureFields(ctx context.Context, tx pgx.Tx, wsID, ownerID uuid.UUID) error {
-	for i, f := range appFields {
+	for i, f := range append(append([]fieldDef{}, appFields...), caseFields...) {
 		choices := []map[string]string{}
 		for _, c := range f.choices {
 			choices = append(choices, map[string]string{"value": c[0], "label": c[1]})
@@ -280,6 +284,7 @@ func ensureLayouts(ctx context.Context, tx pgx.Tx, wsID, ownerID uuid.UUID) erro
 			"app_signed_up_at", "app_last_login", "app_free_scans_left", "app_saved_cards", "app_businesses"}},
 		"contacts": {ID: "app_profile", Title: AppName + " profile", Columns: 2, Fields: contactProfileFields},
 		"leads":    {ID: "app_profile", Title: AppName, Columns: 2, Fields: []string{"app_user_id"}},
+		"cases":    {ID: "app_profile", Title: AppName, Columns: 1, Fields: []string{"app_reply", "app_category", caseTicketField}},
 	}
 	for object, sec := range sections {
 		var exists bool
@@ -456,6 +461,8 @@ type syncState struct {
 	// BusinessesSince covers every app business (D-52). A new key, so the
 	// first run after the upgrade also gives owner-registered businesses accounts.
 	BusinessesSince time.Time `json:"businessesSince"`
+	// CasesSince: tickets mirrored into Cases up to this update time (D-72).
+	CasesSince time.Time `json:"casesSince"`
 }
 
 func (c *Connector) loadState(ctx context.Context) syncState {
@@ -580,6 +587,9 @@ func (c *Connector) Sync(ctx context.Context) error {
 		if err := c.syncTicketActivity(ctx, wsID, &st); err != nil {
 			return err
 		}
+		if err := c.syncTicketCases(ctx, wsID, &st); err != nil {
+			return err
+		}
 		if err := c.saveState(ctx, st); err != nil {
 			return err
 		}
@@ -646,6 +656,12 @@ func (c *Connector) upsertUser(ctx context.Context, wsID uuid.UUID, u appUser) e
 				return err
 			}
 			if _, err := tx.Exec(ctx, `UPDATE crm.leads SET converted_contact_id = $2 WHERE id = $1`, l.leadID, l.contactID); err != nil {
+				return err
+			}
+			if err := records.EmitRecordEvent(ctx, tx, wsID, "leads", l.leadID, "record.created", "app"); err != nil {
+				return err
+			}
+			if err := records.EmitRecordEvent(ctx, tx, wsID, "contacts", l.contactID, "record.created", "app"); err != nil {
 				return err
 			}
 			if _, err := tx.Exec(ctx, `

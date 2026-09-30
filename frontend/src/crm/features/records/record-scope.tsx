@@ -23,6 +23,10 @@ export interface RecordScope {
   canCustomize: boolean;
   /** Query key of this audience's dashboard, refreshed after record changes. */
   dashboardKey: readonly unknown[];
+  /** Product setup defaults (conversion); the owner's Platform CRM uses the standard ones. */
+  setup: { createContact: boolean; createOpportunity: boolean; requireQualified: boolean };
+  /** Capabilities this viewer has (send email, workflows…); the owner has all. */
+  hasCapability: (key: string) => boolean;
 }
 
 /** Route/API plural ↔ permission singular (objects defined as data use their own key). */
@@ -39,7 +43,9 @@ export const ownerScope: RecordScope = {
   can: () => true,
   rowScope: () => undefined,
   canCustomize: true,
-  dashboardKey: ['platform', 'dashboard']
+  dashboardKey: ['platform', 'dashboard'],
+  setup: { createContact: true, createOpportunity: false, requireQualified: false },
+  hasCapability: () => true
 };
 
 export function workspaceDashboardKey(code: string) {
@@ -64,7 +70,9 @@ export function scopeFromContext(ctx: WorkspaceContext, code: string): RecordSco
     },
     rowScope: (object) => access(object)?.scope,
     canCustomize: ctx.canCustomize || full,
-    dashboardKey: workspaceDashboardKey(code)
+    dashboardKey: workspaceDashboardKey(code),
+    setup: ctx.setup ?? { createContact: true, createOpportunity: false, requireQualified: false },
+    hasCapability: (key) => full || ctx.effective.capabilities.some((c) => c.key === key)
   };
 }
 

@@ -9,7 +9,8 @@ const strings = {
     filterAll: 'All',
     colWorkspace: 'Product',
     colStatus: 'Status',
-    colProducts: 'Setups',
+    colProducts: 'Setup (version)',
+    noSetup: 'No setup yet',
     colMembers: 'Members',
     colInvites: 'Pending invites',
     colCreated: 'Created',
@@ -83,7 +84,7 @@ const strings = {
       products: {
         short: 'Product setup',
         title: 'Product setup',
-        description: 'The setup decides what the product’s users get: modules, roles, pipeline and login. Create one now, reuse an existing one, or skip.'
+        description: 'The setup decides what the product’s users get: objects, roles, sales process and sign-in. Create one now, reuse an existing one, or skip.'
       },
       admin: { short: 'Super Admin', title: 'Super Admin', description: 'The person who will run this product. They get an invitation email.' },
       review: { short: 'Review', title: 'Review & create', description: 'Check the details. Nothing is created until you confirm.' }
@@ -100,7 +101,7 @@ const strings = {
     mode: {
       new: {
         title: 'Create a new setup',
-        body: 'Right after the product is created you set it up in 6 steps: General, Modules & data, Roles & user types, Pipeline & conversion, Login & integrations, Review & publish.'
+        body: 'Right after the product is created you set it up in 6 steps: Details & branding, Objects, Roles & user types, Sales process, Sign-in & integrations, Review & publish.'
       },
       existing: { title: 'Use an existing setup', body: 'Share a setup you already published with this product.' },
       skip: { title: 'Skip for now', body: 'The product starts with the standard modules. Add or change setups later from its Product setup tab.' }
@@ -109,7 +110,7 @@ const strings = {
     productNameHint: 'Defaults to the product name. You can rename it in the product setup.',
     productNamePlaceholder: 'e.g. Acme Realty CRM',
     reviewNew: 'New setup “{{name}}” — you’ll set it up right after this',
-    submitAndSetup: 'Provision & set up setup',
+    submitAndSetup: 'Create product & open its setup',
     productsError: "Couldn't load setups",
     noProductsTitle: 'No active setups',
     noProductsBody: 'Publish a setup first. Only active setups can be assigned to products.',
@@ -137,7 +138,7 @@ const strings = {
     deliveryFailed: "The invitation email couldn't be delivered. Resend it from the People tab.",
     open: 'Open product',
     setUpNow: 'Create its setup',
-    setUpHint: 'Next: create the setup (modules, roles, pipeline, login) for {{name}} — it’s linked to the product when you publish it.',
+    setUpHint: 'Next: create the Product setup (objects, roles, sales process, sign-in) for {{name}} — it goes live when you publish it.',
     another: 'Add another product'
   },
   detail: {
@@ -165,7 +166,7 @@ const strings = {
   },
   overview: {
     summary: 'Product summary',
-    products: 'Setups',
+    products: 'Product setups',
     members: 'Members',
     pendingInvites: 'Pending invites',
     details: 'Details',
@@ -176,7 +177,7 @@ const strings = {
   },
   products: {
     title: 'Product setup',
-    description: 'The setups this product uses: modules, objects, pipeline and roles. Publishing a change applies it here right away.',
+    description: 'What this product’s users get: objects, roles, sales process and sign-in. Publishing a change applies it here right away.',
     editSetup: 'Edit setup',
     createNew: 'New setup',
       assign: 'Add existing setup',

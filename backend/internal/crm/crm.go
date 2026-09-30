@@ -20,6 +20,7 @@ import (
 	"cardflow-backend/internal/crm/shared"
 	"cardflow-backend/internal/crm/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -71,7 +72,43 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	}
 	m.identity = identity.NewService(st, cfg, mailer)
 	m.platform = platform.NewHandler(st, cfg, mailer, m.identity)
-	m.records = records.NewHandler(st, cfg, m.platform)
+	m.records = records.NewHandler(st, cfg, m.platform, recordMailer{mailer})
+	identity.SetAPIKeyResolver(m.records.ResolveAPIKey)
+	records.SetAllowedMethodsHook(identity.AllowedMethods)
+	identity.SetMethodPolicy(func(ctx context.Context, code string) ([]string, error) {
+		var wsID uuid.UUID
+		if err := st.Pool.QueryRow(ctx, `SELECT id FROM crm.workspaces WHERE code = $1`, code).Scan(&wsID); err != nil {
+			return nil, nil // unknown product: the sign-in itself fails later
+		}
+		setup, err := platform.WorkspaceSetup(ctx, st.Pool, wsID)
+		if err != nil {
+			return nil, err
+		}
+		lm := setup.LoginMethods
+		out := []string{}
+		for _, m := range []struct {
+			on  bool
+			key string
+		}{{lm.Password, "password"}, {lm.OTP, "otp"}, {lm.Google, "google"}, {lm.Microsoft, "microsoft"}, {lm.LinkedIn, "linkedin"}, {lm.SSO, "sso"}} {
+			if m.on {
+				out = append(out, m.key)
+			}
+		}
+		return out, nil
+	})
+	identity.SetSignupPolicy(func(ctx context.Context, code string) (identity.SignupTarget, error) {
+		var t identity.SignupTarget
+		if err := st.Pool.QueryRow(ctx, `SELECT id, name FROM crm.workspaces WHERE code = $1 AND status = 'active' AND NOT is_platform`, code).
+			Scan(&t.WorkspaceID, &t.Name); err != nil {
+			return t, nil // unknown product: not open for sign-up
+		}
+		setup, err := platform.WorkspaceSetup(ctx, st.Pool, t.WorkspaceID)
+		if err != nil {
+			return t, err
+		}
+		t.Allowed = setup.SelfRegistration
+		return t, nil
+	})
 	// Standard and custom objects (D-45): seed, create their views, load the catalog.
 	objCtx, cancelObj := context.WithTimeout(context.Background(), 60*time.Second)
 	err := m.records.LoadObjects(objCtx)
@@ -92,6 +129,8 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		m.records.Extend(m.cardflow.Extension())
 		m.cardflow.Start(context.Background())
 	}
+	// Events, webhooks, workflows, campaigns and mailbox sync (D-55): sleeps until there's work.
+	m.records.StartWorker(context.Background())
 	slog.Info("CRM module ready", "env", cfg.AppEnv, "base_url", cfg.BaseURL)
 	return m
 }
@@ -121,6 +160,10 @@ func (m *Module) Mount(r chi.Router) {
 		m.identity.Routes(r)
 		m.platform.Routes(r)
 		m.records.Routes(r)
+		m.records.PublicRoutes(r)
+		r.Get("/oauth/{provider}/callback", m.oauthCallback)
+		r.Get("/oauth/providers", m.oauthProviders)
+		m.samlRoutes(r)
 		if m.cardflow != nil {
 			r.Group(func(r chi.Router) {
 				r.Use(identity.RequireOwner)
@@ -133,6 +176,14 @@ func (m *Module) Mount(r chi.Router) {
 		})
 	})
 }
+
+// recordMailer lets the record engine send its own HTML emails.
+type recordMailer struct{ m mail.Mailer }
+
+func (r recordMailer) SendHTML(ctx context.Context, to, subject, html, text string, o records.MailOptions) error {
+	return r.m.Send(ctx, mail.Message{To: to, Subject: subject, HTML: html, Text: text, FromName: o.FromName, ReplyTo: o.ReplyTo, Headers: o.Headers})
+}
+func (r recordMailer) From() string { return r.m.From() }
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

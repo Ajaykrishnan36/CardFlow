@@ -13,6 +13,7 @@ import { useWorkspaceContextQuery } from '@crm/features/workspace/workspace-cont
 import { SidebarContent } from './sidebar';
 import { CommandMenu } from './command-menu';
 import { ThemeToggle } from './theme-toggle';
+import { NotificationsBell, useLiveUpdates } from './live';
 
 function currentNav(items: NavItem[] | undefined, pathname: string): NavItem | undefined {
   return items
@@ -40,6 +41,10 @@ export function AppShell() {
   const location = useLocation();
 
   useEffect(() => setMobileNavOpen(false), [location.pathname, setMobileNavOpen]);
+  const ownerSession = me ? isOwnerSession(me) : false;
+  const apiPrefix = wsCode ? `/w/${encodeURIComponent(wsCode)}` : ownerSession ? '/platform' : null;
+  const routeBase = wsCode ? `/crm/w/${encodeURIComponent(wsCode)}` : '/crm/owner';
+  useLiveUpdates(me ? apiPrefix : null);
 
   if (!me) return <FullPageLoader />;
   const active = currentNav(navigation, location.pathname);
@@ -54,7 +59,7 @@ export function AppShell() {
           collapsed ? 'w-[64px]' : 'w-[248px]'
         )}
       >
-        <SidebarContent me={me} navigation={navigation} loading={navLoading} workspace={workspace} workspaceCode={wsCode} collapsed={collapsed} />
+        <SidebarContent me={me} navigation={navigation} loading={navLoading} workspace={workspace} workspaceCode={wsCode} collapsed={collapsed} apiPrefix={apiPrefix} />
       </aside>
 
       <Dialog open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
@@ -71,6 +76,7 @@ export function AppShell() {
             workspace={workspace}
             workspaceCode={wsCode}
             collapsed={false}
+            apiPrefix={apiPrefix}
             onNavigate={() => setMobileNavOpen(false)}
           />
         </DialogContent>
@@ -113,6 +119,7 @@ export function AppShell() {
           <Button variant="subtle" size="icon-sm" className="md:hidden" onClick={() => setCommandOpen(true)} aria-label={t('shell.search')}>
             <Search />
           </Button>
+          {apiPrefix ? <NotificationsBell prefix={apiPrefix} /> : null}
           <ThemeToggle />
         </header>
         <main className="flex-1">
@@ -120,7 +127,7 @@ export function AppShell() {
         </main>
       </div>
 
-      <CommandMenu navigation={navigation ?? []} workspaces={workspace?.workspaces} currentWorkspace={wsCode} />
+      <CommandMenu navigation={navigation ?? []} workspaces={workspace?.workspaces} currentWorkspace={wsCode} apiPrefix={apiPrefix} routeBase={routeBase} />
     </div>
   );
 }

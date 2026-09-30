@@ -104,6 +104,15 @@ func (h *Handler) memberScope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess := identity.SessionFrom(r.Context())
 		code := chi.URLParam(r, "code")
+		if k := apiKeyFrom(r.Context()); k != nil {
+			sc, err := h.apiKeyScope(r.Context(), code, k)
+			if err != nil {
+				shared.WriteError(w, r, err)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), scopeKeyT{}, sc)))
+			return
+		}
 		sc := &Scope{Code: code}
 		// The platform owner may open any workspace with full access (PRD "Enter workspace", audited).
 		if sess.IsPlatformOwner && sess.Audience == "owner" {
@@ -143,6 +152,11 @@ func (h *Handler) memberScope(next http.Handler) http.Handler {
 			shared.WriteError(w, r, shared.Forbidden("no_workspace_access", "Your access to this workspace is paused. Contact your administrator."))
 			return
 		}
+		// The product's setup decides how its people sign in (D-64).
+		if err := identity.SessionMethodAllowed(r.Context(), sess, code); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
 		sc.MembershipID = membershipID
 		if sc.Eff, err = access.ForMembership(r.Context(), h.store.Pool, membershipID); err != nil {
 			shared.WriteError(w, r, err)
@@ -177,6 +191,15 @@ type workspaceContext struct {
 		Code string `json:"code"`
 		Name string `json:"name"`
 	} `json:"workspaces"`
+	// The product's setup, where the app needs it (conversion defaults, sign-in, theme).
+	Setup struct {
+		CreateContact     bool   `json:"createContact"`
+		CreateOpportunity bool   `json:"createOpportunity"`
+		RequireQualified  bool   `json:"requireQualified"`
+		AccentColor       string `json:"accentColor,omitempty"`
+		APIAccess         bool   `json:"apiAccess"`
+		Webhooks          bool   `json:"webhooks"`
+	} `json:"setup"`
 }
 
 func displayWorkspaceName(name string, isPlatform bool) string {
@@ -202,6 +225,10 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 	out.Navigation = access.WorkspaceNav(sc.Code, sc.Eff, access.HasSupport(sc.WS))
 	out.CanCustomize = sc.CanCustomize()
 	out.ViewerIsOwner = sc.Owner
+	if cfg, ok := cachedSetup(r.Context(), h.store.Pool, sc.WS); ok {
+		out.Setup.CreateContact, out.Setup.CreateOpportunity, out.Setup.RequireQualified = cfg.Conversion.CreateContact, cfg.Conversion.CreateOpportunity, cfg.Conversion.RequireQualified
+		out.Setup.AccentColor, out.Setup.APIAccess, out.Setup.Webhooks = cfg.AccentColor, cfg.Integrations.APIAccess, cfg.Integrations.Webhooks
+	}
 	out.Workspaces = []struct {
 		Code string `json:"code"`
 		Name string `json:"name"`
@@ -338,6 +365,10 @@ type Extension struct {
 	MemberRoutes func(r chi.Router) // mounted inside /w/{code} (scope available via ScopeFrom)
 	Related      func(ctx context.Context, sc *Scope, object, recordID string) ([]RelatedList, error)
 	KPIs         func(ctx context.Context, sc *Scope) ([]KPI, error)
+	// OnEvent sees every record event as it is relayed (inside the relay's transaction).
+	OnEvent func(ctx context.Context, tx pgx.Tx, ev Event) error
+	// BeforeList runs when someone opens a list (e.g. to fetch fresh data from an app).
+	BeforeList func(ws uuid.UUID, object string)
 }
 
 // Extend registers an extension; call before Routes.

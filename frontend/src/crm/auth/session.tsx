@@ -116,7 +116,7 @@ export function useSignOut() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   return useCallback(
-    async (opts: { all?: boolean } = {}) => {
+    async (opts: { all?: boolean; to?: string } = {}) => {
       try {
         await (opts.all ? authApi.logoutAll() : authApi.logout());
       } catch {
@@ -124,7 +124,7 @@ export function useSignOut() {
       }
       qc.clear();
       qc.setQueryData(meKey, null);
-      navigate('/crm/login?signedOut=1', { replace: true });
+      navigate(opts.to ?? '/crm/login?signedOut=1', { replace: true });
     },
     [qc, navigate]
   );

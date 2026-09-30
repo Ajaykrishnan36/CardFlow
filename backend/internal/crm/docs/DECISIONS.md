@@ -255,6 +255,67 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   "Product setup"). "Add new product" is Details → Super Admin → Review and creates the product with no setup
   (`withoutSetup`); the setup is created from its Product setup tab ("New setup" / "Add existing setup") and linked when
   published. Code and API names (workspaces, products) are unchanged.
+- **D-54 Filters and saved views.** One filter engine (`records/filter.go`) compiles AND/OR trees (depth ≤ 5, ≤ 50
+  conditions) into SQL with bind parameters only; operators depend on the field type (text, number, date with
+  relative ranges in the product's time zone, pick-lists "is / is not / is any of", "is me / my team"). Lists, boards,
+  calendars, exports, bulk actions, reports, workflows and campaigns all use it. Saved views (table / board /
+  calendar, personal or shared) remember filters, sorts, columns and layout; standard shared views are seeded once
+  per product and object (e.g. Accounts "Business accounts" / "Personal accounts (older)", nothing deleted).
+- **D-55 One write path and an event outbox.** Every record change goes through the service (validation, unique
+  checks, history, audit) and writes an event to `crm.outbox_events` in the same transaction. An in-process worker is
+  kicked on each change and otherwise sleeps until the next due item — it never polls, so the free Neon database can
+  sleep. Events feed live pages (SSE), webhooks, workflows and notifications.
+- **D-56 Bulk actions, recycle bin, merge.** Bulk update / delete / restore / permanent delete (≤ 10,000, one
+  savepoint per record). Deleting moves records to the recycle bin (who and when); permanent delete clears
+  references. Merge keeps one record, re-points links, then moves the duplicates to the recycle bin.
+- **D-57 Richer field types.** Rating, address, full name, emails, phones, links, JSON, lookup (one record),
+  relations (many records) and files, plus "unique values only" for text, email, phone, URL and number fields.
+- **D-58 CSV import and export.** Import maps columns, checks the file first (dry run), then creates, upserts or
+  updates, reading labels as people type them. Export writes what the list shows, with readable values.
+- **D-59 Timeline and files.** A record's Activity tab merges field history, notes (with @mentions), tasks, events,
+  emails and files. Files: 10 MB each, 250 MB per product, served with a sandboxing CSP.
+- **D-60 Live updates and notifications.** One SSE stream per page refreshes what changed; mentions, assignments
+  and workflow messages become notifications (bell). Favorites pin records and views in the sidebar.
+- **D-61 API keys and the public API.** Keys (`crm_<prefix>_<secret>`, stored hashed) belong to one product and act
+  with full access or one permission set, 100 requests a minute, only while the product setup has API access on.
+  REST is the same API the web app uses; GraphQL and an OpenAPI file are generated from the product's objects.
+- **D-62 Webhooks.** Signed (`X-CRM-Signature: sha256=` HMAC of `timestamp.body`), retried for 24 hours, only while
+  the product setup has webhooks on; outbound calls refuse private addresses outside local development.
+- **D-63 Workflows.** Trigger (record created / changed / deleted, run by hand, schedule, incoming webhook) and
+  steps (create / update / upsert / delete / find records, assign by round robin / fewest records / random, email,
+  notification, HTTP call, 1-second JavaScript sandbox, wait, if / otherwise, for each, stop). Drafts are published as
+  versions; every run keeps a step log. A workflow never triggers itself and chains stop at depth 5. On Render's free
+  plan the server sleeps when idle, so a schedule that falls due then runs as soon as it wakes.
+- **D-64 Sign-in methods per product.** The product setup lists allowed methods: password, email code, Google,
+  Microsoft, LinkedIn, SAML single sign-on. They are enforced at sign-in and when a session opens a product.
+  Setups saved before enforcement are read as "password + email code" (the `enforced` marker), and sessions created
+  before the method was recorded stay valid — nobody live is locked out. OAuth credentials come from
+  `CRM_GOOGLE_*`, `CRM_MICROSOFT_*`, `CRM_LINKEDIN_*` (redirect `<CRM_BASE_URL>/api/crm/v1/oauth/<provider>/callback`).
+- **D-65 Email & calendar.** People connect Gmail / Outlook (OAuth) or IMAP. Hourly or on-demand sync stores only
+  emails with people already in the CRM (optionally creating contacts), with per-mailbox visibility and a
+  blocklist; meetings become Events and events created here go to the calendar.
+- **D-66 Email campaigns.** One email to a filtered group of contacts, leads or accounts, merge fields, test send,
+  send now or later, unsubscribe link and header, at most 1,000 emails a day per product.
+- **D-67 Teams.** Groups of members used by "is me or my team" filters and by workflow assignment.
+- **D-68 Sales process drives the pick-lists.** The setup's lead statuses and opportunity stages (with win
+  probability) are the Status / Stage options in the product; lead conversion follows the setup (contact only or with
+  an account, optional opportunity, "only qualified leads").
+- **D-69 Self sign-up.** When the setup allows it, `/crm/signup?product=<code>` creates an account after an email
+  code and adds the person as an End user. Otherwise joining is by invitation only.
+- **D-70 User types.** Inviting someone can name a user type from the setup; it limits the roles they can get and
+  is stored on the membership (`memberships.user_type`).
+- **D-71 Names (Salesforce style).** Owner console: *Products* (one per customer), each with a *Product setup*
+  whose steps are Details & branding → Objects → Roles & user types → Sales process → Sign-in & integrations →
+  Review & publish. The owner sidebar groups Products, Objects and Users & access under *Administration*; the
+  dashboard's Products card counts the same rows as the Products page, and the Products list shows each product's
+  setup by name and version (no separate setup count). Each product's accent colour is applied inside its workspace. Not built on purpose: extra UI
+  languages / right-to-left, AI chat, AI agents, MCP server.
+- **D-72 App tickets are Cases.** A connected app's support tickets (Business Card Snap) are mirrored into the
+  standard Cases object (custom fields *App ticket ID*, *App category*, *Reply in app*; origin "App"), so every
+  product uses the same Cases list, board, record page, reports and workflows. Changing a case's status or its
+  "Reply in app" updates the ticket, so the person sees it in the app. The old Support page links now open the case.
+  Business Card Snap also gets the standard objects once (opportunities, tasks, calendar, notes, communications,
+  catalog, files); the owner can switch any off. The sidebar orders objects the same way in every product.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

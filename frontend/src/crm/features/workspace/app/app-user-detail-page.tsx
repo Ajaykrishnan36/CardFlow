@@ -300,7 +300,7 @@ function AppUserDetailView({ id }: { id: string }) {
               <ul className="divide-y">
                 {u.ticketList.map((tk) => (
                   <li key={tk.id}>
-                    <Link to={supportPath(code, tk.id)} className="group flex items-center gap-3 px-4 py-3 hover:bg-muted/50">
+                    <Link to={supportPath(code, tk.id, tk.caseId)} className="group flex items-center gap-3 px-4 py-3 hover:bg-muted/50">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-medium group-hover:text-primary">{tk.subject || t('workspaceApp.support.noSubject')}</p>
                         <p className="truncate text-xs text-muted-foreground">{tk.reply ? tk.reply : t('workspaceApp.support.noReply')}</p>

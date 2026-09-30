@@ -629,8 +629,12 @@ func (h *Handler) adminOptions(w http.ResponseWriter, r *http.Request, sc *Admin
 		shared.WriteError(w, r, err)
 		return
 	}
+	userTypes := []UserType{}
+	if setup, err := WorkspaceSetup(ctx, h.store.Pool, sc.WS); err == nil && setup.UserTypes != nil {
+		userTypes = setup.UserTypes
+	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
-		"canManageAccess": canAccess, "canManageMembers": canMembers,
+		"canManageAccess": canAccess, "canManageMembers": canMembers, "userTypes": userTypes,
 		"grantable": sc.Limit.AsRules(),
 		"catalog":   accessCatalog{Objects: access.CatalogObjects(), Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles()},
 		"roles":     roles, "permissionSets": sets, "products": sc.Limit.Products, "isPlatform": sc.IsPlatform,
@@ -645,6 +649,7 @@ type adminMember struct {
 	IsSelf         bool              `json:"isSelf"`
 	Editable       bool              `json:"editable"`
 	LockedReason   string            `json:"lockedReason,omitempty"`
+	UserType       string            `json:"userType,omitempty"`
 }
 
 func productsWithin(ids []uuid.UUID, limit *access.Effective) bool {
@@ -666,7 +671,7 @@ func (h *Handler) loadAdminMember(ctx context.Context, sc *AdminScope, membershi
 	var isOwner bool
 	err := h.store.Pool.QueryRow(ctx, `
 		SELECT m.id, i.id, i.display_name, COALESCE(e.value_normalized, ''), m.status, COALESCE(r.key, ''), COALESCE(r.name, ''),
-		       i.last_login_at, m.created_at, COALESCE(r.product_ids, '{}'), i.is_platform_owner,
+		       i.last_login_at, m.created_at, COALESCE(r.product_ids, '{}'), i.is_platform_owner, COALESCE(m.user_type, ''),
 		       COALESCE((SELECT json_agg(json_build_object('id', ps.id, 'name', ps.name) ORDER BY ps.name)
 		                   FROM crm.membership_permission_sets mps JOIN crm.permission_sets ps ON ps.id = mps.permission_set_id
 		                  WHERE mps.membership_id = m.id), '[]')
@@ -679,7 +684,7 @@ func (h *Handler) loadAdminMember(ctx context.Context, sc *AdminScope, membershi
 		) r ON true
 		WHERE m.id = $1 AND m.workspace_id = $2`, membershipID, sc.WS).Scan(
 		&m.MembershipID, &m.IdentityID, &m.DisplayName, &m.Email, &m.Status, &m.RoleKey, &m.RoleName,
-		&m.LastLoginAt, &m.CreatedAt, &m.ProductIDs, &isOwner, &sets)
+		&m.LastLoginAt, &m.CreatedAt, &m.ProductIDs, &isOwner, &m.UserType, &sets)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.NotFound("membership_not_found")
 	}
@@ -847,6 +852,7 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 		PermissionSetIDs []uuid.UUID `json:"permissionSetIds"`
 		Method           string      `json:"method"`
 		Password         string      `json:"password"`
+		UserType         string      `json:"userType"`
 	}
 	if err := shared.DecodeJSON(w, r, &in); err != nil {
 		shared.WriteError(w, r, err)
@@ -878,7 +884,7 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 	}
 	gl := GiveLoginInput{
 		Workspace: GiveLoginWorkspace{Mode: "existing", WorkspaceID: sc.WS}, RoleKey: in.RoleKey, ProductIDs: in.ProductIDs,
-		PermissionSetIDs: in.PermissionSetIDs, Method: in.Method, Password: in.Password,
+		PermissionSetIDs: in.PermissionSetIDs, Method: in.Method, Password: in.Password, UserType: in.UserType,
 	}
 	person := Person{Name: in.DisplayName, Email: in.Email, Phone: in.Phone}
 	hash, err := PrepareGiveLogin(&gl, person, "")

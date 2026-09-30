@@ -38,16 +38,19 @@ type Row struct {
 	Title       string                 `json:"title"`
 	Values      map[string]any         `json:"values"`
 	Lookups     map[string]LookupValue `json:"lookups"`
-	Version     int                    `json:"version"`
-	CreatedAt   string                 `json:"createdAt"`
-	UpdatedAt   string                 `json:"updatedAt"`
+	// Links: labels of many-record link fields ("relations").
+	Links     map[string][]LookupValue `json:"links,omitempty"`
+	DeletedAt string                   `json:"deletedAt,omitempty"`
+	Version   int                      `json:"version"`
+	CreatedAt string                   `json:"createdAt"`
+	UpdatedAt string                   `json:"updatedAt"`
 }
 
 // selectSQL builds a query returning one JSON document per record: every standard
 // field under its API key, plus id/version/custom/title. Column names come only from
 // the static specs above, never from input.
 func selectSQL(spec *objectSpec) string {
-	cols := []string{"t.id", "t.version", "t.custom", "t.workspace_id AS \"_ws\"", spec.TitleSQL + ` AS "_title"`}
+	cols := []string{"t.id", "t.version", "t.custom", "t.workspace_id AS \"_ws\"", spec.TitleSQL + ` AS "_title"`, `t.deleted_at AS "_deletedAt"`}
 	for _, f := range spec.Fields {
 		if f.inColumn() {
 			cols = append(cols, "t."+f.column+` AS "`+f.Key+`"`)
@@ -79,22 +82,31 @@ func decodeRow(raw []byte, spec *objectSpec, fields []Field) (Row, error) {
 	r.Code, _ = m["code"].(string)
 	r.CreatedAt, _ = m["createdAt"].(string)
 	r.UpdatedAt, _ = m["updatedAt"].(string)
+	r.DeletedAt, _ = m["_deletedAt"].(string)
 	return r, nil
 }
 
 // resolveLookups fills Row.Lookups with display labels for every lookup value.
 func (h *Handler) resolveLookups(ctx context.Context, wsID uuid.UUID, rows []Row, fields []Field) error {
 	byTarget := map[string]map[string]bool{}
+	add := func(target, id string) {
+		if byTarget[target] == nil {
+			byTarget[target] = map[string]bool{}
+		}
+		byTarget[target][id] = true
+	}
 	for _, f := range fields {
-		if f.Type != "lookup" {
+		if !isLinkType(f.Type) {
 			continue
 		}
 		for _, r := range rows {
 			if id, ok := r.Values[f.Key].(string); ok && id != "" {
-				if byTarget[f.Lookup] == nil {
-					byTarget[f.Lookup] = map[string]bool{}
+				add(f.Lookup, id)
+			}
+			if f.Type == "relations" {
+				for _, id := range asStrings(r.Values[f.Key]) {
+					add(f.Lookup, id)
 				}
-				byTarget[f.Lookup][id] = true
 			}
 		}
 	}
@@ -142,6 +154,25 @@ func (h *Handler) resolveLookups(ctx context.Context, wsID uuid.UUID, rows []Row
 	}
 	for i := range rows {
 		for _, f := range fields {
+			if f.Type == "relations" {
+				ids := asStrings(rows[i].Values[f.Key])
+				if len(ids) == 0 {
+					continue
+				}
+				if rows[i].Links == nil {
+					rows[i].Links = map[string][]LookupValue{}
+				}
+				list := make([]LookupValue, 0, len(ids))
+				for _, id := range ids {
+					label := labels[f.Lookup][id]
+					if label == "" {
+						label = "Unavailable"
+					}
+					list = append(list, LookupValue{ID: id, Label: label, Object: f.Lookup})
+				}
+				rows[i].Links[f.Key] = list
+				continue
+			}
 			if f.Type != "lookup" {
 				continue
 			}
@@ -162,10 +193,80 @@ type listParams struct {
 	Owners     []uuid.UUID // own-scope members: records of these owners only (themselves + roles below)
 	Q          string
 	Status     string
-	Sort       string
+	Sort       string // single sort (older clients); Sorts wins when given
 	Desc       bool
+	Sorts      []SortSpec
+	Filter     *FilterNode
+	Env        filterEnv
+	Deleted    bool        // the recycle bin instead of live records
+	IDs        []uuid.UUID // only these records (bulk actions on a selection)
 	Limit      int
 	Offset     int
+}
+
+// whereFor builds the WHERE clause every record query shares: workspace, deleted or
+// live, own scope, search, status, filter tree and a selection.
+func whereFor(spec *objectSpec, fields []Field, ws uuid.UUID, p listParams, b *sqlBuilder) (string, map[string]string) {
+	fe := map[string]string{}
+	var where string
+	if p.Workspaces != nil {
+		where = " WHERE t.workspace_id = ANY(" + b.arg(p.Workspaces) + "::uuid[])"
+	} else {
+		where = " WHERE t.workspace_id = " + b.arg(ws)
+	}
+	if p.Deleted {
+		where += " AND t.deleted_at IS NOT NULL"
+	} else {
+		where += " AND t.deleted_at IS NULL"
+	}
+	if p.Q != "" {
+		like := b.arg("%" + likeEscape(p.Q) + "%")
+		parts := []string{}
+		for _, c := range spec.SearchSQL {
+			if hiddenSearch(c, fields, spec) {
+				continue // never match on a field the requester can't see
+			}
+			parts = append(parts, c+" ILIKE "+like)
+		}
+		if len(parts) == 0 {
+			parts = append(parts, "t.code ILIKE "+like)
+		}
+		where += " AND (" + strings.Join(parts, " OR ") + ")"
+	}
+	if p.Owners != nil {
+		where += " AND t.owner_id = ANY(" + b.arg(p.Owners) + "::uuid[])"
+	}
+	if p.Status != "" && spec.StatusField != "" {
+		f, _ := spec.field(spec.StatusField)
+		where += " AND t." + f.column + " = " + b.arg(p.Status)
+	}
+	if p.IDs != nil {
+		where += " AND t.id = ANY(" + b.arg(p.IDs) + "::uuid[])"
+	}
+	if p.Filter != nil {
+		sql, errs := compileFilter(p.Filter, fields, p.Env, b)
+		for k, v := range errs {
+			fe[k] = v
+		}
+		if sql != "" {
+			where += " AND " + sql
+		}
+	}
+	return where, fe
+}
+
+func (p listParams) sorts() []SortSpec {
+	if len(p.Sorts) > 0 {
+		return p.Sorts
+	}
+	if p.Sort == "" {
+		return nil
+	}
+	dir := "asc"
+	if p.Desc {
+		dir = "desc"
+	}
+	return []SortSpec{{Field: p.Sort, Dir: dir}}
 }
 
 func (h *Handler) list(ctx context.Context, wsID uuid.UUID, spec *objectSpec, p listParams) ([]Row, int, error) {
@@ -173,63 +274,29 @@ func (h *Handler) list(ctx context.Context, wsID uuid.UUID, spec *objectSpec, p 
 	if err != nil {
 		return nil, 0, err
 	}
-	where := ` WHERE t.workspace_id = $1 AND t.deleted_at IS NULL`
-	args := []any{wsID}
+	b := &sqlBuilder{}
+	where, fe := whereFor(spec, fields, wsID, p, b)
+	order, sfe := orderSQL(p.sorts(), fields, spec)
+	for k, v := range sfe {
+		fe[k] = v
+	}
+	if p.Deleted && len(p.sorts()) == 0 {
+		order = "t.deleted_at DESC, t.id"
+	}
+	if len(fe) > 0 {
+		return nil, 0, shared.Validation(fe)
+	}
 	lookupWS := wsID
 	if p.Workspaces != nil {
-		where = ` WHERE t.workspace_id = ANY($1::uuid[]) AND t.deleted_at IS NULL`
-		args = []any{p.Workspaces}
 		lookupWS = uuid.Nil
 	}
-	if p.Q != "" {
-		args = append(args, "%"+strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(p.Q)+"%")
-		parts := []string{}
-		for _, c := range spec.SearchSQL {
-			if hiddenSearch(c, fields, spec) {
-				continue // never match on a field the requester can't see
-			}
-			parts = append(parts, c+" ILIKE $"+strconv.Itoa(len(args)))
-		}
-		if len(parts) == 0 {
-			parts = append(parts, "t.code ILIKE $"+strconv.Itoa(len(args)))
-		}
-		where += " AND (" + strings.Join(parts, " OR ") + ")"
-	}
-	if p.Owners != nil {
-		args = append(args, p.Owners)
-		where += " AND t.owner_id = ANY($" + strconv.Itoa(len(args)) + "::uuid[])"
-	}
-	if p.Status != "" && spec.StatusField != "" {
-		f, _ := spec.field(spec.StatusField)
-		args = append(args, p.Status)
-		where += " AND t." + f.column + " = $" + strconv.Itoa(len(args))
-	}
-
 	var total int
-	if err := h.store.Pool.QueryRow(ctx, "SELECT count(*) FROM crm."+spec.Table+" t"+where, args...).Scan(&total); err != nil {
+	if err := h.store.Pool.QueryRow(ctx, "SELECT count(*) FROM crm."+spec.Table+" t"+where, b.args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-
-	order := "t.created_at"
-	if p.Sort == "title" {
-		order = spec.TitleSQL
-	} else if f, ok := findField(fields, p.Sort); ok {
-		if f.inColumn() {
-			order = "t." + f.column
-		} else if f.Type == "number" || f.Type == "currency" || f.Type == "percent" {
-			order = "(t.custom->>'" + f.Key + "')::numeric"
-		} else {
-			order = "t.custom->>'" + f.Key + "'"
-		}
-	}
-	dir := " ASC NULLS LAST"
-	if p.Desc {
-		dir = " DESC NULLS LAST"
-	}
-	args = append(args, p.Limit, p.Offset)
-	sql := "SELECT to_jsonb(r) FROM (" + selectSQL(spec) + where + " ORDER BY " + order + dir + ", t.id" +
-		" LIMIT $" + strconv.Itoa(len(args)-1) + " OFFSET $" + strconv.Itoa(len(args)) + ") r"
-	qrows, err := h.store.Pool.Query(ctx, sql, args...)
+	limit, offset := b.arg(p.Limit), b.arg(p.Offset)
+	sql := "SELECT to_jsonb(r) FROM (" + selectSQL(spec) + where + " ORDER BY " + order + " LIMIT " + limit + " OFFSET " + offset + ") r"
+	qrows, err := h.store.Pool.Query(ctx, sql, b.args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -531,6 +598,144 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 			return nil, ""
 		}
 		return out, ""
+	case "rating":
+		n, ok := asNumber(v)
+		if !ok {
+			return nil, "Pick a rating from 1 to 5."
+		}
+		r := int64(math.Round(n))
+		if r == 0 {
+			return nil, ""
+		}
+		if r < 1 || r > 5 {
+			return nil, "Pick a rating from 1 to 5."
+		}
+		return r, ""
+	case "address", "fullName":
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, "Fill in the parts of this field."
+		}
+		keys := []string{"street", "street2", "city", "state", "postalCode", "country"}
+		if f.Type == "fullName" {
+			keys = []string{"firstName", "lastName"}
+		}
+		out := map[string]any{}
+		for _, k := range keys {
+			s, _ := m[k].(string)
+			s = strings.TrimSpace(s)
+			if len(s) > 255 {
+				return nil, "Each part can be at most 255 characters."
+			}
+			if s != "" {
+				out[k] = s
+			}
+		}
+		if len(out) == 0 {
+			return nil, ""
+		}
+		return out, ""
+	case "emails", "phones", "links":
+		arr, ok := v.([]any)
+		if !ok {
+			if s, isStr := v.(string); isStr {
+				arr = []any{}
+				for _, part := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ';' || r == '\n' }) {
+					arr = append(arr, part)
+				}
+			} else {
+				return nil, "Enter a list."
+			}
+		}
+		one := map[string]string{"emails": "email", "phones": "phone", "links": "url"}[f.Type]
+		out := []string{}
+		seen := map[string]bool{}
+		for _, item := range arr {
+			x, msg := coerce(ctx, q, wsID, Field{Key: f.Key, Label: f.Label, Type: one}, item)
+			if msg != "" {
+				return nil, msg
+			}
+			if sv, _ := x.(string); sv != "" && !seen[strings.ToLower(sv)] {
+				seen[strings.ToLower(sv)] = true
+				out = append(out, sv)
+			}
+		}
+		if len(out) > 20 {
+			return nil, "Use at most 20 values."
+		}
+		if len(out) == 0 {
+			return nil, ""
+		}
+		return out, ""
+	case "json":
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, "Enter valid JSON."
+		}
+		if s, isStr := v.(string); isStr {
+			if strings.TrimSpace(s) == "" {
+				return nil, ""
+			}
+			var parsed any
+			if err := json.Unmarshal([]byte(s), &parsed); err != nil {
+				return nil, "Enter valid JSON."
+			}
+			v, raw = parsed, []byte(s)
+		}
+		if len(raw) > 32_000 {
+			return nil, "Keep JSON under 32 KB."
+		}
+		return v, ""
+	case "files":
+		// Files are uploaded to the record; the field only lists which of them it keeps.
+		arr, ok := v.([]any)
+		if !ok {
+			return nil, "Upload files with the upload button."
+		}
+		out := []any{}
+		for _, item := range arr {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			id, _ := m["id"].(string)
+			if _, err := uuid.Parse(id); err != nil {
+				return nil, "Upload files with the upload button."
+			}
+			var name, ct string
+			var size int
+			if err := q.QueryRow(ctx, `SELECT name, content_type, size_bytes FROM crm.files WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL`, id, wsID).
+				Scan(&name, &ct, &size); err != nil {
+				return nil, "That file no longer exists."
+			}
+			out = append(out, map[string]any{"id": id, "name": name, "contentType": ct, "size": size})
+		}
+		if len(out) == 0 {
+			return nil, ""
+		}
+		return out, ""
+	case "relations":
+		arr := asStrings(v)
+		if len(arr) == 0 {
+			return nil, ""
+		}
+		if len(arr) > 100 {
+			return nil, "Link at most 100 records."
+		}
+		out := []string{}
+		seen := map[string]bool{}
+		for _, s := range arr {
+			x, msg := coerce(ctx, q, wsID, Field{Key: f.Key, Label: f.Label, Type: "lookup", Lookup: f.Lookup}, s)
+			if msg != "" {
+				return nil, msg
+			}
+			id := x.(uuid.UUID).String()
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+		return out, ""
 	case "lookup":
 		s, ok := str()
 		if !ok {
@@ -546,7 +751,8 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 		var sql string
 		switch f.Lookup {
 		case "users":
-			sql = `SELECT EXISTS (SELECT 1 FROM crm.identities WHERE id = $1 AND status <> 'deleted')`
+			sql = `SELECT EXISTS (SELECT 1 FROM crm.identities i WHERE i.id = $1 AND i.status <> 'deleted' AND (i.is_platform_owner OR EXISTS (
+				SELECT 1 FROM crm.memberships m WHERE m.identity_id = i.id AND m.workspace_id = '` + wsID.String() + `' AND m.status = 'active')))`
 		case "products":
 			sql = `SELECT EXISTS (SELECT 1 FROM crm.products WHERE id = $1)`
 		case "workspaces":
@@ -560,6 +766,9 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 		}
 		var exists bool
 		if err := q.QueryRow(ctx, sql, id).Scan(&exists); err != nil || !exists {
+			if f.Lookup == "users" {
+				return nil, "Pick someone who works in this workspace."
+			}
 			return nil, "That record doesn't exist."
 		}
 		return id, ""
@@ -646,7 +855,8 @@ func nextCode(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, prefix string) (st
 }
 
 // insertRecord inserts a row with the given column values (columns come from specs).
-func insertRecord(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, spec *objectSpec, actor uuid.UUID, cs *changeSet) (uuid.UUID, error) {
+// actor is nil for system writes (workflows); the owner defaults to the actor.
+func insertRecord(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, spec *objectSpec, actor *uuid.UUID, cs *changeSet) (uuid.UUID, error) {
 	code, err := nextCode(ctx, tx, wsID, spec.Prefix)
 	if err != nil {
 		return uuid.Nil, err
@@ -658,10 +868,14 @@ func insertRecord(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, spec *objectSp
 		}
 	}
 	customJSON, _ := json.Marshal(custom)
+	var owner any = actor
+	if v, ok := cs.columns["owner_id"]; ok && v != nil {
+		owner = v
+	}
 	cols := []string{"workspace_id", "code", "owner_id", "created_by", "updated_by", "custom"}
-	args := []any{wsID, code, actor, actor, actor, customJSON}
+	args := []any{wsID, code, owner, actor, actor, customJSON}
 	for col, v := range cs.columns {
-		if v == nil {
+		if v == nil || col == "owner_id" {
 			continue // let column defaults apply
 		}
 		cols = append(cols, col)
@@ -677,7 +891,7 @@ func insertRecord(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, spec *objectSp
 }
 
 // updateRecord applies a change set with optimistic concurrency (PRD §14: expectedVersion).
-func updateRecord(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, spec *objectSpec, id uuid.UUID, actor uuid.UUID, expectedVersion int, cs *changeSet) error {
+func updateRecord(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, spec *objectSpec, id uuid.UUID, actor *uuid.UUID, expectedVersion int, cs *changeSet) error {
 	sets := []string{"version = version + 1", "updated_at = now()", "updated_by = $4"}
 	args := []any{id, wsID, expectedVersion, actor}
 	for col, v := range cs.columns {

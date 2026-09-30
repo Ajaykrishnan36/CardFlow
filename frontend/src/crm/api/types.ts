@@ -110,6 +110,7 @@ export interface RecentWorkspace {
   name: string;
   status: string;
   products: number;
+  setupNames?: string[];
   members: number;
   createdAt: string;
 }
@@ -167,7 +168,7 @@ export interface ProductConfig {
   leadStatuses: Option[];
   pipelineStages: ProductStage[];
   conversion: { createContact: boolean; createOpportunity: boolean; requireQualified: boolean };
-  loginMethods: { password: boolean; otp: boolean; google: boolean; linkedin: boolean };
+  loginMethods: { password: boolean; otp: boolean; google: boolean; microsoft: boolean; linkedin: boolean; sso: boolean; enforced?: boolean };
   selfRegistration: boolean;
   integrations: { apiAccess: boolean; webhooks: boolean };
 }
@@ -244,6 +245,8 @@ export interface WorkspaceSummary {
   locale: string;
   currency: string;
   products: number;
+  /** Its setups as "Name v3". */
+  setupNames?: string[];
   members: number;
   pendingInvites: number;
   createdAt: string;
@@ -426,7 +429,16 @@ export type FieldType =
   | 'select'
   | 'multiselect'
   | 'boolean'
-  | 'lookup';
+  | 'lookup'
+  | 'rating'
+  | 'address'
+  | 'fullName'
+  | 'emails'
+  | 'phones'
+  | 'links'
+  | 'json'
+  | 'relations'
+  | 'files';
 
 export type LookupTarget = ObjectKey | 'users' | 'products' | 'workspaces';
 
@@ -442,6 +454,8 @@ export interface FieldDef {
   options?: Option[];
   lookup?: LookupTarget;
   helpText?: string;
+  /** No two records may share a value. */
+  unique?: boolean;
 }
 
 export interface LayoutSection {
@@ -475,6 +489,8 @@ export interface ObjectMeta {
   /** Objects defined as data: their icon key and custom flag. */
   icon?: string;
   custom?: boolean;
+  /** Objects a new lookup / relations field can link to. */
+  lookupTargets?: Array<{ key: string; label: string }>;
 }
 
 export interface LookupValue {
@@ -499,6 +515,10 @@ export interface RecordRow {
   values: Record<string, unknown>;
   /** Display labels for lookup fields, keyed by field key. */
   lookups: Record<string, LookupValue>;
+  /** Labels of many-record link fields (relations), keyed by field key. */
+  links?: Record<string, LookupValue[]>;
+  /** Recycle bin rows only. */
+  deletedAt?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -515,6 +535,8 @@ export interface RelatedList {
 export interface RecordPage extends Page<RecordRow> {
   /** Owner lists only: every workspace with how many records of this object it has (ignores q/status). */
   workspaces?: Array<RecordWorkspaceRef & { count: number }>;
+  /** Footer totals: field → function → value. */
+  aggregates?: Record<string, Record<string, number>>;
 }
 
 export interface RecordDetail {
@@ -539,12 +561,24 @@ export interface RecordListParams {
   dir?: 'asc' | 'desc';
   limit?: number;
   offset?: number;
+  /** JSON FilterNode. */
+  filter?: string;
+  /** JSON SortSpec[]. */
+  sorts?: string;
+  /** "1" = the recycle bin. */
+  deleted?: string;
+  /** "amount:sum,probability:avg" */
+  agg?: string;
+  ids?: string;
 }
 
 export interface FieldCreateBody {
   label: string;
   key?: string;
-  type: Exclude<FieldType, 'lookup'>;
+  type: FieldType;
+  /** lookup / relations: the object it links to. */
+  lookup?: string;
+  unique?: boolean;
   required?: boolean;
   options?: Option[];
   helpText?: string;
@@ -555,13 +589,16 @@ export interface FieldCreateBody {
 export interface FieldUpdateBody {
   label?: string;
   required?: boolean;
+  unique?: boolean;
   options?: Option[];
   helpText?: string;
 }
 
 export interface ConvertBody {
-  account: { mode: 'new'; name: string; kind: 'business' | 'individual' } | { mode: 'existing'; accountId: string };
+  account: { mode: 'new'; name: string; kind: 'business' | 'individual' } | { mode: 'existing'; accountId: string } | { mode: 'none' };
   createContact: boolean;
+  /** Create a deal too; omitted → the product's setup decides. */
+  opportunity?: { create: boolean; name?: string; amount?: number | null; closeDate?: string };
   /** Give the converted person a login (preferred over `provision`). Not allowed inside customer workspaces. */
   access?: GiveLoginBody;
   /** Legacy: create a customer workspace and invite them as its Super Admin. */
@@ -575,8 +612,9 @@ export interface ConvertBody {
 }
 
 export interface ConvertResult {
-  accountId: string;
+  accountId?: string;
   contactId?: string;
+  opportunityId?: string;
   workspaceId?: string;
   identityId?: string;
   invitation?: Invitation;
@@ -586,7 +624,7 @@ export interface ConvertResult {
 // Access control: roles, permission sets, effective access, logins, workspace app.
 // ---------------------------------------------------------------------------
 
-export type ObjectAction = 'read' | 'create' | 'update' | 'delete' | 'convert' | 'export';
+export type ObjectAction = 'read' | 'create' | 'update' | 'delete' | 'convert' | 'import' | 'export' | 'destroy';
 /** own = only records the user owns; workspace = every record in the workspace. */
 export type RowScope = 'own' | 'workspace';
 
@@ -724,6 +762,8 @@ export interface WorkspaceContext {
   workspaces: Array<{ code: string; name: string }>;
   /** The platform owner opened this workspace from the owner console (full access, audited). */
   viewerIsOwner: boolean;
+  /** The product's setup, where the app needs it. */
+  setup?: { createContact: boolean; createOpportunity: boolean; requireQualified: boolean; accentColor?: string; apiAccess: boolean; webhooks: boolean };
 }
 
 export interface WorkspaceDashboard {
@@ -734,7 +774,7 @@ export interface WorkspaceDashboard {
 // ---- Roles (editable per workspace) & delegated administration ----
 
 /** Capability keys added for delegation. A holder can only grant what they have themselves. */
-export type DelegationCapability = 'access.manage' | 'members.manage';
+export type DelegationCapability = 'access.manage' | 'members.manage' | 'workflows.manage' | 'developer.manage' | 'email.send' | 'campaigns.manage';
 
 export interface WorkspaceRole {
   id: string;
@@ -776,6 +816,8 @@ export interface WorkspaceAdminOptions {
   /** Products they may hand out (their own products in this workspace). Empty for the platform team. */
   products: Array<{ id: string; key: string; name: string }>;
   isPlatform: boolean;
+  /** The product setup's user types and the roles each may hold. */
+  userTypes?: Array<{ key: string; label: string; description?: string; allowedRoles: string[] }>;
 }
 
 export interface WorkspaceAdminMember extends WorkspaceMember {
@@ -786,6 +828,8 @@ export interface WorkspaceAdminMember extends WorkspaceMember {
   /** False when their access exceeds yours, it's you, or they're the platform owner. */
   editable: boolean;
   lockedReason?: string;
+  /** User type from the product setup they were invited as (e.g. "agent"). */
+  userType?: string;
 }
 
 export interface WorkspaceInviteBody {
@@ -797,6 +841,7 @@ export interface WorkspaceInviteBody {
   permissionSetIds?: string[];
   method: 'invite' | 'password';
   password?: string;
+  userType?: string;
 }
 
 // ---- Support tickets (from connected apps, e.g. Business Card Snap / CardFlow) ----
@@ -804,6 +849,8 @@ export type TicketStatus = 'open' | 'in_progress' | 'resolved';
 
 export interface SupportTicket {
   id: string;
+  /** The Case that mirrors this ticket (D-72). */
+  caseId?: string;
   subject: string;
   message: string;
   /** billing | card_scan | business_listing | general */
@@ -916,6 +963,7 @@ export interface ObjectFieldDef {
   required?: boolean;
   options?: Array<{ value: string; label: string }>;
   lookup?: string;
+  unique?: boolean;
   helpText?: string;
 }
 

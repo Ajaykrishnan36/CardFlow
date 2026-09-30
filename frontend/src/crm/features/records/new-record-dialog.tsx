@@ -35,7 +35,8 @@ export function NewRecordDialog({
   meta,
   open,
   onOpenChange,
-  note
+  note,
+  defaults
 }: {
   object: ObjectKey;
   meta: ObjectMeta;
@@ -43,6 +44,8 @@ export function NewRecordDialog({
   onOpenChange: (open: boolean) => void;
   /** Extra line under the subtitle (e.g. "Created in your Platform CRM"). */
   note?: string;
+  /** Values to start with (a board column's stage, a calendar day…). */
+  defaults?: Record<string, unknown>;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -55,9 +58,10 @@ export function NewRecordDialog({
 
   useEffect(() => {
     if (!open) return;
-    setValues(initialValues(object, meta));
+    setValues({ ...initialValues(object, meta), ...(defaults ?? {}) });
     setErrors({});
     setFormError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, object, meta]);
 
   const sections = useMemo<FormSection[]>(() => {

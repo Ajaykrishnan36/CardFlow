@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
+	"cardflow-backend/internal/crm/access"
 	"cardflow-backend/internal/crm/platform"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
@@ -26,9 +28,16 @@ type convertInput struct {
 		Kind      string    `json:"kind"`
 		AccountID uuid.UUID `json:"accountId"`
 	} `json:"account"`
-	CreateContact bool                     `json:"createContact"`
-	Access        *platform.GiveLoginInput `json:"access,omitempty"`
-	Provision     *struct {
+	CreateContact bool `json:"createContact"`
+	// Opportunity: create a deal too (nil = the product's setup decides).
+	Opportunity *struct {
+		Create    bool     `json:"create"`
+		Name      string   `json:"name"`
+		Amount    *float64 `json:"amount"`
+		CloseDate string   `json:"closeDate"`
+	} `json:"opportunity,omitempty"`
+	Access    *platform.GiveLoginInput `json:"access,omitempty"`
+	Provision *struct {
 		WorkspaceName string      `json:"workspaceName"`
 		WorkspaceCode string      `json:"workspaceCode"`
 		ProductIDs    []uuid.UUID `json:"productIds"`
@@ -38,8 +47,9 @@ type convertInput struct {
 }
 
 type ConvertResult struct {
-	AccountID     uuid.UUID            `json:"accountId"`
+	AccountID     *uuid.UUID           `json:"accountId,omitempty"`
 	ContactID     *uuid.UUID           `json:"contactId,omitempty"`
+	OpportunityID *uuid.UUID           `json:"opportunityId,omitempty"`
 	WorkspaceID   *uuid.UUID           `json:"workspaceId,omitempty"`
 	IdentityID    *uuid.UUID           `json:"identityId,omitempty"`
 	Invitation    *platform.Invitation `json:"invitation,omitempty"`
@@ -74,7 +84,7 @@ func (h *Handler) handleConvert(w http.ResponseWriter, r *http.Request) {
 		case !sc.Can("leads", "convert"):
 			shared.WriteError(w, r, errForbidden)
 			return
-		case in.Account.Mode != "existing" && !sc.Can("accounts", "create"), in.CreateContact && !sc.Can("contacts", "create"):
+		case in.Account.Mode != "existing" && in.Account.Mode != "none" && !sc.Can("accounts", "create"), in.CreateContact && !sc.Can("contacts", "create"):
 			shared.WriteError(w, r, shared.Forbidden("forbidden", "Converting needs permission to create accounts and contacts."))
 			return
 		case in.Access != nil || in.Provision != nil:
@@ -144,6 +154,13 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 		if l.status == "converted" {
 			return shared.NewError(http.StatusUnprocessableEntity, "already_converted", "This lead has already been converted.")
 		}
+		setup, _ := cachedSetup(ctx, tx, ws)
+		if setup.Conversion.RequireQualified && l.status != "qualified" {
+			return shared.NewError(http.StatusUnprocessableEntity, "not_qualified", "This product converts qualified leads only. Set the lead status to Qualified first.")
+		}
+		if in.Account.Mode == "none" && !in.CreateContact {
+			return shared.Validation(map[string]string{"account": "Converting without an account creates a contact — keep “Create a contact” on."})
+		}
 		fullName := strings.TrimSpace(l.firstName + " " + l.lastName)
 
 		// Custom values carry over to the new records where a custom field with the same key exists.
@@ -162,6 +179,7 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 		}
 
 		// 1. Account
+		var newAccount uuid.UUID
 		switch in.Account.Mode {
 		case "existing":
 			var ok bool
@@ -172,7 +190,10 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			if !ok {
 				return shared.Validation(map[string]string{"account": "Pick an existing account."})
 			}
-			res.AccountID = in.Account.AccountID
+			aid := in.Account.AccountID
+			res.AccountID = &aid
+		case "none":
+			// Contact first (D-52): a person without a business is just a contact.
 		case "new", "":
 			name := strings.TrimSpace(in.Account.Name)
 			if name == "" {
@@ -210,7 +231,11 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 				        $19, $19, $19, $20)
 				RETURNING id`,
 				ws, code, kind, name, lifecycle, l.industry, l.rating, l.website, email, firstNonEmpty(l.phone, l.mobile),
-				l.annualRevenue, l.employees, l.street, l.city, l.state, l.postalCode, l.country, l.description, me, customJSON).Scan(&res.AccountID); err != nil {
+				l.annualRevenue, l.employees, l.street, l.city, l.state, l.postalCode, l.country, l.description, me, customJSON).Scan(&newAccount); err != nil {
+				return err
+			}
+			res.AccountID = &newAccount
+			if err := h.afterRawCreate(ctx, tx, ws, &accountSpec, newAccount, me); err != nil {
 				return err
 			}
 		default:
@@ -244,6 +269,65 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 				return err
 			}
 			res.ContactID = &cid
+			if err := h.afterRawCreate(ctx, tx, ws, &contactSpec, cid, me); err != nil {
+				return err
+			}
+		}
+
+		// 2b. Opportunity (when asked, or when the product's setup says so).
+		wantOpp := setup.Conversion.CreateOpportunity
+		if in.Opportunity != nil {
+			wantOpp = in.Opportunity.Create
+		}
+		if oppSpec := specFor("opportunities"); wantOpp && oppSpec != nil {
+			mods, err := access.WorkspaceModules(ctx, tx, ws)
+			if err != nil {
+				return err
+			}
+			if mods["opportunities"] {
+				name := ""
+				vals := map[string]any{"leadSource": l.source, "ownerId": me.String()}
+				if in.Opportunity != nil {
+					name = strings.TrimSpace(in.Opportunity.Name)
+					if in.Opportunity.Amount != nil {
+						vals["amount"] = *in.Opportunity.Amount
+					}
+					if in.Opportunity.CloseDate != "" {
+						vals["closeDate"] = in.Opportunity.CloseDate
+					}
+				}
+				if name == "" {
+					name = firstNonEmpty(l.organization, fullName) + " — new deal"
+				}
+				vals["name"] = name
+				if _, ok := vals["closeDate"]; !ok {
+					vals["closeDate"] = time.Now().AddDate(0, 0, 30).Format("2006-01-02")
+				}
+				if sts := statusesFor(ctx, tx, ws, oppSpec); len(sts) > 0 {
+					vals["status"] = sts[0].Value
+				}
+				if res.AccountID != nil {
+					vals["accountId"] = res.AccountID.String()
+				}
+				if res.ContactID != nil {
+					vals["contactId"] = res.ContactID.String()
+				}
+				row, err := h.createRecord(ctx, tx, ws, oppSpec, actorFromRequest(r, "convert"), vals)
+				if err != nil {
+					var se *shared.Error
+					if errors.As(err, &se) && len(se.FieldErrors) > 0 {
+						fe := map[string]string{}
+						for k, v := range se.FieldErrors {
+							fe["opportunity."+k] = v
+						}
+						return shared.Validation(fe)
+					}
+					return err
+				}
+				if oid, err := uuid.Parse(row.ID); err == nil {
+					res.OpportunityID = &oid
+				}
+			}
 		}
 
 		// 3a. CRM access: any workspace, role, permission sets; invitation or temporary password.
@@ -274,6 +358,9 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 
 		// 3b. Legacy CRM access: customer workspace + Super Admin invitation.
 		if p := in.Provision; p != nil && in.Access == nil {
+			if res.AccountID == nil {
+				return shared.Validation(map[string]string{"account": "A customer workspace belongs to an account — create or pick one."})
+			}
 			if l.email == "" {
 				return shared.Validation(map[string]string{"provision": "Add an email to the lead before giving them a login."})
 			}
@@ -316,6 +403,15 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			WHERE id = $1`, leadID, res.AccountID, res.ContactID, me); err != nil {
 			return err
 		}
+		if err := insertActivity(ctx, tx, ws, "leads", leadID, "record.converted", "Converted", map[string]any{
+			"accountId": res.AccountID, "contactId": res.ContactID, "opportunityId": res.OpportunityID}, &me); err != nil {
+			return err
+		}
+		if err := emitEvent(ctx, tx, Event{Type: "record.updated", WorkspaceID: ws, Object: "leads", RecordID: leadID, ActorID: &me, Source: "convert",
+			Record:  map[string]any{"id": leadID.String(), "status": "converted", "convertedAccountId": res.AccountID, "convertedContactId": res.ContactID},
+			Changed: []string{"status"}, Previous: map[string]any{"status": l.status}, Title: firstNonEmpty(fullName, l.organization)}); err != nil {
+			return err
+		}
 		var invID *uuid.UUID
 		if sent != nil {
 			invID = &sent.ID
@@ -333,7 +429,7 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 }
 
 // linkIdentity records who the login belongs to on the lead, account and contact.
-func linkIdentity(ctx context.Context, tx pgx.Tx, identityID, leadID, accountID uuid.UUID, contactID *uuid.UUID) error {
+func linkIdentity(ctx context.Context, tx pgx.Tx, identityID, leadID uuid.UUID, accountID, contactID *uuid.UUID) error {
 	if _, err := tx.Exec(ctx, `UPDATE crm.leads SET identity_id = $2 WHERE id = $1`, leadID, identityID); err != nil {
 		return err
 	}

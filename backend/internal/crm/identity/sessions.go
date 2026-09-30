@@ -39,6 +39,8 @@ type Session struct {
 	DisplayName        string
 	IsPlatformOwner    bool
 	MustChangePassword bool
+	// AuthMethod is how the session signed in: password | otp | google | microsoft | linkedin | sso.
+	AuthMethod string
 }
 
 // MFAComplete reports whether the second factor (if any) has been satisfied (D-13).
@@ -61,6 +63,7 @@ type newSession struct {
 	mfaRequired bool
 	ip          string
 	userAgent   string
+	method      string
 }
 
 // createSession stores a fresh session and returns its raw token (only the hash is kept).
@@ -74,10 +77,10 @@ func createSession(ctx context.Context, tx pgx.Tx, n newSession) (string, time.T
 	_, err = tx.Exec(ctx, `
 		INSERT INTO crm.sessions
 			(identity_id, token_hash, audience, privileged, mfa_required, mfa_passed, recent_auth_at,
-			 ip, user_agent, idle_expires_at, absolute_expires_at)
-		VALUES ($1, $2, $3, $4, $5, false, $6, NULLIF($7, '')::inet, NULLIF($8, ''), $9, $10)`,
+			 ip, user_agent, idle_expires_at, absolute_expires_at, auth_method)
+		VALUES ($1, $2, $3, $4, $5, false, $6, NULLIF($7, '')::inet, NULLIF($8, ''), $9, $10, COALESCE(NULLIF($11, ''), 'password'))`,
 		n.identityID, shared.HashToken(token), n.audience, n.privileged, n.mfaRequired, now,
-		n.ip, truncate(n.userAgent, 400), now.Add(idleFor(n.privileged)), absolute)
+		n.ip, truncate(n.userAgent, 400), now.Add(idleFor(n.privileged)), absolute, n.method)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -92,7 +95,7 @@ func (s *Service) lookupSession(ctx context.Context, token string) (*Session, er
 	err := s.store.Pool.QueryRow(ctx, `
 		SELECT s.id, s.identity_id, s.audience, s.mfa_required, s.mfa_passed, s.mfa_attempts, s.recent_auth_at,
 		       s.privileged, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
-		       i.display_name, i.is_platform_owner, COALESCE(pc.must_change, false)
+		       i.display_name, i.is_platform_owner, COALESCE(pc.must_change, false), s.auth_method
 		FROM crm.sessions s
 		JOIN crm.identities i ON i.id = s.identity_id
 		LEFT JOIN crm.password_credentials pc ON pc.identity_id = i.id
@@ -103,7 +106,7 @@ func (s *Service) lookupSession(ctx context.Context, token string) (*Session, er
 		  AND i.status = 'active'`, shared.HashToken(token)).Scan(
 		&sess.ID, &sess.IdentityID, &sess.Audience, &sess.MFARequired, &sess.MFAPassed, &sess.MFAAttempts,
 		&sess.RecentAuthAt, &sess.Privileged, &sess.LastSeenAt, &sess.IdleExpiresAt, &sess.AbsoluteExpiresAt,
-		&sess.DisplayName, &sess.IsPlatformOwner, &sess.MustChangePassword)
+		&sess.DisplayName, &sess.IsPlatformOwner, &sess.MustChangePassword, &sess.AuthMethod)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
