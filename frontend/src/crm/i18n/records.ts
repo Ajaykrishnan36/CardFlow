@@ -91,6 +91,11 @@ const strings = {
     }
   },
   detail: {
+    runWorkflow: 'Run workflow',
+    runWorkflowTitle: 'Run on this record',
+    workflowFormBody: 'Answer these to start the workflow.',
+    workflowFieldRequired: '{{label}} is required.',
+    runNow: 'Run now',
     edit: 'Edit',
     convert: 'Convert',
     refresh: 'Refresh',

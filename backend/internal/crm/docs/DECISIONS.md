@@ -338,6 +338,9 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
 - **D-77 Grouped tables.** A table view can group rows by a pick-list, yes/no, lookup or rating field ("Group rows"),
   saved with the view like other settings. Each group shows its count and up to 50 rows, can be collapsed, and
   "Show all" narrows the list to that value.
+- **D-78 Run workflow on a record.** Record pages have a "Run workflow" menu with the active manual workflows for that
+  object (only those "everyone can run" for people who don't manage workflows). A workflow with a form asks for its
+  answers first; the list's bulk run uses the same flow.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

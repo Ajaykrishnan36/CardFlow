@@ -22,6 +22,7 @@ import { FieldEditor } from './field-input';
 import { FieldLabel, FieldValue } from './field-value';
 import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys, sameValue, statusOption, useObjectMeta } from './use-object-meta';
 import { layoutHref, listHref, scopedLookupHref, useRecordScope } from './record-scope';
+import { RunWorkflowButton } from './run-workflow';
 import { isForbidden, RecordNoAccess } from './record-states';
 
 export function RecordDetailPage({ object }: { object: ObjectKey }) {
@@ -356,6 +357,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                 <Mail /> {t('records.detail.sendEmail')}
               </Button>
             ) : null}
+            <RunWorkflowButton object={object} id={id} disabled={editing} />
             {canConvert ? (
               <Button size="sm" onClick={() => setConvertOpen(true)} disabled={editing}>
                 <ArrowRightLeft /> {t('records.detail.convert')}

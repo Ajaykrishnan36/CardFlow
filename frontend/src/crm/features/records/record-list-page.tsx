@@ -5,7 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { toast } from 'sonner';
 import { ChevronLeft, ChevronRight, Download, Ellipsis, LayoutTemplate, Plus, RefreshCw, RotateCcw, Save, Upload } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
-import { workspaceToolsApi, type BulkQuery } from '@crm/api/endpoints';
+import { type BulkQuery } from '@crm/api/endpoints';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordListParams, RecordRow } from '@crm/api/types';
 import type { FilterGroup, SavedView, SortSpec, ViewDefinition, ViewKind } from '@crm/api/types-features';
 import { Badge, Card } from '@crm/components/ui/card';
@@ -31,6 +31,7 @@ import { CalendarView } from './list/calendar-view';
 import { BulkBar } from './list/bulk-bar';
 import { useOwnerFilter } from '@crm/features/owner/owner-filter';
 import { GroupedTable } from './list/grouped-table';
+import { useManualWorkflows, useRunWorkflow } from './run-workflow';
 import { ImportDialog } from './list/import-dialog';
 
 const PAGE_SIZE = 50;
@@ -59,7 +60,6 @@ function RecordListView({ object }: { object: ObjectKey }) {
   useDocumentTitle(meta?.labelPlural ?? t('records.list.loadingTitle'));
   const [sp, setSp] = useSearchParams();
   const isOwner = scope.audience === 'owner';
-  const workspaceCode = scope.prefix.startsWith('/w/') ? decodeURIComponent(scope.prefix.slice(3)) : '';
 
   const patchParams = useCallback(
     (patch: Record<string, string | null>) =>
@@ -174,15 +174,8 @@ function RecordListView({ object }: { object: ObjectKey }) {
     onSuccess: (list) => qc.setQueryData(['favorites', scope.prefix], list)
   });
 
-  const manualWorkflowsQ = useQuery({
-    queryKey: ['workflows', workspaceCode],
-    queryFn: () => workspaceToolsApi(workspaceCode).workflows(),
-    enabled: Boolean(workspaceCode),
-    staleTime: 60_000
-  });
-  const manualWorkflows = (manualWorkflowsQ.data?.data ?? [])
-    .filter((w) => w.status === 'active' && w.published?.trigger.type === 'manual' && w.published.trigger.object === object && w.published.trigger.manual?.mode !== 'global')
-    .map((w) => ({ id: w.id, name: w.name }));
+  const manualWf = useManualWorkflows(object);
+  const manualWorkflows = manualWf.list.map((w) => ({ id: w.id, name: w.name }));
 
   const viewsKey = [...recordKeys.all(scope.prefix, object), 'views'];
   const saveView = useMutation({
@@ -205,14 +198,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
       patchParams({ view: ALL_VIEW });
     }
   });
-  const runWorkflow = useMutation({
-    mutationFn: (id: string) => workspaceToolsApi(workspaceCode).runWorkflow(id, { recordIds: [...selected] }),
-    onSuccess: (r) => {
-      toast.success(t('lists.bulk.workflowStarted', { count: r.runs.length }));
-      setSelected(new Set());
-    },
-    onError: (e) => toast.error(isApiError(e) ? e.message : t('common.genericError'))
-  });
+  const runWorkflow = useRunWorkflow(manualWf.code, () => [...selected], () => setSelected(new Set()));
 
   if (isForbidden(metaQ.error) || isForbidden(listQ.error)) return <RecordNoAccess />;
   if (metaQ.isError) {
@@ -392,7 +378,10 @@ function RecordListView({ object }: { object: ObjectKey }) {
             binMode={binMode}
             exportHref={exportHref}
             workflows={manualWorkflows}
-            onRunWorkflow={(id) => runWorkflow.mutate(id)}
+            onRunWorkflow={(id) => {
+              const wf = manualWf.list.find((w) => w.id === id);
+              if (wf) runWorkflow.start(wf);
+            }}
           />
         ) : null}
 
@@ -523,6 +512,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
           note={isOwner && ws !== PLATFORM_WS ? t('records.new.platformNote') : undefined} />
       ) : null}
       {meta ? <ImportDialog object={object} meta={meta} open={importOpen} onOpenChange={setImportOpen} /> : null}
+      {runWorkflow.dialog}
       {meta && viewDialog ? (
         <ViewDialog
           key={viewDialog.mode + (viewDialog.view?.id ?? '')}
