@@ -401,6 +401,10 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   table toolbar to sit above the list, the same place and size as on Overview, Products and Apps. Whenever a product
   (or Platform CRM) is chosen, a "Show all products" button sits next to the picker on every owner page, so a filter
   carried over from another page can be cleared in one click.
+- **D-89 App picker on the record lists too.** Leads, Accounts and Contacts now show Product then App, like Overview,
+  Products and Apps (this revises D-86's "Product only"). The App list opens once a product is chosen and lists its
+  apps. Records belong to the product, not the app, so an app narrows the list the way the Overview counts it: the
+  product's records while that app is active in it, none otherwise (`?app=` on the owner list, export and bulk).
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

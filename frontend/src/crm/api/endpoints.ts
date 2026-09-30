@@ -306,6 +306,7 @@ export interface BulkQuery {
   q?: string;
   status?: string;
   workspace?: string;
+  app?: string;
 }
 
 /** multipart upload with the CSRF header (fetch; the JSON client can't send files). */

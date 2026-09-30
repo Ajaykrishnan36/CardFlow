@@ -556,6 +556,8 @@ export interface RecordDetail {
 export interface RecordListParams {
   /** Owner lists only: 'all' (default), 'platform', or a workspace code. */
   workspace?: string;
+  /** Owner lists only: an app (setup) id of the chosen product. */
+  app?: string;
   q?: string;
   status?: string;
   sort?: string;

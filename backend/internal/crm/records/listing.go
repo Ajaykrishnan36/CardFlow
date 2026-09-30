@@ -29,6 +29,7 @@ type querySpec struct {
 	IDs       []uuid.UUID `json:"ids,omitempty"`
 	Deleted   bool        `json:"deleted,omitempty"`
 	Workspace string      `json:"workspace,omitempty"`
+	App       string      `json:"app,omitempty"` // owner lists: an app of the chosen product (D-89)
 }
 
 // envFor is who "me" and "my team" are for relative filters, and the workspace's time zone.
@@ -83,6 +84,18 @@ func (h *Handler) paramsFrom(r *http.Request, spec *objectSpec, qs querySpec) (l
 					p.Workspaces = append(p.Workspaces, uuid.MustParse(f.ID))
 				}
 			}
+			// An app narrows its product the way the Overview counts it (D-87): the product's
+			// records while that app is active in it, none otherwise.
+			if app, err := uuid.Parse(qs.App); err == nil && len(p.Workspaces) > 0 {
+				var active bool
+				if err := h.store.Pool.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM crm.workspace_products
+					WHERE workspace_id = ANY($1) AND product_id = $2 AND status = 'active')`, p.Workspaces, app).Scan(&active); err != nil {
+					return p, err
+				}
+				if !active {
+					p.Workspaces = []uuid.UUID{}
+				}
+			}
 		}
 	}
 	return p, nil
@@ -91,7 +104,7 @@ func (h *Handler) paramsFrom(r *http.Request, spec *objectSpec, qs querySpec) (l
 // querySpecFromURL reads a selection from query parameters (GET lists and exports).
 func querySpecFromURL(r *http.Request) (querySpec, error) {
 	q := r.URL.Query()
-	qs := querySpec{Q: q.Get("q"), Status: q.Get("status"), Deleted: q.Get("deleted") == "1" || q.Get("deleted") == "true", Workspace: q.Get("workspace")}
+	qs := querySpec{Q: q.Get("q"), Status: q.Get("status"), Deleted: q.Get("deleted") == "1" || q.Get("deleted") == "true", Workspace: q.Get("workspace"), App: q.Get("app")}
 	if raw := q.Get("filter"); raw != "" {
 		var n FilterNode
 		if err := json.Unmarshal([]byte(raw), &n); err != nil {

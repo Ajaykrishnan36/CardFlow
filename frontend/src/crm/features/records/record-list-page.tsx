@@ -118,8 +118,12 @@ function RecordListView({ object }: { object: ObjectKey }) {
   const page = Math.max(1, Number(sp.get('page')) || 1);
   const ownerFilter = useOwnerFilter();
   const changeOwnerFilter = useChangeOwnerFilter();
-  const ownerProducts = useOwnerProducts(isOwner).products;
+  const { products: ownerProducts, apps: ownerApps } = useOwnerProducts(isOwner);
   const ws = isOwner ? sp.get('ws') || ownerFilter.productCode || ALL_WS : undefined;
+  // App picker (D-89): opens once a product is chosen and lists that product's apps.
+  const productPicked = Boolean(ws && ws !== ALL_WS && ws !== PLATFORM_WS);
+  const appChoices = productPicked ? ownerApps.filter((a) => a.workspaceCode === ws) : [];
+  const app = productPicked && appChoices.some((a) => a.productId === ownerFilter.app) ? ownerFilter.app : undefined;
   // The owner's product picker lives on the page (D-86) and shares its choice with the
   // Overview; "Platform CRM" stays a list-only choice (?ws=platform).
   const pickProduct = (v: string) => {
@@ -158,6 +162,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
   const agg = draft.aggregates?.length ? draft.aggregates.join(',') : numericCols.map((f) => `${f.key}:sum`).join(',');
   const params: RecordListParams = {
     workspace: ws,
+    app,
     q: q || undefined,
     filter: filter ? JSON.stringify(filter) : undefined,
     sorts: sorts.length ? JSON.stringify(sorts) : undefined,
@@ -244,7 +249,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
       : t('records.list.subtitleIn', { name: ws === PLATFORM_WS ? t('records.list.platformCrm') : wsOptions.find((w) => w.code === ws)?.name ?? ws });
   const groupField = kind === 'kanban' ? byKey.get(draft.groupBy ?? meta?.statusField ?? '') : undefined;
   const dateField = kind === 'calendar' ? byKey.get(draft.calendarField ?? '') : undefined;
-  const bulkQuery: BulkQuery = allMatching ? { filter: filter ?? { op: 'and', filters: [] }, q: q || undefined, workspace: ws } : { ids: [...selected] };
+  const bulkQuery: BulkQuery = allMatching ? { filter: filter ?? { op: 'and', filters: [] }, q: q || undefined, workspace: ws, app } : { ids: [...selected] };
   const exportParams = { ...params, columns: columns.map((c) => c.key).join(','), limit: undefined, offset: undefined, agg: undefined };
   const exportHref = selected.size && !allMatching ? scope.api.exportUrl(object, { ...exportParams, ids: [...selected].join(',') }) : scope.api.exportUrl(object, exportParams);
   const openNew = (defaults?: Record<string, unknown>) => {
@@ -316,6 +321,18 @@ function RecordListView({ object }: { object: ObjectKey }) {
               </option>
             ))}
           </Select>
+          <Select
+            className="h-9 w-full text-[13px] sm:w-48"
+            aria-label={t('owner.filter.app')}
+            title={productPicked ? undefined : t('owner.filter.pickProductFirst')}
+            disabled={!productPicked}
+            value={app ?? ''}
+            onChange={(e) => {
+              changeOwnerFilter({ ...ownerFilter, app: e.target.value });
+              patchParams({ page: null });
+            }}
+            options={[{ value: '', label: t('owner.filter.allApps') }, ...appChoices.map((a) => ({ value: a.productId, label: a.name }))]}
+          />
           {ws !== ALL_WS ? <ClearProductButton onClick={() => pickProduct(ALL_WS)} /> : null}
         </div>
       ) : null}
@@ -410,13 +427,13 @@ function RecordListView({ object }: { object: ObjectKey }) {
           <ListSkeleton columns={3} />
         ) : kind === 'kanban' && groupField ? (
           <KanbanBoard object={object} meta={meta} groupField={groupField} filter={filter}
-            params={{ q: q || undefined, filter: params.filter, workspace: ws }}
+            params={{ q: q || undefined, filter: params.filter, workspace: ws, app }}
             cardFields={columns.filter((c) => c.key !== groupField.key).slice(0, 4)}
             amountField={byKey.get('amount')}
             onNew={canCreate ? openNew : undefined} />
         ) : kind === 'calendar' && dateField ? (
           <CalendarView object={object} meta={meta} dateField={dateField} filter={filter} initialMode={draft.calendarMode}
-            params={{ q: q || undefined, workspace: ws }}
+            params={{ q: q || undefined, workspace: ws, app }}
             onModeChange={(m) => setDraft((d) => ({ ...d, calendarMode: m }))}
             onNew={canCreate ? openNew : undefined} />
         ) : tableGroup ? (
