@@ -409,7 +409,9 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   profile and saved cards only. Each business they register or claim is its own business account (D-52), and that
   account shows its business listing and the owner's app profile; when the owner's contact sits under another of their
   businesses (a contact keeps one primary account), the account also shows a "Business owner" link to that contact.
-  An older personal ("individual") account still lists all of the person's businesses.
+  An older personal ("individual") account stands for the person: it shows all their businesses, saved cards and a
+  "Contact" link. Its link row moved to the business account when D-52 ran, so the panels find the person through the
+  account's stored App user ID (`custom.app_user_id`); contacts use the same fallback.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

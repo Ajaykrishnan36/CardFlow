@@ -1036,7 +1036,9 @@ func (c *Connector) appRoutes(r chi.Router) {
 // appRelated adds the connected app's data to CRM records (D-90): a contact (the person)
 // shows their app profile and saved cards; an account (a business, D-52) shows that business
 // listing, the owner's app profile and, when the owner's contact sits under another of their
-// businesses, a link back to that contact. Businesses are never listed on the contact.
+// businesses, a link back to that contact. Businesses are never listed on the contact. An older
+// personal ("individual") account stands for the person: all their businesses, saved cards and
+// a link to their contact.
 func (c *Connector) appRelated(ctx context.Context, sc *records.Scope, object, recordID string) ([]records.RelatedList, error) {
 	col := map[string]string{"accounts": "account_id", "contacts": "contact_id"}[object]
 	if col == "" {
@@ -1074,10 +1076,20 @@ func (c *Connector) appRelated(ctx context.Context, sc *records.Scope, object, r
 		err := c.store.Pool.QueryRow(ctx, `SELECT external_id FROM crm.external_links WHERE system = $1 AND external_type = 'user' AND `+col+` = $2`,
 			System, recordID).Scan(&userID)
 		if errors.Is(err, pgx.ErrNoRows) {
+			// A personal account from before D-52 lost its link when the contact moved to a
+			// business account; the record still carries the app user id it was made from.
+			err = c.store.Pool.QueryRow(ctx, `SELECT COALESCE(custom->>'app_user_id', '') FROM crm.`+object+` WHERE id = $1`, recordID).Scan(&userID)
+		}
+		if errors.Is(err, pgx.ErrNoRows) || (err == nil && userID == "") {
 			return nil, nil
 		}
 		if err != nil {
 			return nil, err
+		}
+		if object == "accounts" {
+			// The person's contact, linked from their personal account.
+			_ = c.store.Pool.QueryRow(ctx, `SELECT contact_id::text FROM crm.external_links WHERE system = $1 AND external_type = 'user' AND external_id = $2`,
+				System, userID).Scan(&ownerContact)
 		}
 	}
 	d, err := c.loadAppUser(ctx, userID)
@@ -1105,8 +1117,12 @@ func (c *Connector) appRelated(ctx context.Context, sc *records.Scope, object, r
 			var name, primary string
 			if err := c.store.Pool.QueryRow(ctx, `SELECT trim(concat_ws(' ', first_name, last_name)), COALESCE(account_id::text, '') FROM crm.contacts
 				WHERE id = $1 AND deleted_at IS NULL`, *ownerContact).Scan(&name, &primary); err == nil && primary != recordID {
-				out = append(out, records.RelatedList{Key: "app-owner", Label: "Business owner", Object: "contacts", Rows: []records.RelatedRow{{
-					ID: *ownerContact, Title: name, Subtitle: "Contact · owns this business in " + AppName}}})
+				label, sub := "Business owner", "Contact · owns this business in "+AppName
+				if len(bizIDs) == 0 {
+					label, sub = "Contact", "The same person in "+AppName
+				}
+				out = append(out, records.RelatedList{Key: "app-owner", Label: label, Object: "contacts", Rows: []records.RelatedRow{{
+					ID: *ownerContact, Title: name, Subtitle: sub}}})
 			}
 		}
 		if c.hasBiz {
@@ -1123,7 +1139,9 @@ func (c *Connector) appRelated(ctx context.Context, sc *records.Scope, object, r
 			}
 			out = append(out, l)
 		}
-		return out, nil
+		if len(bizIDs) > 0 {
+			return out, nil // a business account: the person's saved cards stay on their contact
+		}
 	}
 	if c.hasCards {
 		l := records.RelatedList{Key: "app-cards", Label: "Saved cards", Object: "app-cards", Rows: []records.RelatedRow{}}
