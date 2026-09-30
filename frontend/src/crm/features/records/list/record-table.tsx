@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowDown, ArrowUp, ArrowUpDown, Building2, Crown, Pencil } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Building2, ChevronDown, Crown, Pencil } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordRow, RecordWorkspaceRef } from '@crm/api/types';
-import type { SortSpec } from '@crm/api/types-features';
+import type { RecordGroup, SortSpec } from '@crm/api/types-features';
 import { Badge } from '@crm/components/ui/card';
 import { cn } from '@crm/lib/utils';
 import { FieldValue, formatValueText } from '../field-value';
@@ -77,7 +77,9 @@ export function RecordTable({
   onSelect,
   aggregates,
   compact,
-  binMode
+  binMode,
+  sections,
+  onShowAll
 }: {
   object: ObjectKey;
   meta: ObjectMeta;
@@ -91,9 +93,13 @@ export function RecordTable({
   aggregates?: Record<string, Record<string, number>>;
   compact?: boolean;
   binMode?: boolean;
+  /** Grouped table: one section per value, rows as returned for that group. */
+  sections?: RecordGroup[];
+  onShowAll?: (group: RecordGroup) => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const scope = useRecordScope();
   const canEdit = !binMode && scope.can(object, 'update');
   const allOn = rows.length > 0 && rows.every((r) => selected.has(r.id));
@@ -111,33 +117,8 @@ export function RecordTable({
   };
   const aggCols = columns.filter((f) => aggregates?.[f.key]);
   const py = compact ? 'py-1' : 'py-2';
-  return (
-    <div className="hidden overflow-x-auto sm:block">
-      <table className="w-full text-left text-[13px]">
-        <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur">
-          <tr className="border-b text-xs text-muted-foreground">
-            <th scope="col" className="w-10 pl-4">
-              <input type="checkbox" className="size-4 accent-[hsl(var(--primary))]" checked={allOn} onChange={toggleAll} aria-label={t('lists.selectPage')} />
-            </th>
-            <SortHeader label={t('records.list.name')} sortKey="title" sorts={sorts} onSort={onSort} className="pl-1" />
-            {showWorkspace ? (
-              <th scope="col" className="px-3 py-2 font-medium">
-                {t('records.list.workspace')}
-              </th>
-            ) : null}
-            {binMode ? (
-              <>
-                <th scope="col" className="px-3 py-2 font-medium">{t('lists.bin.deletedAt')}</th>
-                <th scope="col" className="px-3 py-2 font-medium">{t('lists.bin.deletedBy')}</th>
-              </>
-            ) : null}
-            {columns.map((f) => (
-              <SortHeader key={f.key} label={f.label} sortKey={f.key} sorts={sorts} onSort={onSort} className={cn(numeric(f) && 'text-right')} />
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
+  const colCount = 2 + (showWorkspace ? 1 : 0) + (binMode ? 2 : 0) + columns.length;
+  const renderRow = (r: RecordRow) => {
             const href = rowHref(scope, object, r);
             const on = selected.has(r.id);
             return (
@@ -171,7 +152,73 @@ export function RecordTable({
                 ))}
               </tr>
             );
-          })}
+  };
+  return (
+    <div className="hidden overflow-x-auto sm:block">
+      <table className="w-full text-left text-[13px]">
+        <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur">
+          <tr className="border-b text-xs text-muted-foreground">
+            <th scope="col" className="w-10 pl-4">
+              <input type="checkbox" className="size-4 accent-[hsl(var(--primary))]" checked={allOn} onChange={toggleAll} aria-label={t('lists.selectPage')} />
+            </th>
+            <SortHeader label={t('records.list.name')} sortKey="title" sorts={sorts} onSort={onSort} className="pl-1" />
+            {showWorkspace ? (
+              <th scope="col" className="px-3 py-2 font-medium">
+                {t('records.list.workspace')}
+              </th>
+            ) : null}
+            {binMode ? (
+              <>
+                <th scope="col" className="px-3 py-2 font-medium">{t('lists.bin.deletedAt')}</th>
+                <th scope="col" className="px-3 py-2 font-medium">{t('lists.bin.deletedBy')}</th>
+              </>
+            ) : null}
+            {columns.map((f) => (
+              <SortHeader key={f.key} label={f.label} sortKey={f.key} sorts={sorts} onSort={onSort} className={cn(numeric(f) && 'text-right')} />
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sections
+            ? sections.map((g) => {
+                const shut = collapsed.has(g.value);
+                return (
+                  <Fragment key={`g:${g.value}`}>
+                    <tr className="border-b bg-muted/40">
+                      <td colSpan={colCount} className="px-3 py-1.5">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 text-[13px] font-medium text-foreground"
+                          aria-expanded={!shut}
+                          onClick={() =>
+                            setCollapsed((c) => {
+                              const n = new Set(c);
+                              if (n.has(g.value)) n.delete(g.value);
+                              else n.add(g.value);
+                              return n;
+                            })
+                          }
+                        >
+                          <ChevronDown className={cn('size-4 text-muted-foreground transition-transform', shut && '-rotate-90')} aria-hidden />
+                          {g.tone ? <Badge tone={g.tone}>{g.label}</Badge> : <span>{g.label}</span>}
+                          <span className="tabular-nums text-xs text-muted-foreground">{g.count}</span>
+                        </button>
+                      </td>
+                    </tr>
+                    {shut ? null : g.rows.map((r) => renderRow(r))}
+                    {!shut && g.count > g.rows.length && onShowAll ? (
+                      <tr className="border-b">
+                        <td colSpan={colCount} className="px-4 py-1.5">
+                          <button type="button" className="text-xs font-medium text-primary hover:underline" onClick={() => onShowAll(g)}>
+                            {t('lists.group.showAll', { count: g.count, label: g.label })}
+                          </button>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })
+            : rows.map((r) => renderRow(r))}
         </tbody>
         {aggCols.length ? (
           <tfoot className="border-t bg-muted/40 text-xs">

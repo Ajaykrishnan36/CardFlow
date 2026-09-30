@@ -117,6 +117,15 @@ const strings = {
     remove: 'Remove',
     add: 'Add sort'
   },
+  group: {
+    label: 'Group rows',
+    none: 'No grouping',
+    by: 'Group: {{field}}',
+    showAll: 'Show all {{count}} in “{{label}}”',
+    summary_one: '{{count}} record in {{groups}} groups by {{field}}',
+    summary_other: '{{count}} records in {{groups}} groups by {{field}}',
+    error: 'Couldn’t load the groups'
+  },
   columns: { button: 'Columns', shown: 'Shown — drag to reorder', hidden: 'Add a column' },
   board: {
     label: 'Board by {{field}}',

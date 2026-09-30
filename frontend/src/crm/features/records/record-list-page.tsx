@@ -24,16 +24,18 @@ import { layoutHref, useRecordScope } from './record-scope';
 import { isForbidden, RecordNoAccess } from './record-states';
 import { ALL_VIEW, BIN_VIEW, ViewDialog, ViewsBar } from './list/views-bar';
 import { ColumnsButton, DensityButton, FilterButton, SortButton } from './list/list-controls';
-import { cleanFilter, countConditions } from './list/filter-utils';
+import { cleanFilter, countConditions, withCondition } from './list/filter-utils';
 import { RecordTable, rowHref, WorkspaceChip } from './list/record-table';
 import { KanbanBoard } from './list/kanban-board';
 import { CalendarView } from './list/calendar-view';
 import { BulkBar } from './list/bulk-bar';
 import { useOwnerFilter } from '@crm/features/owner/owner-filter';
+import { GroupedTable } from './list/grouped-table';
 import { ImportDialog } from './list/import-dialog';
 
 const PAGE_SIZE = 50;
 const ALL_WS = 'all';
+const GROUPABLE = ['select', 'boolean', 'lookup', 'rating'];
 const PLATFORM_WS = 'platform';
 
 function lastViewKey(prefix: string, object: string) {
@@ -152,10 +154,12 @@ function RecordListView({ object }: { object: ObjectKey }) {
     offset: (page - 1) * PAGE_SIZE,
     agg: agg || undefined
   };
+  // Table grouped by a field (D-77).
+  const tableGroup = kind === 'table' && !binMode && draft.groupBy ? byKey.get(draft.groupBy) : undefined;
   const listQ = useQuery({
     queryKey: recordKeys.list(scope.prefix, object, params),
     queryFn: () => scope.api.list(object, params),
-    enabled: Boolean(meta) && kind === 'table',
+    enabled: Boolean(meta) && kind === 'table' && !tableGroup,
     placeholderData: keepPreviousData
   });
   const [wsOptions, setWsOptions] = useState<Array<{ code: string; name: string; isPlatform: boolean; count: number }>>([]);
@@ -316,8 +320,8 @@ function RecordListView({ object }: { object: ObjectKey }) {
             onDelete={(v) => deleteView.mutate(v)}
           />
         ) : null}
-        <div className="flex flex-col gap-2 border-b px-4 py-2.5 lg:flex-row lg:items-center">
-          <div className="min-w-0 lg:w-72 lg:shrink">
+        <div className="flex flex-col gap-2 border-b px-4 py-2.5 lg:flex-row lg:flex-wrap lg:items-center">
+          <div className="min-w-0 lg:w-72 lg:min-w-[180px] lg:shrink">
             <SearchInput value={q} onChange={(v) => patchParams({ q: v, page: null })} placeholder={t('records.list.search', { objects: plural.toLowerCase() })} className="lg:max-w-none" />
           </div>
           {isOwner ? (
@@ -337,6 +341,11 @@ function RecordListView({ object }: { object: ObjectKey }) {
               {kind !== 'calendar' ? <SortButton meta={meta} value={sorts} onChange={(s) => setDraft((d) => ({ ...d, sorts: s }))} /> : null}
               {kind === 'table' ? <ColumnsButton meta={meta} value={columns.map((c) => c.key)} onChange={(cols) => setDraft((d) => ({ ...d, columns: cols }))} /> : null}
               {kind === 'table' ? <DensityButton compact={draft.density === 'compact'} onChange={(c) => setDraft((d) => ({ ...d, density: c ? 'compact' : '' }))} /> : null}
+              {kind === 'table' && !binMode ? (
+                <Select className="h-8 w-44 text-[13px]" aria-label={t('lists.group.label')} value={draft.groupBy ?? ''}
+                  onChange={(e) => setDraft((d) => ({ ...d, groupBy: e.target.value || undefined }))}
+                  options={[{ value: '', label: t('lists.group.none') }, ...meta.fields.filter((f) => GROUPABLE.includes(f.type)).map((f) => ({ value: f.key, label: t('lists.group.by', { field: f.label }) }))]} />
+              ) : null}
               {kind === 'kanban' ? (
                 <Select className="w-44" aria-label={t('lists.views.columnsBy')} value={draft.groupBy ?? meta.statusField ?? ''}
                   onChange={(e) => setDraft((d) => ({ ...d, groupBy: e.target.value }))}
@@ -400,6 +409,32 @@ function RecordListView({ object }: { object: ObjectKey }) {
             params={{ q: q || undefined, workspace: ws }}
             onModeChange={(m) => setDraft((d) => ({ ...d, calendarMode: m }))}
             onNew={canCreate ? openNew : undefined} />
+        ) : tableGroup ? (
+          <GroupedTable
+            object={object}
+            meta={meta}
+            columns={columns}
+            groupField={tableGroup}
+            params={params}
+            sorts={sorts}
+            onSort={(k) => {
+              const cur = sorts[0];
+              setDraft((d) => ({ ...d, sorts: [{ field: k, dir: cur?.field === k && cur.dir === 'asc' ? 'desc' : 'asc' }] }));
+            }}
+            showWorkspace={showWsColumn}
+            selected={selected}
+            onSelect={(s) => {
+              setSelected(s);
+              setAllMatching(false);
+            }}
+            compact={draft.density === 'compact'}
+            onShowAll={(g) => {
+              const value = g.value === '' ? undefined : tableGroup.type === 'boolean' ? g.value === 'true' : tableGroup.type === 'rating' ? Number(g.value) : g.value;
+              const cond = value === undefined ? { field: tableGroup.key, op: 'empty' as const } : { field: tableGroup.key, op: 'eq' as const, value };
+              setDraft((d) => ({ ...d, groupBy: undefined, filter: withCondition(d.filter, cond) }));
+              patchParams({ page: null });
+            }}
+          />
         ) : listQ.isError ? (
           <ErrorState
             title={t('records.list.errorTitle', { objects: plural.toLowerCase() })}

@@ -335,6 +335,9 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   `values`). The API also accepts `{"amount": 1200, "currency": "USD"}`. No code = the product's currency
   (workspaces.currency, INR by default); list totals and board sums use the product's currency. Phone fields get a
   country calling-code picker and are stored as "+91 98765 43210".
+- **D-77 Grouped tables.** A table view can group rows by a pick-list, yes/no, lookup or rating field ("Group rows"),
+  saved with the view like other settings. Each group shows its count and up to 50 rows, can be collapsed, and
+  "Show all" narrows the list to that value.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed
