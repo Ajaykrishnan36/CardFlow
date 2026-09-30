@@ -14,7 +14,8 @@ import (
 // App support tickets are Cases (D-72). Every ticket from the app is mirrored as a Case
 // in the product, so the product uses the same Cases list, board, record page, reports
 // and workflows as every other product. Changing a case's status or its "Reply in app"
-// field updates the ticket, and the person sees it in the app.
+// field updates the ticket, and the person sees it in the app. The whole conversation is
+// read and answered from the case page (tickets.go, D-91).
 
 const caseTicketField = "app_ticket_id"
 
@@ -156,12 +157,9 @@ func (c *Connector) onCaseEvent(ctx context.Context, tx pgx.Tx, ev records.Event
 		reply, _ = ev.Record["app_reply"].(string)
 		reply = strings.TrimSpace(reply)
 	}
-	by := "CRM"
+	by, role := "Support team", "Support team"
 	if ev.ActorID != nil {
-		var name string
-		if tx.QueryRow(ctx, `SELECT display_name FROM crm.identities WHERE id = $1`, *ev.ActorID).Scan(&name) == nil && name != "" {
-			by = name + " (CRM)"
-		}
+		by, role = supportAuthor(ctx, tx, ev.WorkspaceID, *ev.ActorID)
 	}
 	_, err := tx.Exec(ctx, `SAVEPOINT cardflow_case`)
 	if err != nil {
@@ -175,6 +173,12 @@ func (c *Connector) onCaseEvent(ctx context.Context, tx pgx.Tx, ev records.Event
 		    replied_by = CASE WHEN $3 <> '' THEN $5 ELSE replied_by END,
 		    updated_at = now()
 		WHERE id = $1`, id, status, reply, replyChanged, by)
+	if err == nil && replyChanged && reply != "" {
+		// The reply joins the ticket's conversation with who sent it (D-91).
+		_, err = tx.Exec(ctx, `
+			INSERT INTO public.support_ticket_messages (ticket_id, sender, author_name, author_role, body)
+			VALUES ($1, 'support', $2, $3, $4)`, id, by, role, reply)
+	}
 	if err != nil {
 		slog.Warn("cardflow: case → ticket", "ticket", id, "error", err)
 		_, _ = tx.Exec(ctx, `ROLLBACK TO SAVEPOINT cardflow_case`)

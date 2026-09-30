@@ -16,6 +16,7 @@ import { cn, relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { plainKey, recordNeighbours } from '@crm/features/shell/shortcuts';
 import { GiveLoginDialog } from '@crm/features/access/give-login-dialog';
+import { TicketConversation } from './ticket-conversation';
 import { ConvertLeadDialog } from './convert-dialog';
 import { RecordTimeline } from './record-timeline';
 import { RecordEmails } from './record-emails';
@@ -274,6 +275,9 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
   const Icon = objectIcon(object, meta.icon);
   const status = meta.statusField ? statusOption(meta, record.values[meta.statusField]) : undefined;
+  // A case mirrored from a Business Card Snap ticket shows the ticket's conversation (D-91).
+  const workspaceCode = scope.audience === 'member' ? decodeURIComponent(scope.prefix.replace(/^\/w\//, '')) : '';
+  const ticketId = object === 'cases' && workspaceCode && typeof record.values.app_ticket_id === 'string' ? record.values.app_ticket_id : '';
   const isLead = object === 'leads';
   const converted = isLead && Boolean(detail.conversion || record.values.convertedAt || record.values.status === 'converted');
   const canConvert = isLead && !converted && scope.can('leads', 'convert');
@@ -450,6 +454,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div ref={mainRef} className="min-w-0 lg:col-span-2">
+          {ticketId ? <TicketConversation code={workspaceCode} ticketId={ticketId} canReply={canEdit} /> : null}
           <Card className="overflow-hidden">
             <Tabs
               className="px-3"

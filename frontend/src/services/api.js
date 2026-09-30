@@ -599,6 +599,35 @@ export const apiClient = {
     }
   },
 
+  // 19b. Support: one of my tickets, with its conversation
+  async getMySupportTicket(id, token = '') {
+    try {
+      const headers = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(`${API_BASE_URL}/support/tickets/my/${encodeURIComponent(id)}`, { headers });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.data?.ticket || data.ticket || null;
+    } catch (e) {
+      console.warn('API /support/tickets/my/:id failed:', e);
+      return null;
+    }
+  },
+
+  // 19c. Support: write again on my ticket (reopens a resolved one)
+  async sendSupportMessage(id, message, token = '') {
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE_URL}/support/tickets/my/${encodeURIComponent(id)}/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || data.error || 'Could not send your message');
+    return data.data?.ticket || data.ticket || null;
+  },
+
   // 20. Support: Admin List All Tickets
   async getAdminSupportTickets(token = '') {
     console.log('📡 [API CALL] GET /admin/support/tickets');

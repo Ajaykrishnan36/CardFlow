@@ -49,6 +49,9 @@ var migration013RevenueCatSQL string
 //go:embed migrations/014_card_businesses.sql
 var migration014CardBusinessesSQL string
 
+//go:embed migrations/015_support_ticket_messages.sql
+var migration015SupportTicketMessagesSQL string
+
 func RunMigrations(ctx context.Context, db *DB) error {
 	if db == nil || db.Pool == nil {
 		return fmt.Errorf("database pool is not initialized")
@@ -79,6 +82,7 @@ func RunMigrations(ctx context.Context, db *DB) error {
 		{"012_support_tickets", migration012SupportTicketsSQL},
 		{"013_revenuecat", migration013RevenueCatSQL},
 		{"014_card_businesses", migration014CardBusinessesSQL},
+		{"015_support_ticket_messages", migration015SupportTicketMessagesSQL},
 	} {
 		name, sql := m.name, m.sql
 		if _, err := db.Pool.Exec(ctx, sql); err != nil {

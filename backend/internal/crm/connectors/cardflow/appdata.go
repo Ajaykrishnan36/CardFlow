@@ -1031,6 +1031,8 @@ func (c *Connector) appRoutes(r chi.Router) {
 	r.Get("/app/businesses/{id}/card-image", c.handleBusinessCardImage)
 	r.Put("/app/businesses/{id}/card-image", c.handleUploadBusinessCardImage)
 	r.Get("/app/categories", c.handleCategories)
+	r.Get("/app/tickets/{id}", c.handleGetThread)
+	r.Post("/app/tickets/{id}/messages", c.handleReplyThread)
 }
 
 // appRelated adds the connected app's data to CRM records (D-90): a contact (the person)

@@ -412,6 +412,14 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   An older personal ("individual") account stands for the person: it shows all their businesses, saved cards and a
   "Contact" link. Its link row moved to the business account when D-52 ran, so the panels find the person through the
   account's stored App user ID (`custom.app_user_id`); contacts use the same fallback.
+- **D-91 Support tickets are conversations.** App migration 015 adds `public.support_ticket_messages` (sender user or
+  support, author name and role, body, time); the ticket's own message stays the first message, and a reply given
+  before this becomes the first support message. In the app the ticket screen is a chat: the person's messages on the
+  right as "You", support replies on the left with the replier's name and role, times and avatars, and a box to write
+  again (a resolved ticket reopens). The case page shows the same conversation above the details, refreshed every 15
+  seconds, with a reply box for anyone who may edit the case; each reply records the sender's name and their role in the
+  product (Super Admin, Admin…, or Platform owner). The old "Reply in app" field still works and joins the conversation
+  the same way. Opening the conversation asks the connector to sync, so the case follows new app messages.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

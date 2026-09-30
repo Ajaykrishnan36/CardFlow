@@ -5,6 +5,7 @@ import type {
 } from './types-features';
 import type {
   DashboardDetail,
+  TicketThread,
   DashboardSummary,
   DashboardWidget,
   ReportDefinition,
@@ -426,7 +427,9 @@ export function workspaceAppApi(code: string) {
       `${API_BASE}${base}/businesses/${enc(id)}/card-image?side=${side}${v ? `&v=${encodeURIComponent(v)}` : ''}`,
     uploadCardImage: (id: string, side: 'front' | 'back', imageData: string) =>
       api<AppBusiness>(`${base}/businesses/${enc(id)}/card-image`, { method: 'PUT', body: { side, imageData } }),
-    categories: () => api<{ data: Array<{ id: string; name: string }> }>(`${base}/categories`).then((r) => r.data)
+    categories: () => api<{ data: Array<{ id: string; name: string }> }>(`${base}/categories`).then((r) => r.data),
+    ticket: (id: string) => api<TicketThread>(`${base}/tickets/${enc(id)}`),
+    replyTicket: (id: string, body: string) => api<TicketThread>(`${base}/tickets/${enc(id)}/messages`, { method: 'POST', body: { body } })
   };
 }
 

@@ -1,6 +1,18 @@
 // 'records' i18n namespace (merged into the crm bundle as records.*).
 // Object names, field labels and section titles come from the API metadata, not from here.
 const strings = {
+  ticket: {
+    title: 'Conversation in the app',
+    subtitle: 'What {{name}} sees in Business Card Snap. Replies are sent to the app right away.',
+    customer: 'Customer',
+    you: 'You',
+    placeholder: 'Write a reply to {{name}}…',
+    send: 'Send reply',
+    sent: 'Reply sent to the app',
+    hint: 'Enter to send · Shift+Enter for a new line',
+    loadError: "Couldn't load the conversation",
+    status: { open: 'Waiting for a reply', in_progress: 'In progress', resolved: 'Resolved' }
+  },
   common: {
     loading: 'Loading…',
     loadError: "Couldn't load this page",

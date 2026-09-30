@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,19 +20,77 @@ import (
 )
 
 type Ticket struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"user_id"`
-	UserName   string    `json:"user_name"`
-	UserPhone  string    `json:"user_phone"`
-	UserRole   string    `json:"user_role"`
-	Category   string    `json:"category"` // 'billing', 'card_scan', 'business_listing', 'general'
-	Subject    string    `json:"subject"`
-	Message    string    `json:"message"`
-	Status     string    `json:"status"` // 'open', 'in_progress', 'resolved'
-	AdminReply string    `json:"admin_reply,omitempty"`
+	ID         string     `json:"id"`
+	UserID     string     `json:"user_id"`
+	UserName   string     `json:"user_name"`
+	UserPhone  string     `json:"user_phone"`
+	UserRole   string     `json:"user_role"`
+	Category   string     `json:"category"` // 'billing', 'card_scan', 'business_listing', 'general'
+	Subject    string     `json:"subject"`
+	Message    string     `json:"message"`
+	Status     string     `json:"status"` // 'open', 'in_progress', 'resolved'
+	AdminReply string     `json:"admin_reply,omitempty"`
 	RepliedAt  *time.Time `json:"replied_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	// Messages is the conversation, oldest first: the ticket's own message, then every
+	// follow-up and support reply (migration 015).
+	Messages []Message `json:"messages"`
+}
+
+// Message is one entry in a ticket's conversation.
+type Message struct {
+	ID         string    `json:"id"`
+	Sender     string    `json:"sender"` // 'user' | 'support'
+	AuthorName string    `json:"author_name"`
+	AuthorRole string    `json:"author_role,omitempty"`
+	Body       string    `json:"body"`
 	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// opening is the ticket's first message, written when it was created.
+func (t Ticket) opening() Message {
+	return Message{ID: t.ID + "-0", Sender: "user", AuthorName: t.UserName, Body: t.Message, CreatedAt: t.CreatedAt}
+}
+
+// withMessages fills each ticket's conversation from support_ticket_messages. A database
+// without migration 015 still shows the opening message and the single admin reply.
+func (h *SupportHandler) withMessages(ctx context.Context, list []Ticket) {
+	byID := map[string]int{}
+	ids := make([]string, 0, len(list))
+	for i := range list {
+		list[i].Messages = []Message{list[i].opening()}
+		byID[list[i].ID] = i
+		ids = append(ids, list[i].ID)
+	}
+	if len(ids) == 0 {
+		return
+	}
+	rows, err := h.db.Pool.Query(ctx, `
+		SELECT ticket_id, id::text, sender, author_name, author_role, body, created_at
+		FROM support_ticket_messages WHERE ticket_id = ANY($1) ORDER BY created_at, id`, ids)
+	if err != nil {
+		for i := range list {
+			if list[i].AdminReply != "" {
+				at := list[i].UpdatedAt
+				if list[i].RepliedAt != nil {
+					at = *list[i].RepliedAt
+				}
+				list[i].Messages = append(list[i].Messages, Message{ID: list[i].ID + "-r", Sender: "support", AuthorName: "Support team", Body: list[i].AdminReply, CreatedAt: at})
+			}
+		}
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tid string
+		var m Message
+		if rows.Scan(&tid, &m.ID, &m.Sender, &m.AuthorName, &m.AuthorRole, &m.Body, &m.CreatedAt) == nil {
+			if i, ok := byID[tid]; ok {
+				list[i].Messages = append(list[i].Messages, m)
+			}
+		}
+	}
 }
 
 // SupportHandler stores tickets in the support_tickets table (migration 012) so they
@@ -92,18 +151,18 @@ func NewSupportHandler(db *database.DB) *SupportHandler {
 				UpdatedAt:  now.Add(-30 * time.Minute),
 			},
 			{
-				ID:        "t-1002",
-				UserID:    "00000000-0000-0000-0000-0000000000u4",
-				UserName:  "Dharani",
-				UserPhone: "+919677840181",
-				UserRole:  "user",
-				Category:  "card_scan",
-				Subject:   "Tamil text recognition inquiry",
-				Message:   "How do I scan Tamil visiting cards? Need best lighting guidance.",
-				Status:    "resolved",
+				ID:         "t-1002",
+				UserID:     "00000000-0000-0000-0000-0000000000u4",
+				UserName:   "Dharani",
+				UserPhone:  "+919677840181",
+				UserRole:   "user",
+				Category:   "card_scan",
+				Subject:    "Tamil text recognition inquiry",
+				Message:    "How do I scan Tamil visiting cards? Need best lighting guidance.",
+				Status:     "resolved",
 				AdminReply: "Hi Dharani, select Tamil from the language pill on the scan screen and ensure the card is in landscape inside the frame.",
-				CreatedAt: now.Add(-24 * time.Hour),
-				UpdatedAt: now.Add(-20 * time.Hour),
+				CreatedAt:  now.Add(-24 * time.Hour),
+				UpdatedAt:  now.Add(-20 * time.Hour),
 			},
 		},
 	}
@@ -155,6 +214,7 @@ func (h *SupportHandler) CreateTicket(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+	ticket.Messages = []Message{ticket.opening()}
 
 	if h.persistent() {
 		var uid *uuid.UUID
@@ -199,6 +259,7 @@ func (h *SupportHandler) GetMyTickets(w http.ResponseWriter, r *http.Request) {
 			response.InternalServerError(w, "could not load tickets")
 			return
 		}
+		h.withMessages(r.Context(), list)
 		response.JSON(w, http.StatusOK, map[string]interface{}{"tickets": list, "count": len(list)})
 		return
 	}
@@ -231,6 +292,7 @@ func (h *SupportHandler) AdminListTickets(w http.ResponseWriter, r *http.Request
 			response.InternalServerError(w, "could not load tickets")
 			return
 		}
+		h.withMessages(r.Context(), list)
 		response.JSON(w, http.StatusOK, map[string]interface{}{"tickets": list, "count": len(list)})
 		return
 	}
@@ -279,7 +341,16 @@ func (h *SupportHandler) AdminUpdateTicket(w http.ResponseWriter, r *http.Reques
 			response.InternalServerError(w, "could not update ticket")
 			return
 		}
-		response.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Ticket updated successfully", "ticket": t})
+		if req.AdminReply != "" {
+			if _, err := h.db.Pool.Exec(r.Context(), `
+				INSERT INTO support_ticket_messages (ticket_id, sender, author_name, author_role, body)
+				VALUES ($1, 'support', 'CardFlow admin', 'Support team', $2)`, id, req.AdminReply); err != nil {
+				slog.Warn("support: reply message not saved", "ticket", id, "error", err)
+			}
+		}
+		list := []Ticket{t}
+		h.withMessages(r.Context(), list)
+		response.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Ticket updated successfully", "ticket": list[0]})
 		return
 	}
 
@@ -308,4 +379,77 @@ func (h *SupportHandler) AdminUpdateTicket(w http.ResponseWriter, r *http.Reques
 	}
 
 	response.NotFound(w, "ticket not found")
+}
+
+// ownTicket loads one of the signed-in person's tickets (matched like GetMyTickets).
+func (h *SupportHandler) ownTicket(r *http.Request, id string) (Ticket, bool) {
+	user, _ := r.Context().Value(middleware.UserContextKey).(*domain.User)
+	if user == nil || !h.persistent() {
+		return Ticket{}, false
+	}
+	list, err := h.queryTickets(r.Context(), `WHERE id = $1 AND (user_id = $2 OR ($3 <> '' AND user_phone = $3))`, id, user.ID, user.Phone)
+	if err != nil || len(list) == 0 {
+		return Ticket{}, false
+	}
+	h.withMessages(r.Context(), list)
+	return list[0], true
+}
+
+// GetMyTicket returns one of the person's tickets with its conversation.
+func (h *SupportHandler) GetMyTicket(w http.ResponseWriter, r *http.Request) {
+	t, ok := h.ownTicket(r, chi.URLParam(r, "id"))
+	if !ok {
+		response.NotFound(w, "ticket not found")
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]interface{}{"ticket": t})
+}
+
+// AddMyMessage lets the person write again on their ticket. A resolved ticket reopens,
+// so the support team sees it; Ajay's CRM picks the change up on its next sync.
+func (h *SupportHandler) AddMyMessage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	t, ok := h.ownTicket(r, id)
+	if !ok {
+		response.NotFound(w, "ticket not found")
+		return
+	}
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, "invalid request body", err.Error())
+		return
+	}
+	body := strings.TrimSpace(req.Message)
+	if body == "" || len(body) > 4000 {
+		response.BadRequest(w, "write a message up to 4000 characters", "")
+		return
+	}
+	ctx := r.Context()
+	tx, err := h.db.Pool.Begin(ctx)
+	if err != nil {
+		response.InternalServerError(w, "could not send your message, please try again")
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO support_ticket_messages (ticket_id, sender, author_name, author_role, body)
+		VALUES ($1, 'user', $2, 'Customer', $3)`, id, t.UserName, body); err != nil {
+		slog.Error("support: add message failed", "ticket", id, "error", err)
+		response.InternalServerError(w, "could not send your message, please try again")
+		return
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE support_tickets SET status = CASE WHEN status = 'resolved' THEN 'open' ELSE status END, updated_at = NOW()
+		WHERE id = $1`, id); err != nil {
+		response.InternalServerError(w, "could not send your message, please try again")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		response.InternalServerError(w, "could not send your message, please try again")
+		return
+	}
+	t, _ = h.ownTicket(r, id)
+	response.JSON(w, http.StatusCreated, map[string]interface{}{"success": true, "ticket": t})
 }

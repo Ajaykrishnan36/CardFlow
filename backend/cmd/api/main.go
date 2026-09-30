@@ -212,6 +212,8 @@ func main() {
 			r.Post("/enquiries", enquiryHandler.CreateEnquiry)
 			r.Post("/support/tickets", supportHandler.CreateTicket)
 			r.Get("/support/tickets/my", supportHandler.GetMyTickets)
+			r.Get("/support/tickets/my/{id}", supportHandler.GetMyTicket)
+			r.Post("/support/tickets/my/{id}/messages", supportHandler.AddMyMessage)
 
 			// Billing: CardFlow Premium via RevenueCat (purchases happen in the SDKs)
 			r.Get("/billing/status", billingHandler.GetStatus)

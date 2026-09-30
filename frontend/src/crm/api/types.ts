@@ -1102,6 +1102,24 @@ export type BusinessStatus = 'draft' | 'pending_verification' | 'live' | 'under_
 export type BusinessVerification = 'pending' | 'gst' | 'pan' | 'tan' | 'manual' | 'failed';
 export type BusinessListing = 'listed' | 'unlisted';
 
+/** A Business Card Snap support ticket as a conversation (D-91), oldest message first. */
+export interface TicketMessage {
+  id: string;
+  sender: 'user' | 'support';
+  authorName: string;
+  authorRole?: string;
+  body: string;
+  createdAt: string;
+}
+export interface TicketThread {
+  id: string;
+  subject: string;
+  status: 'open' | 'in_progress' | 'resolved';
+  userName: string;
+  phone: string;
+  messages: TicketMessage[];
+}
+
 export interface AppBusiness {
   id: string;
   name: string;
