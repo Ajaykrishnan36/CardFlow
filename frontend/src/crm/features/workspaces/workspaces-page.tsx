@@ -12,7 +12,7 @@ import { EmptyState, ErrorState } from '@crm/components/states';
 import { PageContainer, PageHeader, SearchInput, SegmentedFilter } from '@crm/components/page';
 import { relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
-import { ownerFilterParams, useOwnerFilter } from '@crm/features/owner/owner-filter';
+import { OwnerScopeBar, ownerFilterParams, useOwnerFilter } from '@crm/features/owner/owner-filter';
 import { WorkspaceStatusBadge, WorkspaceTile } from './workspace-ui';
 
 type StatusFilter = '' | 'active' | 'suspended';
@@ -63,7 +63,10 @@ export function WorkspacesPage() {
       <PageHeader title={t('workspaces.list.title')} description={t('workspaces.list.description')} actions={provisionButton} />
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <SearchInput value={q} onChange={onSearch} placeholder={t('workspaces.list.search')} />
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchInput value={q} onChange={onSearch} placeholder={t('workspaces.list.search')} />
+          <OwnerScopeBar />
+        </div>
         <SegmentedFilter<StatusFilter>
           value={status}
           onChange={(v) => setParam('status', v)}

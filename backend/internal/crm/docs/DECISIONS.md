@@ -386,6 +386,12 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   opportunity / only qualified) moved onto the Objects step, shown only when the Leads module is on, and appear under
   Objects in the review summary. Old `?step=pipeline` links fall back to the first step. Frontend only, plus the
   normalize() default-fill; no migration.
+- **D-86 Owner filter moves from the sidebar into the page.** The owner console's Product and App dropdowns left the
+  sidebar (it showed them alongside the Leads page's own product dropdown, which confused people). They now sit in the
+  page header: Overview, Products and Apps show Product then App; the App dropdown stays disabled on "All products" and
+  lists only the chosen product's apps. Leads, Accounts and Contacts show Product only (records belong to a product,
+  not an app) and keep their "Platform CRM" option and per-product counts. The choice is shared: picking a product on
+  one page carries to the others. The workspace app (Super Admin, Admin, Staff) is unchanged.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

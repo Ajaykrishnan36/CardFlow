@@ -222,7 +222,8 @@ const en = {
       product: 'Product',
       app: 'App',
       allProducts: 'All products',
-      allApps: 'All apps'
+      allApps: 'All apps',
+      pickProductFirst: 'Choose a product first to pick one of its apps.'
     },
     apps: {
       title: 'Apps',

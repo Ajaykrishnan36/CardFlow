@@ -31,7 +31,7 @@ import { KanbanBoard } from './list/kanban-board';
 import { CalendarView } from './list/calendar-view';
 import { BinRetentionNote } from './list/bin-retention';
 import { BulkBar } from './list/bulk-bar';
-import { useOwnerFilter } from '@crm/features/owner/owner-filter';
+import { useChangeOwnerFilter, useOwnerFilter, useOwnerProducts } from '@crm/features/owner/owner-filter';
 import { GroupedTable } from './list/grouped-table';
 import { useManualWorkflows, useRunWorkflow } from './run-workflow';
 import { ImportDialog } from './list/import-dialog';
@@ -117,7 +117,17 @@ function RecordListView({ object }: { object: ObjectKey }) {
   const q = sp.get('q') ?? '';
   const page = Math.max(1, Number(sp.get('page')) || 1);
   const ownerFilter = useOwnerFilter();
+  const changeOwnerFilter = useChangeOwnerFilter();
+  const ownerProducts = useOwnerProducts(isOwner).products;
   const ws = isOwner ? sp.get('ws') || ownerFilter.productCode || ALL_WS : undefined;
+  // The owner's product picker lives on the page (D-86) and shares its choice with the
+  // Overview; "Platform CRM" stays a list-only choice (?ws=platform).
+  const pickProduct = (v: string) => {
+    if (v === PLATFORM_WS) return patchParams({ ws: v, page: null });
+    const p = ownerProducts.find((x) => x.code === v);
+    changeOwnerFilter(v === ALL_WS ? { product: '', productCode: '', app: '' } : { product: p?.id ?? '', productCode: v, app: '' });
+    patchParams({ ws: null, page: null });
+  };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -318,7 +328,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
             <SearchInput value={q} onChange={(v) => patchParams({ q: v, page: null })} placeholder={t('records.list.search', { objects: plural.toLowerCase() })} className="lg:max-w-none" />
           </div>
           {isOwner ? (
-            <Select className="lg:w-56" aria-label={t('records.list.workspaceFilter')} value={ws} onChange={(e) => patchParams({ ws: e.target.value === ALL_WS ? null : e.target.value, page: null })}>
+            <Select className="lg:w-56" aria-label={t('records.list.workspaceFilter')} value={ws} onChange={(e) => pickProduct(e.target.value)}>
               <option value={ALL_WS}>{t('records.list.allWorkspaces')}</option>
               <option value={PLATFORM_WS}>{t('records.list.platformCrm')}</option>
               {wsOptions.filter((w) => !w.isPlatform).map((w) => (

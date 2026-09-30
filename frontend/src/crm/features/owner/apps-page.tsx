@@ -10,7 +10,7 @@ import { PageContainer, PageHeader, SearchInput } from '@crm/components/page';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { relativeTime } from '@crm/lib/utils';
-import { ownerFilterParams, useOwnerFilter } from './owner-filter';
+import { OwnerScopeBar, ownerFilterParams, useOwnerFilter } from './owner-filter';
 
 /** /crm/owner/apps — every app installed in every product (D-73). */
 export function AppsPage() {
@@ -28,7 +28,10 @@ export function AppsPage() {
     <PageContainer>
       <PageHeader title={t('owner.apps.title')} description={t('owner.apps.subtitle')} />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder={t('owner.apps.search')} />
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchInput value={search} onChange={setSearch} placeholder={t('owner.apps.search')} />
+          <OwnerScopeBar />
+        </div>
         {q.data ? <p className="text-[13px] text-muted-foreground">{t('owner.apps.count', { count: q.data.length })} {t('owner.apps.inProducts', { count: products })}</p> : null}
       </div>
       <Card className="overflow-hidden">

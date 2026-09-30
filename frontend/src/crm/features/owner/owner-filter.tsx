@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { platformApi } from '@crm/api/endpoints';
 import { Select } from '@crm/components/ui/form-controls';
+import { cn } from '@crm/lib/utils';
 
 // Owner console filter (D-74): a product, then one of its apps. "All" by default.
 // The dashboard, Products, Apps and the record lists follow it. Kept in this browser.
+// The picker sits in each page's header, not the sidebar (D-86).
 
 export interface OwnerFilter {
   product: string; // workspace id, '' = all products
@@ -51,55 +53,68 @@ export function useOwnerFilter(): OwnerFilter {
 
 /** Query params for owner endpoints (?product=&app=). */
 export function ownerFilterParams(f: OwnerFilter): { product?: string; app?: string } {
-  return { product: f.product || undefined, app: f.app || undefined };
+  // An app only counts inside its product (the App picker opens after a product is chosen).
+  return { product: f.product || undefined, app: (f.product && f.app) || undefined };
 }
 
-/** Sidebar: Product, then App (its apps only). */
-export function OwnerFilterPicker({ collapsed }: { collapsed: boolean }) {
-  const { t } = useTranslation();
-  const qc = useQueryClient();
-  const f = useOwnerFilter();
-  const apps = useQuery({ queryKey: ['platform', 'apps', 'all'], queryFn: () => platformApi.apps(), staleTime: 60_000 });
+/** Products (with their apps) the owner can filter by, from the apps list. */
+export function useOwnerProducts(enabled = true) {
+  const apps = useQuery({ queryKey: ['platform', 'apps', 'all'], queryFn: () => platformApi.apps(), staleTime: 60_000, enabled });
   const products = useMemo(() => {
     const seen = new Map<string, { id: string; code: string; name: string }>();
     for (const a of apps.data ?? []) seen.set(a.workspaceId, { id: a.workspaceId, code: a.workspaceCode, name: a.workspaceName });
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [apps.data]);
-  const appOptions = useMemo(() => {
-    const seen = new Map<string, { id: string; name: string }>();
-    for (const a of apps.data ?? []) if (!f.product || a.workspaceId === f.product) seen.set(a.productId, { id: a.productId, name: a.name });
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [apps.data, f.product]);
-  if (collapsed) return null;
-  const change = (next: OwnerFilter) => {
+  return { apps: apps.data ?? [], products };
+}
+
+/** Sets the filter and refreshes everything that follows it. */
+export function useChangeOwnerFilter() {
+  const qc = useQueryClient();
+  return (next: OwnerFilter) => {
     setOwnerFilter(next);
     void qc.invalidateQueries({ queryKey: ['platform'] });
     void qc.invalidateQueries({ queryKey: ['workspaces'] });
   };
+}
+
+/**
+ * In-page Product, then App picker (D-86). "All products" first; the App list opens up
+ * only once a product is chosen, showing that product's apps.
+ */
+export function OwnerScopeBar({ showApp = true, className }: { showApp?: boolean; className?: string }) {
+  const { t } = useTranslation();
+  const f = useOwnerFilter();
+  const change = useChangeOwnerFilter();
+  const { apps, products } = useOwnerProducts();
+  const appOptions = useMemo(() => {
+    const seen = new Map<string, { id: string; name: string }>();
+    for (const a of apps) if (a.workspaceId === f.product) seen.set(a.productId, { id: a.productId, name: a.name });
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [apps, f.product]);
   return (
-    <div className="space-y-2 px-3 pt-3">
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('owner.filter.product')}</span>
+    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+      <Select
+        className="h-9 w-full text-[13px] sm:w-52"
+        aria-label={t('owner.filter.product')}
+        value={f.product}
+        onChange={(e) => {
+          const p = products.find((x) => x.id === e.target.value);
+          change({ product: p?.id ?? '', productCode: p?.code ?? '', app: '' });
+        }}
+        options={[{ value: '', label: t('owner.filter.allProducts') }, ...products.map((p) => ({ value: p.id, label: p.name }))]}
+      />
+      {showApp ? (
         <Select
-          className="h-9 text-[13px]"
-          value={f.product}
-          onChange={(e) => {
-            const p = products.find((x) => x.id === e.target.value);
-            const keepApp = f.app && (apps.data ?? []).some((a) => a.productId === f.app && (!p || a.workspaceId === p.id));
-            change({ product: p?.id ?? '', productCode: p?.code ?? '', app: keepApp ? f.app : '' });
-          }}
-          options={[{ value: '', label: t('owner.filter.allProducts') }, ...products.map((p) => ({ value: p.id, label: p.name }))]}
-        />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t('owner.filter.app')}</span>
-        <Select
-          className="h-9 text-[13px]"
-          value={f.app}
+          className="h-9 w-full text-[13px] sm:w-48"
+          aria-label={t('owner.filter.app')}
+          title={f.product ? undefined : t('owner.filter.pickProductFirst')}
+          disabled={!f.product}
+          value={f.product ? f.app : ''}
           onChange={(e) => change({ ...f, app: e.target.value })}
           options={[{ value: '', label: t('owner.filter.allApps') }, ...appOptions.map((a) => ({ value: a.id, label: a.name }))]}
         />
-      </label>
+      ) : null}
     </div>
   );
 }

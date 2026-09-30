@@ -13,7 +13,7 @@ import { Skeleton } from '@crm/components/ui/spinner';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { cn, relativeTime, timeOfDayGreeting } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
-import { ownerFilterParams, useOwnerFilter } from './owner-filter';
+import { OwnerScopeBar, ownerFilterParams, useOwnerFilter } from './owner-filter';
 
 const kpiIcons: Record<string, LucideIcon> = {
   products: Boxes,
@@ -46,7 +46,8 @@ export function OwnerDashboardPage() {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('owner.dashboard.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <OwnerScopeBar />
           {q.data ? (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Clock className="size-3.5" aria-hidden />

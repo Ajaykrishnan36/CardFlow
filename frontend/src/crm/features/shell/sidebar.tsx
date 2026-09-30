@@ -11,7 +11,6 @@ import { useUI } from '@crm/lib/ui-store';
 import { navIcon } from './nav-icons';
 import { UserMenu } from './user-menu';
 import { setSelectedApp } from '@crm/features/workspace/selected-app';
-import { OwnerFilterPicker } from '@crm/features/owner/owner-filter';
 import { FavoritesNav } from './live';
 
 function groupNav(items: NavItem[]) {
@@ -77,8 +76,6 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
           ) : null}
         </div>
       )}
-
-      {!inWorkspace && isOwner ? <OwnerFilterPicker collapsed={collapsed} /> : null}
 
       {/* Search */}
       <div className={cn('px-3 pt-3', collapsed && 'px-2')}>
