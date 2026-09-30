@@ -6,6 +6,8 @@ import { Badge } from '@crm/components/ui/card';
 import { Tooltip } from '@crm/components/ui/menu';
 import { cn, relativeTime } from '@crm/lib/utils';
 import { humanize, inr, isEmptyValue, parseLocalDate, statusOption } from './use-object-meta';
+import DOMPurify from 'dompurify';
+import { isRichHTML, RichTextView } from '@crm/components/rich-text';
 import { scopedLookupHref, useRecordScope } from './record-scope';
 
 export function EmptyValue() {
@@ -142,6 +144,8 @@ export function FieldValue({
     }
     case 'textarea':
       return <span className={cn(compact ? 'line-clamp-1' : 'whitespace-pre-wrap', className)}>{String(value)}</span>;
+    case 'richtext':
+      return compact ? <span className={cn('line-clamp-1', className)}>{richPreview(String(value))}</span> : <RichTextView value={String(value)} className={className} />;
     case 'number':
     case 'currency':
     case 'percent':
@@ -284,4 +288,12 @@ export function HelpTip({ text }: { text: string }) {
       </button>
     </Tooltip>
   );
+}
+
+/** One line of plain text from rich text (tables, cards). */
+export function richPreview(v: string): string {
+  if (!isRichHTML(v)) return v;
+  const d = document.createElement('div');
+  d.innerHTML = DOMPurify.sanitize(v.replace(/<\/(p|h2|h3|li|blockquote|pre)>/g, ' </$1>'));
+  return (d.textContent ?? '').replace(/\s+/g, ' ').trim();
 }

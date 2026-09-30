@@ -11,6 +11,7 @@ import { cn } from '@crm/lib/utils';
 import { HelpTip } from './field-value';
 import { isoToLocalInput, localInputToIso } from './use-object-meta';
 import { canLookup, useRecordScope } from './record-scope';
+import { RichTextEditor } from '@crm/components/rich-text';
 
 interface ControlProps {
   id?: string;
@@ -56,6 +57,8 @@ export function FieldInput({ field, value, onChange, lookupLabel, links, disable
       return text('url', 'url');
     case 'textarea':
       return <Textarea {...control} disabled={disabled} rows={3} value={str(value)} onChange={(e) => onChange(e.target.value)} />;
+    case 'richtext':
+      return <RichFieldInput value={str(value)} onChange={onChange} disabled={disabled} invalid={Boolean(control.invalid)} label={field.label} />;
     case 'number':
     case 'currency':
     case 'percent':
@@ -583,5 +586,20 @@ function RelationsInput({
         }}
       />
     </div>
+  );
+}
+
+/** Rich text field with @mentions of workspace people (D-75). */
+function RichFieldInput({ value, onChange, disabled, invalid, label }: { value: string; onChange: (v: unknown) => void; disabled?: boolean; invalid?: boolean; label: string }) {
+  const scope = useRecordScope();
+  return (
+    <RichTextEditor
+      value={value}
+      onChange={(html) => onChange(html)}
+      disabled={disabled}
+      invalid={invalid}
+      ariaLabel={label}
+      peopleLookup={(q) => scope.api.lookup('users', q)}
+    />
   );
 }

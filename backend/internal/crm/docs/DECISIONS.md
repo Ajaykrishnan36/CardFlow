@@ -325,6 +325,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
 - **D-74 Owner console filter.** The owner sidebar has two filters: Product (default "All products"), then App
   (default "All apps", listing only the selected product's apps). The Overview cards, Products, Apps and the
   Leads / Accounts / Contacts lists follow it; the setup checklist always covers the whole platform. Kept in the browser.
+- **D-75 Rich text.** A `richtext` field type (TipTap editor: headings, bold/italic/strike, lists, checklists, quotes,
+  code, links, images, @mentions). Notes, task comments and the descriptions of opportunities, events and cases use
+  it (stored definitions are upgraded from long text on start; old plain values still show as they were). HTML is
+  sanitized on the server (bluemonday, safe tags only) and again in the browser (DOMPurify). Images in notes are
+  uploaded to the record's Files. Mentions notify the person with a plain-text preview.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

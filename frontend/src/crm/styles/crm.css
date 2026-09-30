@@ -159,3 +159,28 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Rich text (D-75): notes, task comments, descriptions. */
+.crm-rich { line-height: 1.55; overflow-wrap: anywhere; }
+.crm-rich > * + * { margin-top: 0.4em; }
+.crm-rich h2 { font-size: 1.15em; font-weight: 600; margin-top: 0.6em; }
+.crm-rich h3 { font-size: 1.02em; font-weight: 600; margin-top: 0.5em; }
+.crm-rich ul { list-style: disc; padding-left: 1.25rem; }
+.crm-rich ol { list-style: decimal; padding-left: 1.25rem; }
+.crm-rich li > p { margin: 0; }
+.crm-rich ul[data-type='taskList'] { list-style: none; padding-left: 0.1rem; }
+.crm-rich ul[data-type='taskList'] li { display: flex; align-items: flex-start; gap: 0.45rem; }
+.crm-rich ul[data-type='taskList'] li > label { margin-top: 0.15em; }
+.crm-rich ul[data-type='taskList'] li[data-checked='true'] > div { color: hsl(var(--muted-foreground)); text-decoration: line-through; }
+.crm-rich ul[data-type='taskList'] input[type='checkbox'] { accent-color: hsl(var(--primary)); width: 0.9rem; height: 0.9rem; }
+.crm-rich blockquote { border-left: 3px solid hsl(var(--border)); padding-left: 0.75rem; color: hsl(var(--muted-foreground)); }
+.crm-rich code { background: hsl(var(--muted)); border-radius: 4px; padding: 0.05em 0.3em; font-size: 0.92em; }
+.crm-rich pre { background: hsl(var(--muted)); border-radius: 6px; padding: 0.6rem 0.75rem; overflow-x: auto; }
+.crm-rich pre code { background: none; padding: 0; }
+.crm-rich a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
+.crm-rich img { max-width: 100%; max-height: 360px; border-radius: 6px; border: 1px solid hsl(var(--border)); }
+.crm-rich hr { border-color: hsl(var(--border)); }
+.crm-mention, .crm-rich span[data-type='mention'] { border-radius: 4px; background: hsl(var(--primary-soft)); color: hsl(var(--primary)); font-weight: 500; padding: 0 0.2em; }
+.crm-rich-editor { outline: none; min-height: inherit; }
+.crm-rich-editor p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: hsl(var(--muted-foreground)); float: left; height: 0; pointer-events: none; }
+.crm-rich-editor img.ProseMirror-selectednode { outline: 2px solid hsl(var(--ring)); }

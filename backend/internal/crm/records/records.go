@@ -417,6 +417,18 @@ func coerce(ctx context.Context, q querier, wsID uuid.UUID, f Field, v any) (any
 		return strings.TrimSpace(s), ok
 	}
 	switch f.Type {
+	case "richtext":
+		s, ok := str()
+		if !ok {
+			return nil, "Enter text."
+		}
+		if len(s) > 200_000 {
+			return nil, "This text is too long (at most about 200,000 characters)."
+		}
+		if s = sanitizeRich(s); s == "" {
+			return nil, ""
+		}
+		return s, ""
 	case "text", "textarea", "email", "phone", "url", "select":
 		s, ok := str()
 		if !ok {

@@ -312,9 +312,9 @@ func (h *Handler) handleAddNote(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	in.Body = strings.TrimSpace(in.Body)
-	if in.Body == "" || len(in.Body) > 20_000 {
-		shared.WriteError(w, r, shared.Validation(map[string]string{"body": "Write a note (up to 20,000 characters)."}))
+	in.Body = sanitizeRich(in.Body)
+	if in.Body == "" || len(in.Body) > 200_000 {
+		shared.WriteError(w, r, shared.Validation(map[string]string{"body": "Write a note (it can't be empty or huge)."}))
 		return
 	}
 	if in.Kind != "call" {
@@ -330,8 +330,12 @@ func (h *Handler) handleAddNote(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		// Mentions: @[Name](identity-id) → a notification for each person in the workspace.
-		for _, m := range mentionRe.FindAllStringSubmatch(in.Body, 10) {
-			target, err := uuid.Parse(m[2])
+		preview := mentionRe.ReplaceAllString(richPlain(in.Body), "@$1")
+		if len(preview) > 300 {
+			preview = preview[:300] + "…"
+		}
+		for _, mid := range mentionIDs(in.Body) {
+			target, err := uuid.Parse(mid)
 			if err != nil || target == a.uuidOrNil() {
 				continue
 			}
@@ -339,7 +343,7 @@ func (h *Handler) handleAddNote(w http.ResponseWriter, r *http.Request) {
 			_ = tx.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM crm.memberships WHERE identity_id = $1 AND workspace_id = $2 AND status = 'active')
 				OR EXISTS (SELECT 1 FROM crm.identities WHERE id = $1 AND is_platform_owner)`, target, ws).Scan(&member)
 			if member {
-				h.notify(r.Context(), tx, ws, target, "mention", "You were mentioned on "+title, mentionRe.ReplaceAllString(in.Body, "@$1"),
+				h.notify(r.Context(), tx, ws, target, "mention", "You were mentioned on "+title, preview,
 					recordPath(sc, spec.Key, id), a.ID)
 			}
 		}

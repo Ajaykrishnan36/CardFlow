@@ -1,21 +1,21 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ArrowRightLeft, AtSign, CalendarDays, CheckSquare, FileText, History, Mail, MessageSquare, Phone, PlusCircle, RotateCcw, Smartphone, StickyNote, Trash2, Users
+  ArrowRightLeft, AtSign, CalendarDays, CheckSquare, FileText, History, Mail, MessageSquare, Phone, PlusCircle, RotateCcw, Smartphone, StickyNote, Trash2
 } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { ObjectKey } from '@crm/api/types';
 import type { TimelineItem } from '@crm/api/types-features';
 import { Badge } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
-import { Textarea } from '@crm/components/ui/form-controls';
 import { SegmentedFilter } from '@crm/components/page';
 import { Skeleton } from '@crm/components/ui/spinner';
 import { cn, relativeTime } from '@crm/lib/utils';
 import { guessTone, recordKeys } from './use-object-meta';
+import { RichTextEditor, RichTextView } from '@crm/components/rich-text';
 import { scopedLookupHref, useRecordScope } from './record-scope';
 
 type Kind = 'all' | 'notes' | 'emails' | 'tasks' | 'events' | 'files' | 'history';
@@ -142,7 +142,7 @@ export function RecordTimeline({ object, id, canWrite }: { object: ObjectKey; id
                       ))}
                     </ul>
                   ) : null}
-                  {it.body ? <p className={cn('mt-1 whitespace-pre-wrap text-[13px] text-foreground', it.kind === 'email' && 'line-clamp-6')}>{renderMentions(it.body)}</p> : null}
+                  {it.body ? <RichTextView value={it.body} clamp={it.kind === 'email'} className="mt-1 text-foreground" /> : null}
                 </div>
               </li>
             );
@@ -158,34 +158,12 @@ export function RecordTimeline({ object, id, canWrite }: { object: ObjectKey; id
   );
 }
 
-/** @[Name](id) → a highlighted @Name. */
-function renderMentions(body: string) {
-  const parts = body.split(/(@\[[^\]]+\]\([0-9a-fA-F-]{36}\))/g);
-  return parts.map((p, i) => {
-    const m = /^@\[([^\]]+)\]\(/.exec(p);
-    return m ? (
-      <span key={i} className="rounded bg-primary-soft px-1 font-medium text-primary">
-        @{m[1]}
-      </span>
-    ) : (
-      <span key={i}>{p}</span>
-    );
-  });
-}
-
 function Composer({ object, id }: { object: ObjectKey; id: string }) {
   const { t } = useTranslation();
   const scope = useRecordScope();
   const qc = useQueryClient();
   const [kind, setKind] = useState<'note' | 'call'>('note');
   const [body, setBody] = useState('');
-  const [mention, setMention] = useState<string | null>(null);
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const people = useQuery({
-    queryKey: ['lookup', scope.prefix, 'users', mention ?? ''],
-    queryFn: () => scope.api.lookup('users', mention ?? ''),
-    enabled: mention !== null
-  });
   const add = useMutation({
     mutationFn: () => scope.api.addNote(object, id, { body, kind }),
     onSuccess: () => {
@@ -195,20 +173,14 @@ function Composer({ object, id }: { object: ObjectKey; id: string }) {
     },
     onError: (e) => toast.error(isApiError(e) ? Object.values(e.fieldErrors)[0] ?? e.message : t('common.genericError'))
   });
-  const onType = (v: string) => {
-    setBody(v);
-    const caret = ref.current?.selectionStart ?? v.length;
-    const m = /@([\w.]{0,30})$/.exec(v.slice(0, caret));
-    setMention(m ? m[1]! : null);
-  };
-  const pick = (name: string, pid: string) => {
-    const caret = ref.current?.selectionStart ?? body.length;
-    const before = body.slice(0, caret).replace(/@([\w.]{0,30})$/, `@[${name.split(' · ')[0]}](${pid}) `);
-    setBody(before + body.slice(caret));
-    setMention(null);
-    ref.current?.focus();
+  // Images go to the record's Files, and the note shows them inline.
+  const uploadImage = async (file: File) => {
+    const f = await scope.api.uploadFile(object, id, file);
+    void qc.invalidateQueries({ queryKey: [...recordKeys.detail(scope.prefix, object, id), 'files'] });
+    return scope.api.fileUrl(f.id, true);
   };
   const placeholder = useMemo(() => (kind === 'call' ? t('timeline.callPlaceholder') : t('timeline.notePlaceholder')), [kind, t]);
+  const canSend = Boolean(body.trim());
   return (
     <div className="rounded-lg border bg-muted/20 p-2.5">
       <div className="mb-2 flex gap-1">
@@ -219,29 +191,20 @@ function Composer({ object, id }: { object: ObjectKey; id: string }) {
           </button>
         ))}
       </div>
-      <div className="relative">
-        <Textarea ref={ref} rows={3} value={body} placeholder={placeholder} onChange={(e) => onType(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && body.trim()) add.mutate();
-            if (e.key === 'Escape') setMention(null);
-          }} />
-        {mention !== null && (people.data?.length ?? 0) > 0 ? (
-          <ul className="absolute left-2 top-full z-30 mt-1 w-64 rounded-md border bg-popover p-1 shadow-pop">
-            {people.data!.slice(0, 6).map((p) => (
-              <li key={p.id}>
-                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p.label, p.id)} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] hover:bg-muted">
-                  <Users className="size-3.5 text-muted-foreground" /> <span className="truncate">{p.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
+      <RichTextEditor
+        value={body}
+        onChange={setBody}
+        placeholder={placeholder}
+        ariaLabel={placeholder}
+        peopleLookup={(q) => scope.api.lookup('users', q)}
+        onImage={uploadImage}
+        onSubmit={() => canSend && !add.isPending && add.mutate()}
+      />
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
           <AtSign className="size-3" /> {t('timeline.mentionHint')}
         </span>
-        <Button size="sm" disabled={!body.trim()} loading={add.isPending} onClick={() => add.mutate()}>
+        <Button size="sm" disabled={!canSend} loading={add.isPending} onClick={() => add.mutate()}>
           {kind === 'call' ? t('timeline.logCall') : t('timeline.addNote')}
         </Button>
       </div>

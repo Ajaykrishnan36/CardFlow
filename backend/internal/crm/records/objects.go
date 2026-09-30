@@ -106,7 +106,7 @@ func standardObjects() []ObjectDefinition {
 					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Primary contact", "contacts"),
 					of("amount", "Amount", "currency"), of("probability", "Probability", "percent"), ofReq(of("closeDate", "Close date", "date")),
 					ofSelect("type", "Type", opts("new_business", "New business", "existing_business", "Existing business", "renewal", "Renewal")),
-					ofSelect("leadSource", "Lead source", sources), of("nextStep", "Next step", "text"), of("description", "Description", "textarea")}}},
+					ofSelect("leadSource", "Lead source", sources), of("nextStep", "Next step", "text"), of("description", "Description", "richtext")}}},
 		{Key: "tasks", Module: "tasks", Singular: "Task", Plural: "Tasks", Icon: "check-square", Prefix: "TSK",
 			Description: "To-dos with a due date, priority and the record they're about.",
 			ObjectBody: ObjectBody{NameLabel: "Subject", StatusLabel: "Status", Statuses: []StatusOption{
@@ -115,7 +115,7 @@ func standardObjects() []ObjectDefinition {
 				Fields: []ObjectField{
 					of("dueDate", "Due date", "date"), ofSelect("priority", "Priority", priority),
 					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("leadId", "Lead", "leads"),
-					ofLookup("opportunityId", "Opportunity", "opportunities"), of("description", "Comments", "textarea")}}},
+					ofLookup("opportunityId", "Opportunity", "opportunities"), of("description", "Comments", "richtext")}}},
 		{Key: "events", Module: "calendar", Singular: "Event", Plural: "Calendar events", Icon: "calendar", Prefix: "EVT",
 			Description: "Meetings, calls and visits with a time and place.",
 			ObjectBody: ObjectBody{NameLabel: "Subject", StatusLabel: "Status", Statuses: []StatusOption{
@@ -123,12 +123,12 @@ func standardObjects() []ObjectDefinition {
 				Fields: []ObjectField{
 					ofReq(of("startsAt", "Starts", "datetime")), of("endsAt", "Ends", "datetime"), of("location", "Location", "text"),
 					of("meetingLink", "Meeting link", "url"), ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
-					ofLookup("leadId", "Lead", "leads"), of("description", "Description", "textarea")}}},
+					ofLookup("leadId", "Lead", "leads"), of("description", "Description", "richtext")}}},
 		{Key: "notes", Module: "notes", Singular: "Note", Plural: "Notes", Icon: "sticky-note", Prefix: "NTE",
 			Description: "Notes attached to an account, contact, lead or opportunity.",
 			ObjectBody: ObjectBody{NameLabel: "Title", Statuses: []StatusOption{},
 				Fields: []ObjectField{
-					ofReq(of("body", "Note", "textarea")), ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
+					ofReq(of("body", "Note", "richtext")), ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
 					ofLookup("leadId", "Lead", "leads"), ofLookup("opportunityId", "Opportunity", "opportunities")}}},
 		{Key: "communications", Module: "communications", Singular: "Communication", Plural: "Communications", Icon: "message-square", Prefix: "COM",
 			Description: "A log of emails, SMS, WhatsApp messages and calls with customers.",
@@ -166,7 +166,7 @@ func standardObjects() []ObjectDefinition {
 					ofSelect("priority", "Priority", opts("high", "High", "medium", "Medium", "low", "Low")),
 					ofSelect("origin", "Origin", opts("email", "Email", "phone", "Phone", "web", "Web", "chat", "Chat", "app", "App")),
 					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
-					of("description", "Description", "textarea"), of("resolution", "Resolution", "textarea")}}},
+					of("description", "Description", "richtext"), of("resolution", "Resolution", "richtext")}}},
 	}
 }
 
@@ -245,7 +245,7 @@ func buildSpec(d *ObjectDefinition) *objectSpec {
 		case "text", "email", "phone":
 			search = append(search, "t.custom->>'"+f.Key+"'")
 		}
-		if f.Type == "textarea" {
+		if f.Type == "textarea" || f.Type == "richtext" {
 			long = append(long, f.Key)
 			continue
 		}
@@ -974,12 +974,20 @@ func addMissingStandardOptions(ctx context.Context, tx pgx.Tx, d ObjectDefinitio
 	}
 	changed := false
 	for _, want := range d.Fields {
-		if len(want.Options) == 0 {
+		if len(want.Options) == 0 && want.Type != "richtext" {
 			continue
 		}
 		for i := range stored.Fields {
 			f := &stored.Fields[i]
-			if f.Key != want.Key || (f.Type != "select" && f.Type != "multiselect") {
+			if f.Key != want.Key {
+				continue
+			}
+			// Long text that became rich text (D-75): old plain values still show as they are.
+			if want.Type == "richtext" && f.Type == "textarea" {
+				f.Type = "richtext"
+				changed = true
+			}
+			if f.Type != "select" && f.Type != "multiselect" {
 				continue
 			}
 			have := map[string]bool{}

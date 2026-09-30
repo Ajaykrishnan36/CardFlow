@@ -1,5 +1,22 @@
 // Record page extras: timeline, files, email, merge (merged into the crm bundle at the top level).
 const strings = {
+  richText: {
+    toolbar: 'Formatting',
+    bold: 'Bold (⌘B)',
+    italic: 'Italic (⌘I)',
+    strike: 'Strikethrough',
+    h2: 'Heading',
+    h3: 'Subheading',
+    bullets: 'Bulleted list',
+    numbers: 'Numbered list',
+    checklist: 'Checklist',
+    quote: 'Quote',
+    code: 'Code block',
+    link: 'Link',
+    linkUrl: 'Link address',
+    apply: 'Apply',
+    image: 'Add image'
+  },
   notifications: {
     title: 'Notifications',
     open_one: 'Notifications ({{count}} unread)',

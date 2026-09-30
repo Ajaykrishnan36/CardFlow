@@ -229,7 +229,7 @@ func compileCondition(f Field, op string, value any, env filterEnv, b *sqlBuilde
 		case "ids", "multi":
 			return "(" + expr + " IS NULL OR jsonb_typeof(" + expr + ") <> 'array' OR jsonb_array_length(" + expr + ") = 0)"
 		}
-		if f.inColumn() && (f.Type == "text" || f.Type == "textarea" || f.Type == "email" || f.Type == "phone" || f.Type == "url") {
+		if f.inColumn() && (f.Type == "text" || f.Type == "textarea" || f.Type == "richtext" || f.Type == "email" || f.Type == "phone" || f.Type == "url") {
 			return "NULLIF(" + expr + ", '') IS NULL"
 		}
 		return "(" + expr + ") IS NULL"

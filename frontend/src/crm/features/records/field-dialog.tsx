@@ -20,6 +20,7 @@ type CreatableType = FieldType;
 export const CREATABLE_TYPES: CreatableType[] = [
   'text',
   'textarea',
+  'richtext',
   'fullName',
   'email',
   'emails',

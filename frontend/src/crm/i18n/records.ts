@@ -328,6 +328,7 @@ const strings = {
   types: {
     text: 'Text',
     textarea: 'Long text',
+    richtext: 'Rich text',
     email: 'Email',
     phone: 'Phone',
     url: 'URL',
@@ -352,7 +353,8 @@ const strings = {
   },
   typeHints: {
     text: 'A single line, up to 255 characters.',
-    textarea: 'Several lines of text.',
+    textarea: 'Several lines of plain text.',
+    richtext: 'Formatted text: headings, lists, checklists, links, images and @mentions.',
     email: 'One email address, checked for a valid format.',
     phone: 'One phone number.',
     url: 'One web address.',

@@ -36,7 +36,7 @@ var customTypes = map[string]bool{
 	"text": true, "textarea": true, "email": true, "phone": true, "url": true, "number": true, "currency": true,
 	"percent": true, "date": true, "datetime": true, "select": true, "multiselect": true, "boolean": true,
 	// D-57: richer types (Twenty parity).
-	"rating": true, "address": true, "fullName": true, "emails": true, "phones": true, "links": true, "json": true,
+	"richtext": true, "rating": true, "address": true, "fullName": true, "emails": true, "phones": true, "links": true, "json": true,
 	"lookup": true, "relations": true, "files": true,
 }
 

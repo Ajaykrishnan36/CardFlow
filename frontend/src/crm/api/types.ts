@@ -418,6 +418,7 @@ export type ObjectKey = BuiltinObjectKey | (string & {});
 export type FieldType =
   | 'text'
   | 'textarea'
+  | 'richtext'
   | 'email'
   | 'phone'
   | 'url'

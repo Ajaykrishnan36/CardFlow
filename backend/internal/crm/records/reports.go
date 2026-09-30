@@ -235,7 +235,7 @@ func (h *Handler) runReport(ctx context.Context, sc *Scope, me uuid.UUID, spec *
 	groupSQL, groupKind := "", ""
 	if def.GroupBy != "" {
 		f, ok := byKey[def.GroupBy]
-		if !ok || f.Type == "textarea" || f.Type == "multiselect" {
+		if !ok || f.Type == "textarea" || f.Type == "richtext" || f.Type == "multiselect" {
 			fe["groupBy"] = "Pick a field you can see to group by."
 		} else {
 			group = f
