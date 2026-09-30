@@ -12,6 +12,7 @@ import { HelpTip } from './field-value';
 import { isoToLocalInput, localInputToIso } from './use-object-meta';
 import { canLookup, useRecordScope } from './record-scope';
 import { RichTextEditor } from '@crm/components/rich-text';
+import { CURRENCIES, currencySymbol, defaultCurrency, DIAL_CODES, splitPhone } from '@crm/lib/money';
 
 interface ControlProps {
   id?: string;
@@ -28,12 +29,14 @@ export interface FieldInputProps extends ControlProps {
   /** Current labels of a many-record link (relations). */
   links?: LookupValue[];
   disabled?: boolean;
+  /** Currency fields: the record's current currency for this amount. */
+  currencyHint?: string;
 }
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
 /** Editor control for one field, chosen by FieldType. */
-export function FieldInput({ field, value, onChange, lookupLabel, links, disabled, ...control }: FieldInputProps) {
+export function FieldInput({ field, value, onChange, lookupLabel, links, disabled, currencyHint, ...control }: FieldInputProps) {
   const { t } = useTranslation();
   const scope = useRecordScope();
   const text = (type: string, inputMode?: 'email' | 'tel' | 'url' | 'text') => (
@@ -52,7 +55,9 @@ export function FieldInput({ field, value, onChange, lookupLabel, links, disable
     case 'email':
       return text('email', 'email');
     case 'phone':
-      return text('tel', 'tel');
+      return <PhoneInput control={control} value={str(value)} onChange={onChange} disabled={disabled} />;
+    case 'currency':
+      return <MoneyInput control={control} value={value} onChange={onChange} disabled={disabled} hint={currencyHint} />;
     case 'url':
       return text('url', 'url');
     case 'textarea':
@@ -70,7 +75,6 @@ export function FieldInput({ field, value, onChange, lookupLabel, links, disable
           inputMode="decimal"
           disabled={disabled}
           value={str(value)}
-          leading={field.type === 'currency' ? <span className="text-[13px]">₹</span> : undefined}
           trailing={field.type === 'percent' ? <span className="pr-1.5 text-[13px] text-muted-foreground">%</span> : undefined}
           onChange={(e) => {
             const raw = e.target.value;
@@ -601,5 +605,65 @@ function RichFieldInput({ value, onChange, disabled, invalid, label }: { value: 
       ariaLabel={label}
       peopleLookup={(q) => scope.api.lookup('users', q)}
     />
+  );
+}
+
+/** Amount + its currency (D-76). Emits a number, or {amount, currency} when the currency differs. */
+function MoneyInput({ control, value, onChange, disabled, hint }: { control: ControlProps; value: unknown; onChange: (v: unknown) => void; disabled?: boolean; hint?: string }) {
+  const { t } = useTranslation();
+  const obj = value && typeof value === 'object' && !Array.isArray(value) ? (value as { amount?: unknown; currency?: string }) : null;
+  const amount = obj ? obj.amount : value;
+  const base = hint || defaultCurrency();
+  const code = obj?.currency || base;
+  const emit = (a: unknown, c: string) => onChange(c !== base || obj ? { amount: a, currency: c } : a);
+  return (
+    <div className="flex gap-1.5">
+      <Select
+        className="w-[92px] shrink-0"
+        aria-label={t('records.input.currency')}
+        value={code}
+        disabled={disabled}
+        onChange={(e) => emit(amount ?? null, e.target.value)}
+        options={CURRENCIES.map((c) => ({ value: c, label: `${c} ${currencySymbol(c) !== c ? currencySymbol(c) : ''}`.trim() }))}
+      />
+      <Input
+        {...control}
+        type="number"
+        step="any"
+        inputMode="decimal"
+        disabled={disabled}
+        value={str(amount)}
+        onChange={(e) => {
+          const raw = e.target.value;
+          const n = Number(raw);
+          emit(raw === '' ? null : Number.isFinite(n) ? n : raw, code);
+        }}
+      />
+    </div>
+  );
+}
+
+/** Country calling code + number, stored as "+91 98765 43210". */
+function PhoneInput({ control, value, onChange, disabled }: { control: ControlProps; value: string; onChange: (v: unknown) => void; disabled?: boolean }) {
+  const { t } = useTranslation();
+  const { dial, rest } = splitPhone(value);
+  const [code, setCode] = useState(dial);
+  useEffect(() => setCode(splitPhone(value).dial), [value]);
+  const emit = (c: string, r: string) => onChange(r.trim() ? `${c} ${r.trim()}` : null);
+  return (
+    <div className="flex gap-1.5">
+      <Select
+        className="w-[104px] shrink-0"
+        aria-label={t('records.input.countryCode')}
+        value={code}
+        disabled={disabled}
+        onChange={(e) => {
+          setCode(e.target.value);
+          emit(e.target.value, rest);
+        }}
+        options={DIAL_CODES.map((d) => ({ value: d.code, label: `${d.code} ${d.country}` }))}
+      />
+      <Input {...control} type="tel" inputMode="tel" autoComplete="off" disabled={disabled} value={rest} onChange={(e) => emit(code, e.target.value.replace(/^\+\d*\s*/, ''))} />
+    </div>
   );
 }

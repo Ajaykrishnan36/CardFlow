@@ -60,6 +60,8 @@ const strings = {
     platformNote: 'It will be created in your Platform CRM. To add one to a product, open that product.'
   },
   input: {
+    currency: 'Currency',
+    countryCode: 'Country code',
     selectPlaceholder: '— None —',
     tagsPlaceholder: 'Type and press Enter',
     removeTag: 'Remove {{tag}}',

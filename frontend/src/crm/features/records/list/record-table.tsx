@@ -11,7 +11,8 @@ import { Badge } from '@crm/components/ui/card';
 import { cn } from '@crm/lib/utils';
 import { FieldValue, formatValueText } from '../field-value';
 import { FieldInput } from '../field-input';
-import { inr, recordKeys, sameValue, statusOption } from '../use-object-meta';
+import { recordKeys, sameValue, statusOption } from '../use-object-meta';
+import { formatMoney } from '@crm/lib/money';
 import { recordHref, useRecordScope, type RecordScope } from '../record-scope';
 
 export function rowHref(scope: RecordScope, object: ObjectKey, r: RecordRow): string {
@@ -187,7 +188,7 @@ export function RecordTable({
                       ? Object.entries(a).map(([fn, v]) => (
                           <span key={fn} className="block">
                             <span className="text-muted-foreground">{t(`lists.agg.${fn}`)} </span>
-                            <span className="font-semibold text-foreground">{f.type === 'currency' ? inr.format(v) : v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                            <span className="font-semibold text-foreground">{f.type === 'currency' ? formatMoney(v) : v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
                           </span>
                         ))
                       : null}
@@ -258,6 +259,7 @@ function EditableCell({ object, meta, field, row, editable, py }: { object: Obje
           value={draft}
           lookupLabel={row.lookups[field.key]?.label}
           links={row.links?.[field.key]}
+          currencyHint={row.values[`${field.key}__currency`] as string | undefined}
           disabled={save.isPending}
           onChange={(v) => {
             setDraft(v);

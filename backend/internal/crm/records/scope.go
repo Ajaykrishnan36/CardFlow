@@ -179,6 +179,7 @@ type workspaceContext struct {
 		Code       string    `json:"code"`
 		Name       string    `json:"name"`
 		IsPlatform bool      `json:"isPlatform"`
+		Currency   string    `json:"currency"` // amounts without their own currency use this (D-76)
 	} `json:"workspace"`
 	Role *struct {
 		Key  string `json:"key"`
@@ -297,6 +298,10 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 	var out workspaceContext
 	out.Workspace.ID, out.Workspace.Code, out.Workspace.IsPlatform = sc.WS, sc.Code, sc.IsPlatformWS
 	out.Workspace.Name = displayWorkspaceName(sc.Name, sc.IsPlatformWS)
+	_ = h.store.Pool.QueryRow(r.Context(), `SELECT COALESCE(currency, 'INR') FROM crm.workspaces WHERE id = $1`, sc.WS).Scan(&out.Workspace.Currency)
+	if out.Workspace.Currency == "" {
+		out.Workspace.Currency = "INR"
+	}
 	if sc.Eff.RoleKey != "" {
 		out.Role = &struct {
 			Key  string `json:"key"`

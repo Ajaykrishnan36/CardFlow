@@ -36,3 +36,15 @@ func TestSanitizeRich(t *testing.T) {
 		t.Fatalf("plain: %q", got)
 	}
 }
+
+func TestCurrencyCode(t *testing.T) {
+	if c, msg := currencyCode("usd"); msg != "" || c != "USD" {
+		t.Fatalf("usd: %v %q", c, msg)
+	}
+	if _, msg := currencyCode("XYZ"); msg == "" {
+		t.Fatal("unknown code accepted")
+	}
+	if c, msg := currencyCode(""); msg != "" || c != nil {
+		t.Fatalf("empty should clear: %v %q", c, msg)
+	}
+}

@@ -78,6 +78,12 @@ func decodeRow(raw []byte, spec *objectSpec, fields []Field) (Row, error) {
 		} else {
 			r.Values[f.Key] = custom[f.Key]
 		}
+		// The amount's currency (D-76), next to the number: "amount__currency": "USD".
+		if f.Type == "currency" {
+			if c, ok := custom[f.Key+currencySuffix].(string); ok && c != "" {
+				r.Values[f.Key+currencySuffix] = c
+			}
+		}
 	}
 	r.Code, _ = m["code"].(string)
 	r.CreatedAt, _ = m["createdAt"].(string)
@@ -815,6 +821,32 @@ func buildChanges(ctx context.Context, q querier, wsID uuid.UUID, fields []Field
 		byKey[f.Key] = f
 	}
 	for key, raw := range values {
+		// "amount": {"amount": 1200, "currency": "USD"} or "amount__currency": "USD" (D-76).
+		if base := strings.TrimSuffix(key, currencySuffix); base != key {
+			if f, ok := byKey[base]; ok && f.Type == "currency" && !f.ReadOnly {
+				code, msg := currencyCode(raw)
+				if msg != "" {
+					fe[base] = msg
+				} else {
+					cs.custom[key] = code
+					cs.after[key] = raw
+				}
+				continue
+			}
+		}
+		if f, ok := byKey[key]; ok && f.Type == "currency" {
+			if obj, isObj := raw.(map[string]any); isObj {
+				code, msg := currencyCode(obj["currency"])
+				if msg != "" {
+					fe[key] = msg
+					continue
+				}
+				if code != nil {
+					cs.custom[key+currencySuffix] = code
+				}
+				raw = obj["amount"]
+			}
+		}
 		f, ok := byKey[key]
 		if !ok {
 			fe[key] = "Unknown field."
@@ -940,4 +972,35 @@ func updateRecord(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, spec *objectSp
 		return shared.NewError(409, "version_conflict", "Someone else changed this record. Reload to see the latest version.")
 	}
 	return nil
+}
+
+// Currencies (D-76): an amount keeps its currency next to the number, so totals, filters
+// and reports still work on the number. No code = the product's own currency.
+const currencySuffix = "__currency"
+
+var knownCurrencies = map[string]bool{}
+
+func init() {
+	for _, c := range strings.Fields("INR USD EUR GBP AED SAR QAR KWD OMR BHD SGD MYR THB IDR PHP VND JPY CNY HKD KRW AUD NZD CAD CHF SEK NOK DKK ZAR NGN KES EGP LKR NPR BDT PKR MXN BRL") {
+		knownCurrencies[c] = true
+	}
+}
+
+// currencyCode validates a currency code; nil/"" clears it (back to the product's currency).
+func currencyCode(v any) (any, string) {
+	if v == nil {
+		return nil, ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return nil, "Pick a currency."
+	}
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == "" {
+		return nil, ""
+	}
+	if !knownCurrencies[s] {
+		return nil, "Pick a currency from the list."
+	}
+	return s, ""
 }

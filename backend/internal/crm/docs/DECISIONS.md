@@ -330,6 +330,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   it (stored definitions are upgraded from long text on start; old plain values still show as they were). HTML is
   sanitized on the server (bluemonday, safe tags only) and again in the browser (DOMPurify). Images in notes are
   uploaded to the record's Files. Mentions notify the person with a plain-text preview.
+- **D-76 Currency per amount; phone country codes.** A currency field keeps its number (so totals, filters and
+  reports still work) and stores the amount's currency next to it (`<key>__currency` in the record, returned in
+  `values`). The API also accepts `{"amount": 1200, "currency": "USD"}`. No code = the product's currency
+  (workspaces.currency, INR by default); list totals and board sums use the product's currency. Phone fields get a
+  country calling-code picker and are stored as "+91 98765 43210".
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

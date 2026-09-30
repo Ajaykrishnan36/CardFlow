@@ -753,7 +753,7 @@ export interface AddMembershipBody {
 
 // ---- Workspace app (what a signed-in member sees at /crm/w/:ws) ----
 export interface WorkspaceContext {
-  workspace: { id: string; code: string; name: string; isPlatform: boolean };
+  workspace: { id: string; code: string; name: string; isPlatform: boolean; currency?: string };
   role?: { key: RoleKey; name: string };
   effective: EffectiveAccess;
   navigation: NavItem[];

@@ -11,6 +11,7 @@ import { ErrorState } from '@crm/components/states';
 import { PageContainer } from '@crm/components/page';
 import { RecordScopeProvider, scopeFromContext } from '@crm/features/records/record-scope';
 import { hexToHsl } from '@crm/lib/utils';
+import { setDefaultCurrency } from '@crm/lib/money';
 import { useWorkspaceContextQuery, WorkspaceProvider } from './workspace-context';
 
 /**
@@ -24,6 +25,7 @@ export function WorkspaceLayout() {
   const value = useMemo(() => (q.data ? { code: ws, context: q.data } : null), [q.data, ws]);
   const scope = useMemo(() => (q.data ? scopeFromContext(q.data, ws) : null), [q.data, ws]);
   useProductAccent(q.data?.setup?.accentColor);
+  setDefaultCurrency(q.data?.workspace.currency);
 
   if (q.isPending) {
     return (

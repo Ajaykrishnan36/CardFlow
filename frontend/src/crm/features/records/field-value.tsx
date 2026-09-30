@@ -5,9 +5,10 @@ import type { FieldDef, LookupValue, ObjectMeta, RecordRow } from '@crm/api/type
 import { Badge } from '@crm/components/ui/card';
 import { Tooltip } from '@crm/components/ui/menu';
 import { cn, relativeTime } from '@crm/lib/utils';
-import { humanize, inr, isEmptyValue, parseLocalDate, statusOption } from './use-object-meta';
+import { humanize, isEmptyValue, parseLocalDate, statusOption } from './use-object-meta';
 import DOMPurify from 'dompurify';
 import { isRichHTML, RichTextView } from '@crm/components/rich-text';
+import { formatMoney } from '@crm/lib/money';
 import { scopedLookupHref, useRecordScope } from './record-scope';
 
 export function EmptyValue() {
@@ -38,7 +39,7 @@ function asNumber(v: unknown): number | null {
 }
 
 /** Plain-text rendering (card lists, titles, aria labels). */
-export function formatValueText(field: FieldDef, value: unknown, lookup?: LookupValue): string {
+export function formatValueText(field: FieldDef, value: unknown, lookup?: LookupValue, currency?: string): string {
   if (isEmptyValue(value)) return '—';
   switch (field.type) {
     case 'number': {
@@ -47,7 +48,7 @@ export function formatValueText(field: FieldDef, value: unknown, lookup?: Lookup
     }
     case 'currency': {
       const n = asNumber(value);
-      return n === null ? String(value) : inr.format(n);
+      return n === null ? String(value) : formatMoney(n, currency);
     }
     case 'percent': {
       const n = asNumber(value);
@@ -149,7 +150,7 @@ export function FieldValue({
     case 'number':
     case 'currency':
     case 'percent':
-      return <span className={cn('tabular-nums', className)}>{formatValueText(field, value)}</span>;
+      return <span className={cn('tabular-nums', className)}>{formatValueText(field, value, undefined, record.values[`${field.key}__currency`] as string | undefined)}</span>;
     case 'date':
       return <span className={cn('whitespace-nowrap', className)}>{formatDate(value)}</span>;
     case 'datetime': {

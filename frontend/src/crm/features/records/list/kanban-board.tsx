@@ -13,7 +13,8 @@ import { Skeleton } from '@crm/components/ui/spinner';
 import { ErrorState } from '@crm/components/states';
 import { cn } from '@crm/lib/utils';
 import { FieldValue } from '../field-value';
-import { inr, recordKeys } from '../use-object-meta';
+import { recordKeys } from '../use-object-meta';
+import { formatMoney } from '@crm/lib/money';
 import { useRecordScope } from '../record-scope';
 import { rowHref } from './record-table';
 import { withCondition } from './filter-utils';
@@ -128,7 +129,7 @@ export function KanbanBoard({
               <span className={cn('size-2 rounded-full', toneBar[g.tone ?? 'neutral'])} aria-hidden />
               <h3 className="truncate text-[13px] font-semibold">{g.label}</h3>
               <span className="rounded-full bg-background px-1.5 text-[11px] tabular-nums text-muted-foreground">{g.count}</span>
-              {amountField && total > 0 ? <span className="ml-auto text-[11px] font-medium tabular-nums text-muted-foreground">{inr.format(total)}</span> : null}
+              {amountField && total > 0 ? <span className="ml-auto text-[11px] font-medium tabular-nums text-muted-foreground">{formatMoney(total)}</span> : null}
               {onNew && canEdit && g.value ? (
                 <Button variant="subtle" size="icon-sm" className={cn(!(amountField && total > 0) && 'ml-auto')} onClick={() => onNew({ [groupField.key]: g.value })}
                   aria-label={t('lists.board.addIn', { column: g.label })}>

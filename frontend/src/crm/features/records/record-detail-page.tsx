@@ -614,7 +614,7 @@ function FieldCell({
   if (editing && canEdit && !field.readOnly) {
     return (
       <div data-field-key={field.key} className="py-2">
-        <FieldEditor field={field} value={value} onChange={onChange} error={error} disabled={disabled} lookupLabel={record.lookups[field.key]?.label} links={record.links?.[field.key]} />
+        <FieldEditor field={field} value={value} onChange={onChange} error={error} disabled={disabled} lookupLabel={record.lookups[field.key]?.label} links={record.links?.[field.key]} currencyHint={record.values[`${field.key}__currency`] as string | undefined} />
       </div>
     );
   }
