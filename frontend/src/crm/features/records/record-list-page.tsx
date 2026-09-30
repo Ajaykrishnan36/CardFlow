@@ -29,6 +29,7 @@ import { cleanFilter, countConditions, withCondition } from './list/filter-utils
 import { RecordTable, rowHref, WorkspaceChip } from './list/record-table';
 import { KanbanBoard } from './list/kanban-board';
 import { CalendarView } from './list/calendar-view';
+import { BinRetentionNote } from './list/bin-retention';
 import { BulkBar } from './list/bulk-bar';
 import { useOwnerFilter } from '@crm/features/owner/owner-filter';
 import { GroupedTable } from './list/grouped-table';
@@ -476,7 +477,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
           )
         ) : (
           <div className={cn('transition-opacity', listQ.isPlaceholderData && 'opacity-60')}>
-            {binMode ? <p className="border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">{t('lists.bin.hint')}</p> : null}
+            {binMode ? <BinRetentionNote /> : null}
             <RecordTable
               object={object}
               meta={meta}

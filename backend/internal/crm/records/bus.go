@@ -185,6 +185,7 @@ func (h *Handler) workOnce(ctx context.Context) {
 	h.runDueWorkflows(c)
 	h.sendDueCampaigns(c)
 	h.syncDueMailboxes(c)
+	h.purgeRecycleBins(c)
 	h.scheduleNextWake(c)
 }
 
@@ -198,7 +199,8 @@ func (h *Handler) scheduleNextWake(ctx context.Context) {
 			UNION ALL SELECT min(next_run_at) FROM crm.workflows WHERE status = 'active' AND next_run_at IS NOT NULL
 			UNION ALL SELECT min(scheduled_at) FROM crm.campaigns WHERE status = 'scheduled'
 			UNION ALL SELECT min(COALESCE(last_synced_at, now() - interval '2 hours') + interval '1 hour') FROM crm.mail_accounts WHERE status = 'active'
-		) x`).Scan(&next)
+			UNION ALL SELECT CASE WHEN EXISTS (SELECT 1 FROM crm.workspaces WHERE bin_retention_days IS NOT NULL) THEN $1::timestamptz END
+		) x`, nextBinPurge()).Scan(&next)
 	if err != nil {
 		slog.Error("CRM worker schedule", "error", err)
 		return

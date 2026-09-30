@@ -185,6 +185,8 @@ func (h *Handler) workspaceRoutes(r chi.Router) {
 	r.Put("/sso", h.handleSaveSSO)
 	r.Delete("/sso", h.handleDeleteSSO)
 	r.Get("/invite-link", h.handleGetInviteLink)
+	r.Get("/recycle-bin", h.handleGetBinSettings)
+	r.Put("/recycle-bin", h.handleSaveBinSettings)
 	r.Put("/invite-link", h.handleSaveInviteLink)
 
 	h.workspaceObjectRoutes(r)

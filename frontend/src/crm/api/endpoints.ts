@@ -504,6 +504,9 @@ export function workspaceToolsApi(code: string) {
       api<SSOSettings>(`${base}/sso`, { method: 'PUT', body }),
     deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' }),
     inviteLink: () => api<InviteLinkSettings>(`${base}/invite-link`),
+    /** Recycle bin retention (D-84): null keeps deleted records until someone removes them. */
+    binSettings: () => api<{ retentionDays: number | null }>(`${base}/recycle-bin`),
+    saveBinSettings: (body: { retentionDays: number | null }) => api<{ retentionDays: number | null }>(`${base}/recycle-bin`, { method: 'PUT', body }),
     saveInviteLink: (body: { enabled: boolean; domains: string[]; roleKey: string; regenerate?: boolean }) =>
       api<InviteLinkSettings>(`${base}/invite-link`, { method: 'PUT', body })
   };

@@ -372,6 +372,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   account; someone who already has an account joins the product without their password changing; a removed or
   suspended membership isn't brought back. The link can be switched off or replaced (the old one stops at once), and
   counts its uses. The token is stored hashed for look-up and encrypted to show it again. Additive migration 0015.
+- **D-84 Recycle bin retention (opt-in).** By default deleted records stay in the recycle bin until someone restores
+  or deletes them, as before. People who manage access can choose, from the bin, to delete bin items for good 30, 60,
+  90, 180 or 365 days after they were deleted (with a warning that it can't be undone). The worker checks at most
+  hourly, removes up to 500 records a run through the same path as "Delete permanently" (links cleared, audit entry by
+  the system), and skips records still in use. Nothing changes for products that don't opt in. Additive migration 0016.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed
