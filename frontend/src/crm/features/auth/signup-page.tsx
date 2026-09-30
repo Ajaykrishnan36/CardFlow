@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, MailCheck } from 'lucide-react';
 import { authApi, signInApi } from '@crm/api/endpoints';
@@ -16,14 +16,20 @@ import { useAfterAuth } from '@crm/auth/session';
 import { AuthHeading, AuthLayout } from './auth-layout';
 import { useDocumentTitle } from './login-pages';
 
-/** /crm/signup?product=<code> — self sign-up, only for products whose setup allows it (D-69). */
+/**
+ * /crm/signup?product=<code> — self sign-up, only for products whose setup allows it (D-69).
+ * /crm/join/<token> — a product's invite link, for people on its company email domains (D-83).
+ */
 export function SignupPage() {
   const { t } = useTranslation();
-  useDocumentTitle(t('auth.signup.title'));
   const [params] = useSearchParams();
-  const product = (params.get('product') ?? '').trim().toLowerCase();
+  const { token } = useParams();
+  const invite = token?.trim() || undefined;
+  const link = useQuery({ queryKey: ['auth', 'invite-link', invite], queryFn: () => authApi.inviteLink(invite!), enabled: Boolean(invite), retry: false });
+  useDocumentTitle(link.data ? t('auth.signup.joinTitle', { name: link.data.name }) : t('auth.signup.title'));
+  const product = invite ? link.data?.product ?? '' : (params.get('product') ?? '').trim().toLowerCase();
   const afterAuth = useAfterAuth();
-  const methods = useQuery({ queryKey: ['auth', 'methods', product], queryFn: () => signInApi.methods(product), enabled: Boolean(product), retry: false });
+  const methods = useQuery({ queryKey: ['auth', 'methods', product], queryFn: () => signInApi.methods(product), enabled: Boolean(product) && !invite, retry: false });
   const [step, setStep] = useState<'details' | 'code'>('details');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,7 +54,7 @@ export function SignupPage() {
     if (!name.trim() || !email.trim()) return setError(t('auth.signup.fillIn'));
     setBusy(true);
     try {
-      const r = await authApi.requestSignup({ product, name: name.trim(), email: email.trim() });
+      const r = await authApi.requestSignup({ product, name: name.trim(), email: email.trim(), invite });
       setDevCode(r.devCode);
       setStep('code');
     } catch (err) {
@@ -64,7 +70,7 @@ export function SignupPage() {
     setFieldErrors({});
     setBusy(true);
     try {
-      const step = await authApi.completeSignup({ product, name: name.trim(), email: email.trim(), code: value, password: password || undefined });
+      const step = await authApi.completeSignup({ product, name: name.trim(), email: email.trim(), code: value, password: password || undefined, invite });
       await afterAuth(step.next, null);
     } catch (err) {
       fail(err);
@@ -72,21 +78,28 @@ export function SignupPage() {
     }
   };
 
-  const closed = !product || (methods.data && !methods.data.signup);
+  const closed = invite ? link.isError : !product || (methods.data && !methods.data.signup);
+  const domains = (link.data?.domains ?? []).map((d) => '@' + d).join(', ');
   return (
     <AuthLayout>
-      {product && methods.isPending ? (
+      {(invite && link.isPending) || (!invite && product && methods.isPending) ? (
         <Spinner className="size-5 text-muted-foreground" label={t('common.loading')} />
       ) : closed ? (
         <>
-          <AuthHeading title={t('auth.signup.closedTitle')} subtitle={t('auth.signup.closedBody')} />
+          <AuthHeading
+            title={invite ? t('auth.signup.linkInvalidTitle') : t('auth.signup.closedTitle')}
+            subtitle={invite ? (isApiError(link.error) ? link.error.message : t('auth.signup.linkInvalidBody')) : t('auth.signup.closedBody')}
+          />
           <Button asChild size="lg" className="w-full">
             <Link to={product ? loginHref : '/crm/login'}>{t('auth.signup.goSignIn')}</Link>
           </Button>
         </>
       ) : step === 'details' ? (
         <>
-          <AuthHeading title={t('auth.signup.title')} subtitle={t('auth.signup.subtitle')} />
+          <AuthHeading
+            title={invite ? t('auth.signup.joinTitle', { name: link.data?.name }) : t('auth.signup.title')}
+            subtitle={invite ? t('auth.signup.joinSubtitle', { domains }) : t('auth.signup.subtitle')}
+          />
           <form onSubmit={request} noValidate className="space-y-5">
             {error ? (
               <Alert tone="danger">{error}</Alert>
@@ -95,7 +108,7 @@ export function SignupPage() {
               <Input value={name} onChange={(e) => setName(e.target.value)} inputSize="lg" autoComplete="name" autoFocus maxLength={120} />
             </Field>
             <Field label={t('auth.signup.email')} error={fieldErrors.email}>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} inputSize="lg" type="email" autoComplete="email" placeholder="you@company.com" />
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} inputSize="lg" type="email" autoComplete="email" placeholder={link.data?.domains[0] ? `you@${link.data.domains[0]}` : 'you@company.com'} />
             </Field>
             <Button type="submit" size="lg" className="w-full" loading={busy}>
               {t('auth.signup.sendCode')} <ArrowRight />
@@ -115,11 +128,11 @@ export function SignupPage() {
             {devCode ? <p className="rounded-md border border-dashed border-warning/50 bg-warning-soft px-3 py-2 text-[13px] font-medium">{t('auth.login.devCode', { code: devCode })}</p> : null}
             {error ? <Alert tone="danger">{error}</Alert> : null}
             <OtpInput label={t('auth.login.codeLabel')} value={code} onChange={setCode} invalid={Boolean(error || fieldErrors.code)} disabled={busy} autoFocus />
-            <Field label={t('auth.signup.password')} hint={t('auth.signup.passwordHint')} error={fieldErrors.password}>
+            <Field label={t('auth.signup.password')} hint={invite ? t('auth.signup.passwordHintJoin') : t('auth.signup.passwordHint')} error={fieldErrors.password}>
               <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} inputSize="lg" autoComplete="new-password" />
             </Field>
             <Button type="submit" size="lg" className="w-full" loading={busy} disabled={code.length !== 6}>
-              {t('auth.signup.create')}
+              {invite ? t('auth.signup.join') : t('auth.signup.create')}
             </Button>
             <Button type="button" variant="link" onClick={() => setStep('details')}>
               {t('auth.signup.changeEmail')}

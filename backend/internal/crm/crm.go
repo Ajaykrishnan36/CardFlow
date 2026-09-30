@@ -109,6 +109,18 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		t.Allowed = setup.SelfRegistration
 		return t, nil
 	})
+	identity.SetInvitePolicy(func(ctx context.Context, token string) (identity.SignupTarget, error) {
+		t := identity.SignupTarget{Invite: true}
+		var status string
+		err := st.Pool.QueryRow(ctx, `SELECT w.id, w.name, w.code, l.domains, l.role_key, l.status FROM crm.invite_links l
+			JOIN crm.workspaces w ON w.id = l.workspace_id WHERE l.token_hash = $1 AND w.status = 'active' AND NOT w.is_platform`, shared.HashToken(token)).
+			Scan(&t.WorkspaceID, &t.Name, &t.Code, &t.Domains, &t.RoleKey, &status)
+		if err != nil {
+			return t, nil // unknown link: not allowed
+		}
+		t.Allowed = status == "active" && len(t.Domains) > 0 && t.RoleKey != "SUPER_ADMIN"
+		return t, nil
+	})
 	// Standard and custom objects (D-45): seed, create their views, load the catalog.
 	objCtx, cancelObj := context.WithTimeout(context.Background(), 60*time.Second)
 	err := m.records.LoadObjects(objCtx)

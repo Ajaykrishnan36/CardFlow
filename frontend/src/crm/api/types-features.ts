@@ -391,3 +391,14 @@ export interface EmailThread {
   participants: string[];
   messages: ThreadMessage[];
 }
+
+/** A product's shareable invite link (D-83). */
+export interface InviteLinkSettings {
+  configured: boolean;
+  enabled: boolean;
+  url?: string;
+  domains: string[];
+  roleKey: string;
+  uses: number;
+  updatedAt?: string;
+}

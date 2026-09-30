@@ -365,6 +365,13 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   as for SAML. /auth/sso/<code>/start picks the protocol (the old SAML start link keeps working). Sessions now record
   the real sign-in method (it was always stored as "password", so SSO-only products would have refused them).
   Additive migration 0014.
+- **D-83 Invite link for company domains.** In Users & access, people who manage access create one shareable link per
+  product: the company email domains that may use it (personal services like gmail.com are refused) and the role
+  joiners get (never Super admin). Opening /crm/join/<token> asks for a name and work email; an address off those
+  domains is refused, and the email is proved with a one-time code before anything is created. A new person gets an
+  account; someone who already has an account joins the product without their password changing; a removed or
+  suspended membership isn't brought back. The link can be switched off or replaced (the old one stops at once), and
+  counts its uses. The token is stored hashed for look-up and encrypted to show it again. Additive migration 0015.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

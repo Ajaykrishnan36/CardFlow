@@ -61,6 +61,27 @@ const strings = {
     send: 'Send email',
     sent: 'Email sent.'
   },
+  inviteLink: {
+    title: 'Invite link',
+    body: 'Share one link with your team. People with an email on your company domains join with the role below; anyone else still needs an invitation.',
+    on: 'On',
+    off: 'Off',
+    link: 'Invite link',
+    uses_one: 'Used once',
+    uses_other: 'Used {{count}} times',
+    domains: 'Company email domains',
+    domainsHint: 'Only these addresses can join, e.g. acme.com. Personal addresses like gmail.com aren’t allowed.',
+    role: 'Role for people who join',
+    enabled: 'Link works',
+    enabledHint: 'Off keeps the link but stops new people joining with it.',
+    create: 'Create link',
+    save: 'Save',
+    saved: 'Invite link saved.',
+    regenerate: 'New link',
+    regenerated: 'New invite link made — the old one no longer works.',
+    regenerateTitle: 'Make a new invite link?',
+    regenerateBody: 'The current link stops working straight away. People who already joined keep their access.'
+  },
   shortcuts: {
     title: 'Keyboard shortcuts',
     subtitle: 'Press ? anywhere to see this list. Shortcuts don’t fire while you type in a field.',

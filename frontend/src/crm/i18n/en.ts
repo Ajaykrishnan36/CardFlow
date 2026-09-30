@@ -64,7 +64,13 @@ const en = {
       changeEmail: 'Use a different email',
       closedTitle: 'Sign-up is by invitation',
       closedBody: 'This product doesn’t let people sign up themselves. Ask its administrator to invite you.',
-      goSignIn: 'Go to sign in'
+      goSignIn: 'Go to sign in',
+      joinTitle: 'Join {{name}}',
+      joinSubtitle: 'Use your work email ({{domains}}). We’ll send a code to confirm it’s yours.',
+      join: 'Join',
+      passwordHintJoin: 'Only for new accounts. If you already have one, it keeps its password.',
+      linkInvalidTitle: 'This invite link doesn’t work',
+      linkInvalidBody: 'It was turned off or replaced. Ask the product’s administrator for a new one.'
     },
     login: {
       title: 'Welcome back',

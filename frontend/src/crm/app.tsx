@@ -121,6 +121,7 @@ function AppRoutes() {
         <Route path="/crm/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/crm/reset-password" element={<ResetPasswordPage />} />
         <Route path="/crm/accept-invite" element={<AcceptInvitePage />} />
+        <Route path="/crm/join/:token" element={<SignupPage />} />
 
         <Route element={<RequireSession step />}>
           <Route path="/crm/mfa/verify" element={<MfaVerifyPage />} />

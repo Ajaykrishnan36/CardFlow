@@ -1,7 +1,7 @@
 import { api, API_BASE, ApiError } from './client';
 import type {
   ApiKey, ApiKeysResponse, AppNotification, BulkResult, Campaign, CampaignRecipient, Favorite, FileInfo, FilterNode, ImportResult, MailboxesResponse,
-  EmailThread, RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
+  EmailThread, InviteLinkSettings, RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
 } from './types-features';
 import type {
   DashboardDetail,
@@ -99,10 +99,12 @@ export const authApi = {
   verifyOtp: (body: { identifier: string; code: string; audience: 'owner' | 'workspace' }) =>
     api<AuthStep>('/auth/otp/verify', { method: 'POST', body }),
   /** Self sign-up (only products whose setup allows it): email a code, then create the account. */
-  requestSignup: (body: { product: string; name: string; email: string }) =>
+  requestSignup: (body: { product: string; name: string; email: string; invite?: string }) =>
     api<{ sent: boolean; expiresIn: number; devCode?: string }>('/auth/signup/request', { method: 'POST', body }),
-  completeSignup: (body: { product: string; name: string; email: string; code: string; password?: string }) =>
+  completeSignup: (body: { product: string; name: string; email: string; code: string; password?: string; invite?: string }) =>
     api<AuthStep>('/auth/signup/verify', { method: 'POST', body }),
+  /** What a product's invite link joins (D-83). */
+  inviteLink: (token: string) => api<{ product: string; name: string; domains: string[] }>(`/auth/join/${enc(token)}`),
   logout: () => api<void>('/auth/logout', { method: 'POST' }),
   logoutAll: () => api<void>('/auth/logout-all', { method: 'POST' }),
   verifyMfa: (code: string) => api<NextStep>('/auth/mfa/verify', { method: 'POST', body: { code } }),
@@ -500,7 +502,10 @@ export function workspaceToolsApi(code: string) {
     sso: () => api<SSOSettings>(`${base}/sso`),
     saveSso: (body: { kind: 'saml' | 'oidc'; oidcIssuer?: string; oidcClientId?: string; oidcClientSecret?: string; enabled: boolean; name?: string; idpMetadataXml?: string; idpMetadataUrl?: string; domains: string[]; jitProvisioning: boolean; defaultRoleKey: string }) =>
       api<SSOSettings>(`${base}/sso`, { method: 'PUT', body }),
-    deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' })
+    deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' }),
+    inviteLink: () => api<InviteLinkSettings>(`${base}/invite-link`),
+    saveInviteLink: (body: { enabled: boolean; domains: string[]; roleKey: string; regenerate?: boolean }) =>
+      api<InviteLinkSettings>(`${base}/invite-link`, { method: 'PUT', body })
   };
 }
 export type WorkspaceToolsApi = ReturnType<typeof workspaceToolsApi>;

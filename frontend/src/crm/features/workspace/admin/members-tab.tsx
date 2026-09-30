@@ -20,6 +20,7 @@ import { cn, relativeTime } from '@crm/lib/utils';
 import { Avatar } from '@crm/features/shell/user-menu';
 import { EffectiveAccessMatrix } from '@crm/features/access/effective-access';
 import { guessTone, humanize } from '@crm/features/records/use-object-meta';
+import { InviteLinkCard } from '@crm/features/tools/invite-link-card';
 import { adminErrorMessage, adminKeys, exceedingGrants, useAdminMembers, useInvalidateAdmin } from './admin-utils';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -183,6 +184,7 @@ export function MembersTab({ code, options }: { code: string; options: Workspace
       {invitations.length ? <InvitationsCard invitations={invitations} /> : null}
 
       <MemberDialog code={code} options={options} member={selected} onClose={() => setSelected(null)} />
+      <InviteLinkCard />
       <InviteDialog code={code} options={options} open={inviteOpen} onOpenChange={setInviteOpen} />
     </div>
   );
