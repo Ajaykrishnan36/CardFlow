@@ -356,3 +356,32 @@ export interface SSOSettings {
   updatedAt?: string;
   loginMethodOn: boolean;
 }
+
+/** Email conversations on a record (D-80). */
+export interface ThreadMessage {
+  id: string;
+  direction: 'inbound' | 'outbound';
+  from: string;
+  fromName?: string;
+  to: string[];
+  cc: string[] | null;
+  subject: string;
+  body?: string;
+  html?: string;
+  status: string;
+  error?: string;
+  at: string;
+  /** The mailbox owner shares less: "body" hides the text, "all" hides the subject too. */
+  hidden?: 'body' | 'all';
+  mailboxId?: string;
+}
+
+export interface EmailThread {
+  id: string;
+  subject: string;
+  count: number;
+  lastAt: string;
+  snippet: string;
+  participants: string[];
+  messages: ThreadMessage[];
+}

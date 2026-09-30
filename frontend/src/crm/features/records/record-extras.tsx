@@ -10,9 +10,10 @@ import { Alert } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
 import { Input } from '@crm/components/ui/input';
 import { Field } from '@crm/components/ui/field';
-import { Select, Textarea } from '@crm/components/ui/form-controls';
+import { Select } from '@crm/components/ui/form-controls';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/components/ui/menu';
 import { Skeleton } from '@crm/components/ui/spinner';
+import { RichTextEditor } from '@crm/components/rich-text';
 import { relativeTime } from '@crm/lib/utils';
 import { formatValueText } from './field-value';
 import { recordKeys } from './use-object-meta';
@@ -117,16 +118,16 @@ export function EmailDialog({ object, record, open, onOpenChange, defaultTo }: {
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState('');
   const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [html, setHtml] = useState('');
   const [mailboxId, setMailboxId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const send = useMutation({
-    mutationFn: () => scope.api.sendEmail(object, record.id, { to: [to], cc: cc ? [cc] : [], subject, body, mailboxId: mailboxId || undefined }),
+    mutationFn: () => scope.api.sendEmail(object, record.id, { to: [to], cc: cc ? [cc] : [], subject, html, mailboxId: mailboxId || undefined }),
     onSuccess: () => {
       toast.success(t('email.sent'));
       onOpenChange(false);
       setSubject('');
-      setBody('');
+      setHtml('');
       void qc.invalidateQueries({ queryKey: recordKeys.detail(scope.prefix, object, record.id) });
     },
     onError: (e) => setError(isApiError(e) ? Object.values(e.fieldErrors)[0] ?? e.message : t('common.genericError'))
@@ -172,7 +173,7 @@ export function EmailDialog({ object, record, open, onOpenChange, defaultTo }: {
             <Input required maxLength={250} value={subject} onChange={(e) => setSubject(e.target.value)} />
           </Field>
           <Field label={t('email.message')}>
-            <Textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} />
+            <RichTextEditor value={html} onChange={setHtml} minHeight={160} ariaLabel={t('email.message')} />
           </Field>
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

@@ -61,6 +61,26 @@ const strings = {
     send: 'Send email',
     sent: 'Email sent.'
   },
+  emails: {
+    loadError: 'Couldn’t load the emails',
+    count_one: '{{count}} conversation',
+    count_other: '{{count}} conversations',
+    new: 'New email',
+    noneTitle: 'No emails yet',
+    noneBody: 'Emails you send from here, and synced emails with this person, show up as conversations.',
+    private: 'Private email',
+    back: 'Back to conversations',
+    messages_one: '{{count}} message',
+    messages_other: '{{count}} messages',
+    reply: 'Reply',
+    replyAll: 'Reply all',
+    replyPlaceholder: 'Write your reply… (⌘/Ctrl + Enter to send)',
+    send: 'Send reply',
+    failed: 'Not sent',
+    toLine: 'To {{to}}',
+    ccLine: 'Cc {{cc}}',
+    hiddenBody: 'The mailbox owner shares only the subject of this email.'
+  },
   merge: {
     title: 'Merge duplicates of {{name}}',
     subtitle: 'Keep this record and fold a duplicate into it. Everything linked to the duplicate moves here.',

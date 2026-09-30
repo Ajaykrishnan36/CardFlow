@@ -1,7 +1,7 @@
 import { api, API_BASE, ApiError } from './client';
 import type {
   ApiKey, ApiKeysResponse, AppNotification, BulkResult, Campaign, CampaignRecipient, Favorite, FileInfo, FilterNode, ImportResult, MailboxesResponse,
-  RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
+  EmailThread, RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
 } from './types-features';
 import type {
   DashboardDetail,
@@ -278,8 +278,9 @@ export function recordsApiFor(prefix: string) {
   uploadFile: (object: ObjectKey, id: string, file: File, field?: string) => uploadForm<FileInfo>(`${prefix}/crm/${object}/${enc(id)}/files`, file, field),
   fileUrl: (fileId: string, inline = false) => `${API_BASE}${prefix}/files/${enc(fileId)}${inline ? '?inline=1' : ''}`,
   deleteFile: (fileId: string) => api<void>(`${prefix}/files/${enc(fileId)}`, { method: 'DELETE' }),
-  sendEmail: (object: ObjectKey, id: string, body: { to: string[]; cc?: string[]; subject: string; body: string; mailboxId?: string }) =>
+  sendEmail: (object: ObjectKey, id: string, body: { to: string[]; cc?: string[]; subject?: string; body?: string; html?: string; mailboxId?: string; replyTo?: string }) =>
     api<{ id: string; status: string }>(`${prefix}/crm/${object}/${enc(id)}/email`, { method: 'POST', body }),
+  emailThreads: (object: ObjectKey, id: string) => api<{ data: EmailThread[] }>(`${prefix}/crm/${object}/${enc(id)}/emails`).then((r) => r.data),
   sendCommunication: (id: string, body: { mailboxId?: string; to?: string[] } = {}) =>
     api<RecordRow>(`${prefix}/crm/communications/${enc(id)}/send`, { method: 'POST', body }),
 

@@ -17,6 +17,7 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { GiveLoginDialog } from '@crm/features/access/give-login-dialog';
 import { ConvertLeadDialog } from './convert-dialog';
 import { RecordTimeline } from './record-timeline';
+import { RecordEmails } from './record-emails';
 import { EmailDialog, MergeDialog, RecordFiles, useDuplicates } from './record-extras';
 import { FieldEditor } from './field-input';
 import { FieldLabel, FieldValue } from './field-value';
@@ -33,7 +34,7 @@ export function RecordDetailPage({ object }: { object: ObjectKey }) {
   return <RecordDetailView key={id} object={object} id={id} />;
 }
 
-type Tab = 'details' | 'activity' | 'related' | 'files';
+type Tab = 'details' | 'activity' | 'emails' | 'related' | 'files';
 
 function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   const { t } = useTranslation();
@@ -422,6 +423,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
               items={[
                 { value: 'details', label: t('records.detail.tabDetails') },
                 { value: 'activity', label: t('records.detail.tabActivity') },
+                ...(email ? [{ value: 'emails' as Tab, label: t('records.detail.tabEmails') }] : []),
                 {
                   value: 'related',
                   label: (
@@ -506,6 +508,8 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
               </div>
             ) : tab === 'activity' ? (
               <RecordTimeline object={object} id={id} canWrite={scope.can(object, 'read')} />
+            ) : tab === 'emails' ? (
+              <RecordEmails object={object} id={id} canSend={canEmail} onNewEmail={() => setEmailOpen(true)} />
             ) : tab === 'files' ? (
               <RecordFiles object={object} id={id} canWrite={canEdit} />
             ) : (

@@ -113,6 +113,7 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 	r.Post(prefix+"/crm/{object}/{id}/files", h.handleUploadFile)
 	r.Get(prefix+"/crm/{object}/{id}/duplicates", h.handleDuplicates)
 	r.Post(prefix+"/crm/{object}/{id}/email", h.handleSendRecordEmail)
+	r.Get(prefix+"/crm/{object}/{id}/emails", h.handleEmailThreads)
 	r.Post(prefix+"/crm/leads/{id}/convert", h.handleConvert)
 	r.Post(prefix+"/crm/communications/{id}/send", h.handleSendCommunication)
 

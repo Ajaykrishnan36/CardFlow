@@ -105,6 +105,7 @@ const strings = {
     tabDetails: 'Details',
     tabRelated: 'Related',
     tabActivity: 'Activity',
+    tabEmails: 'Emails',
     tabFiles: 'Files',
     sendEmail: 'Send email',
     merge: 'Merge duplicates',

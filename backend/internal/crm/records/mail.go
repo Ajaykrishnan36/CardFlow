@@ -48,6 +48,27 @@ type emailInput struct {
 	Body      string     `json:"body"` // plain text; line breaks kept
 	HTML      string     `json:"html,omitempty"`
 	MailboxID *uuid.UUID `json:"mailboxId,omitempty"`
+	ReplyTo   *uuid.UUID `json:"replyTo,omitempty"` // a message on the record this answers (D-80)
+}
+
+// threadHeaders carry what a reply needs to land in the same conversation.
+type threadHeaders struct {
+	MessageID   string // our RFC Message-ID for the new email
+	InReplyTo   string // the parent's RFC Message-ID, when known
+	GmailThread string // Gmail thread to add the email to
+	GraphParent string // Outlook message id to reply to
+}
+
+func (t threadHeaders) headers() map[string]string {
+	out := map[string]string{}
+	if t.MessageID != "" {
+		out["Message-ID"] = t.MessageID
+	}
+	if t.InReplyTo != "" {
+		out["In-Reply-To"] = t.InReplyTo
+		out["References"] = t.InReplyTo
+	}
+	return out
 }
 
 type recordLink struct {
@@ -163,10 +184,15 @@ func (h *Handler) mailboxHTTP(ctx context.Context, m *mailbox) (*http.Client, er
 	return c, nil
 }
 
-func buildRFC822(from, fromName string, to, cc []string, subject, htmlBody, textBody string) []byte {
+func buildRFC822(from, fromName string, to, cc []string, subject, htmlBody, textBody string, extra map[string]string) []byte {
 	var b bytes.Buffer
 	addr := (&netmail.Address{Name: fromName, Address: from}).String()
 	b.WriteString("From: " + addr + "\r\n")
+	for _, k := range []string{"Message-ID", "In-Reply-To", "References"} {
+		if v := extra[k]; v != "" && !strings.ContainsAny(v, "\r\n") {
+			b.WriteString(k + ": " + v + "\r\n")
+		}
+	}
 	b.WriteString("To: " + strings.Join(to, ", ") + "\r\n")
 	if len(cc) > 0 {
 		b.WriteString("Cc: " + strings.Join(cc, ", ") + "\r\n")
@@ -189,33 +215,39 @@ func buildRFC822(from, fromName string, to, cc []string, subject, htmlBody, text
 	return b.Bytes()
 }
 
-// sendThroughMailbox sends from a connected mailbox; it returns the provider's id.
-func (h *Handler) sendThroughMailbox(ctx context.Context, m *mailbox, to, cc []string, subject, htmlBody, textBody string) (string, error) {
+// sendThroughMailbox sends from a connected mailbox; it returns the provider's message
+// and thread ids when the provider gives them.
+func (h *Handler) sendThroughMailbox(ctx context.Context, m *mailbox, to, cc []string, subject, htmlBody, textBody string, th threadHeaders) (string, string, error) {
 	switch m.Provider {
 	case "google":
 		c, err := h.mailboxHTTP(ctx, m)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
-		raw := base64.RawURLEncoding.EncodeToString(buildRFC822(m.Email, m.Name, to, cc, subject, htmlBody, textBody))
-		body, _ := json.Marshal(map[string]string{"raw": raw})
+		raw := base64.RawURLEncoding.EncodeToString(buildRFC822(m.Email, m.Name, to, cc, subject, htmlBody, textBody, th.headers()))
+		req := map[string]string{"raw": raw}
+		if th.GmailThread != "" {
+			req["threadId"] = th.GmailThread
+		}
+		body, _ := json.Marshal(req)
 		res, err := c.Post("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", "application/json", bytes.NewReader(body))
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		defer res.Body.Close()
 		var out struct {
-			ID string `json:"id"`
+			ID       string `json:"id"`
+			ThreadID string `json:"threadId"`
 		}
 		_ = json.NewDecoder(res.Body).Decode(&out)
 		if res.StatusCode >= 300 {
-			return "", fmt.Errorf("Gmail refused the email (%s)", res.Status)
+			return "", "", fmt.Errorf("Gmail refused the email (%s)", res.Status)
 		}
-		return out.ID, nil
+		return out.ID, out.ThreadID, nil
 	case "microsoft":
 		c, err := h.mailboxHTTP(ctx, m)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		rcpt := func(list []string) []map[string]any {
 			out := []map[string]any{}
@@ -224,26 +256,35 @@ func (h *Handler) sendThroughMailbox(ctx context.Context, m *mailbox, to, cc []s
 			}
 			return out
 		}
-		body, _ := json.Marshal(map[string]any{"message": map[string]any{"subject": subject, "body": map[string]string{"contentType": "HTML", "content": htmlBody},
-			"toRecipients": rcpt(to), "ccRecipients": rcpt(cc)}, "saveToSentItems": true})
-		res, err := c.Post("https://graph.microsoft.com/v1.0/me/sendMail", "application/json", bytes.NewReader(body))
+		msg := map[string]any{"subject": subject, "body": map[string]string{"contentType": "HTML", "content": htmlBody},
+			"toRecipients": rcpt(to), "ccRecipients": rcpt(cc)}
+		endpoint := "https://graph.microsoft.com/v1.0/me/sendMail"
+		payload := map[string]any{"message": msg, "saveToSentItems": true}
+		if th.GraphParent != "" {
+			// Replying keeps Outlook's conversation; Outlook sets the subject itself.
+			delete(msg, "subject")
+			endpoint = "https://graph.microsoft.com/v1.0/me/messages/" + url.PathEscape(th.GraphParent) + "/reply"
+			payload = map[string]any{"message": msg}
+		}
+		body, _ := json.Marshal(payload)
+		res, err := c.Post(endpoint, "application/json", bytes.NewReader(body))
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		res.Body.Close()
 		if res.StatusCode >= 300 {
-			return "", fmt.Errorf("Outlook refused the email (%s)", res.Status)
+			return "", "", fmt.Errorf("Outlook refused the email (%s)", res.Status)
 		}
-		return "", nil
+		return "", "", nil
 	case "imap":
 		s := m.Creds.SMTP
 		if s == nil {
-			return "", errors.New("this mailbox has no SMTP server for sending")
+			return "", "", errors.New("this mailbox has no SMTP server for sending")
 		}
-		msg := buildRFC822(m.Email, m.Name, to, cc, subject, htmlBody, textBody)
-		return "", smtpSend(ctx, s, m.Email, append(append([]string{}, to...), cc...), msg)
+		msg := buildRFC822(m.Email, m.Name, to, cc, subject, htmlBody, textBody, th.headers())
+		return "", "", smtpSend(ctx, s, m.Email, append(append([]string{}, to...), cc...), msg)
 	}
-	return "", errors.New("unknown mailbox type")
+	return "", "", errors.New("unknown mailbox type")
 }
 
 func smtpSend(ctx context.Context, s *serverCreds, from string, rcpts []string, msg []byte) error {
@@ -329,6 +370,26 @@ func (h *Handler) sendEmail(ctx context.Context, ws uuid.UUID, in emailInput, se
 		return uuid.Nil, shared.Validation(map[string]string{"to": "Add who the email goes to."})
 	}
 	subject := strings.TrimSpace(in.Subject)
+	// A reply joins the parent's conversation (D-80).
+	var parent struct {
+		ID                        uuid.UUID
+		Thread, RFCID, ProviderID string
+		Subject                   string
+		Mailbox                   *uuid.UUID
+	}
+	if in.ReplyTo != nil {
+		linked := link == nil
+		err := h.store.Pool.QueryRow(ctx, `SELECT m.id, COALESCE(m.thread_id, ''), COALESCE(m.rfc_message_id, ''), COALESCE(m.provider_id, ''), m.subject, m.mail_account_id,
+			$3::text = '' OR EXISTS (SELECT 1 FROM crm.message_links l WHERE l.message_id = m.id AND l.object_key = $3 AND l.record_id = $4)
+			FROM crm.messages m WHERE m.id = $1 AND m.workspace_id = $2`, *in.ReplyTo, ws, linkObject(link), linkID(link)).
+			Scan(&parent.ID, &parent.Thread, &parent.RFCID, &parent.ProviderID, &parent.Subject, &parent.Mailbox, &linked)
+		if err != nil || !linked {
+			return uuid.Nil, shared.Validation(map[string]string{"replyTo": "That email isn't on this record."})
+		}
+		if subject == "" {
+			subject = replySubject(parent.Subject)
+		}
+	}
 	if subject == "" || len(subject) > 250 {
 		return uuid.Nil, shared.Validation(map[string]string{"subject": "Write a subject (up to 250 characters)."})
 	}
@@ -338,11 +399,22 @@ func (h *Handler) sendEmail(ctx context.Context, ws uuid.UUID, in emailInput, se
 	var suppressed bool
 	_ = h.store.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.unsubscribes WHERE workspace_id = $1 AND email = ANY($2))`, ws, to).Scan(&suppressed)
 	_ = suppressed // unsubscribes only stop campaigns; one-to-one emails still go out
-	htmlBody := in.HTML
+	htmlBody := sanitizeRich(in.HTML)
+	textBody := in.Body
 	if htmlBody == "" {
 		htmlBody = textToHTML(in.Body)
+	} else if strings.TrimSpace(textBody) == "" {
+		textBody = richPlain(htmlBody)
 	}
-	textBody := in.Body
+	mid := uuid.New()
+	threadID := "crm:" + mid.String()
+	th := threadHeaders{InReplyTo: parent.RFCID}
+	if parent.ID != uuid.Nil {
+		threadID = parent.Thread
+		if threadID == "" {
+			threadID = "crm:" + parent.ID.String()
+		}
+	}
 	var fromAddr, fromName string
 	var mb *mailbox
 	if in.MailboxID != nil {
@@ -355,9 +427,29 @@ func (h *Handler) sendEmail(ctx context.Context, ws uuid.UUID, in emailInput, se
 	if sender != nil && fromName == "" {
 		_ = h.store.Pool.QueryRow(ctx, `SELECT display_name FROM crm.identities WHERE id = $1`, *sender).Scan(&fromName)
 	}
-	status, errText, providerID := "sent", "", ""
+	status, errText, providerID, rfcID := "sent", "", "", ""
 	if mb != nil {
-		providerID, err = h.sendThroughMailbox(ctx, mb, to, cc, subject, htmlBody, textBody)
+		domain := "crm.local"
+		if i := strings.LastIndex(mb.Email, "@"); i >= 0 {
+			domain = mb.Email[i+1:]
+		}
+		rfcID = "<" + mid.String() + "@" + domain + ">"
+		th.MessageID = rfcID
+		if parent.Mailbox != nil && *parent.Mailbox == mb.ID {
+			switch mb.Provider {
+			case "google":
+				if !strings.HasPrefix(parent.Thread, "crm:") {
+					th.GmailThread = parent.Thread
+				}
+			case "microsoft":
+				th.GraphParent = parent.ProviderID
+			}
+		}
+		var providerThread string
+		providerID, providerThread, err = h.sendThroughMailbox(ctx, mb, to, cc, subject, htmlBody, textBody, th)
+		if providerThread != "" && parent.ID == uuid.Nil {
+			threadID = providerThread
+		}
 	} else if h.mailer == nil {
 		err = errors.New("email isn't set up on this server")
 	} else {
@@ -368,7 +460,7 @@ func (h *Handler) sendEmail(ctx context.Context, ws uuid.UUID, in emailInput, se
 				*sender).Scan(&replyTo)
 		}
 		for _, addr := range append(append([]string{}, to...), cc...) {
-			if err = h.mailer.SendHTML(ctx, addr, subject, htmlBody, textBody, MailOptions{FromName: fromName, ReplyTo: replyTo}); err != nil {
+			if err = h.mailer.SendHTML(ctx, addr, subject, htmlBody, textBody, MailOptions{FromName: fromName, ReplyTo: replyTo, Headers: th.headers()}); err != nil {
 				break
 			}
 		}
@@ -380,7 +472,6 @@ func (h *Handler) sendEmail(ctx context.Context, ws uuid.UUID, in emailInput, se
 	if len(snippet) > 200 {
 		snippet = snippet[:200]
 	}
-	var mid uuid.UUID
 	var mbID *uuid.UUID
 	if mb != nil {
 		mbID = &mb.ID
@@ -390,10 +481,16 @@ func (h *Handler) sendEmail(ctx context.Context, ws uuid.UUID, in emailInput, se
 		pid = &providerID
 	}
 	txErr := h.store.WithTx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO crm.messages (workspace_id, mail_account_id, provider_id, direction, from_addr, from_name, to_addrs, cc_addrs,
-			subject, snippet, body_text, body_html, status, error, sent_by) VALUES ($1, $2, $3, 'outbound', $4, $5, $6, $7, $8, $9, $10, $11, $12, NULLIF($13, ''), $14) RETURNING id`,
-			ws, mbID, pid, fromAddr, fromName, to, cc, subject, snippet, textBody, htmlBody, status, errText, sender).Scan(&mid); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO crm.messages (id, workspace_id, mail_account_id, provider_id, direction, from_addr, from_name, to_addrs, cc_addrs,
+			subject, snippet, body_text, body_html, status, error, sent_by, thread_id, rfc_message_id, in_reply_to)
+			VALUES ($1, $2, $3, $4, 'outbound', $5, $6, $7, $8, $9, $10, $11, $12, $13, NULLIF($14, ''), $15, $16, NULLIF($17, ''), NULLIF($18, ''))`,
+			mid, ws, mbID, pid, fromAddr, fromName, to, cc, subject, snippet, textBody, htmlBody, status, errText, sender, threadID, rfcID, parent.RFCID); err != nil {
 			return err
+		}
+		if parent.ID != uuid.Nil && parent.Thread == "" {
+			if _, err := tx.Exec(ctx, `UPDATE crm.messages SET thread_id = $2 WHERE id = $1 AND thread_id IS NULL`, parent.ID, threadID); err != nil {
+				return err
+			}
 		}
 		links := []recordLink{}
 		if link != nil {
@@ -881,6 +978,8 @@ type syncResult struct {
 type syncedMessage struct {
 	ProviderID string
 	ThreadID   string
+	MessageID  string // RFC Message-ID
+	InReplyTo  string
 	From       string
 	FromName   string
 	To, Cc     []string
@@ -1063,11 +1162,11 @@ func (h *Handler) storeMessages(ctx context.Context, m *mailbox, msgs []syncedMe
 			}
 			var mid uuid.UUID
 			err = tx.QueryRow(ctx, `INSERT INTO crm.messages (workspace_id, mail_account_id, provider_id, thread_id, direction, from_addr, from_name, to_addrs, cc_addrs,
-				subject, snippet, body_text, status, sent_at, sent_by)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CASE WHEN $5 = 'outbound' THEN $15::uuid END)
+				subject, snippet, body_text, status, sent_at, sent_by, rfc_message_id, in_reply_to)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, CASE WHEN $5 = 'outbound' THEN $15::uuid END, NULLIF($16, ''), NULLIF($17, ''))
 				ON CONFLICT (mail_account_id, provider_id) DO NOTHING RETURNING id`,
 				m.Workspace, m.ID, msg.ProviderID, msg.ThreadID, dir, strings.ToLower(msg.From), msg.FromName, msg.To, msg.Cc, msg.Subject, msg.Snippet, msg.Body,
-				map[string]string{"inbound": "received", "outbound": "sent"}[dir], msg.At, m.IdentityID).Scan(&mid)
+				map[string]string{"inbound": "received", "outbound": "sent"}[dir], msg.At, m.IdentityID, msg.MessageID, msg.InReplyTo).Scan(&mid)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil // already synced
 			}
@@ -1136,6 +1235,10 @@ func (h *Handler) fetchGmail(ctx context.Context, m *mailbox, since time.Time) (
 				msg.Cc = parseAddrList(hd.Value)
 			case "subject":
 				msg.Subject = hd.Value
+			case "message-id":
+				msg.MessageID = strings.TrimSpace(hd.Value)
+			case "in-reply-to":
+				msg.InReplyTo = strings.TrimSpace(hd.Value)
 			}
 		}
 		if ms, err := strconv.ParseInt(full.InternalDate, 10, 64); err == nil {
@@ -1199,7 +1302,7 @@ func (h *Handler) fetchOutlook(ctx context.Context, m *mailbox, since time.Time)
 		return nil, err
 	}
 	q := url.Values{"$filter": {"receivedDateTime ge " + since.UTC().Format(time.RFC3339)}, "$top": {"100"},
-		"$select": {"id,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,receivedDateTime,isDraft"}}
+		"$select": {"id,conversationId,internetMessageId,subject,bodyPreview,body,from,toRecipients,ccRecipients,receivedDateTime,isDraft"}}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://graph.microsoft.com/v1.0/me/messages?"+q.Encode(), nil)
 	req.Header.Set("Prefer", `outlook.body-content-type="text"`)
 	res, err := c.Do(req)
@@ -1215,12 +1318,12 @@ func (h *Handler) fetchOutlook(ctx context.Context, m *mailbox, since time.Time)
 	}
 	var list struct {
 		Value []struct {
-			ID, ConversationID, Subject, BodyPreview string
-			Body                                     struct{ Content string } `json:"body"`
-			From                                     addr
-			ToRecipients, CcRecipients               []addr
-			ReceivedDateTime                         time.Time
-			IsDraft                                  bool
+			ID, ConversationID, InternetMessageID, Subject, BodyPreview string
+			Body                                                        struct{ Content string } `json:"body"`
+			From                                                        addr
+			ToRecipients, CcRecipients                                  []addr
+			ReceivedDateTime                                            time.Time
+			IsDraft                                                     bool
 		} `json:"value"`
 	}
 	if err := json.NewDecoder(res.Body).Decode(&list); err != nil {
@@ -1238,7 +1341,7 @@ func (h *Handler) fetchOutlook(ctx context.Context, m *mailbox, since time.Time)
 		if v.IsDraft {
 			continue
 		}
-		out = append(out, syncedMessage{ProviderID: v.ID, ThreadID: v.ConversationID, Subject: v.Subject, Snippet: v.BodyPreview, Body: clip(v.Body.Content, 20_000),
+		out = append(out, syncedMessage{ProviderID: v.ID, ThreadID: v.ConversationID, MessageID: v.InternetMessageID, Subject: v.Subject, Snippet: v.BodyPreview, Body: clip(v.Body.Content, 20_000),
 			From: v.From.EmailAddress.Address, FromName: v.From.EmailAddress.Name, To: addrs(v.ToRecipients), Cc: addrs(v.CcRecipients), At: v.ReceivedDateTime})
 	}
 	return out, nil
@@ -1316,7 +1419,7 @@ func fetchIMAP(m *mailbox, since time.Time) ([]syncedMessage, error) {
 				continue
 			}
 			sm := syncedMessage{ProviderID: folder + ":" + strconv.FormatUint(uint64(msg.Uid), 10), Subject: msg.Envelope.Subject, At: msg.Envelope.Date,
-				ThreadID: msg.Envelope.InReplyTo}
+				ThreadID: msg.Envelope.InReplyTo, MessageID: msg.Envelope.MessageId, InReplyTo: msg.Envelope.InReplyTo}
 			if len(msg.Envelope.From) > 0 {
 				sm.From, sm.FromName = msg.Envelope.From[0].Address(), msg.Envelope.From[0].PersonalName
 			}

@@ -346,6 +346,12 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   (`object_definitions.workspace_id`): only that product's menu, permissions editor and API see it, it's on in every
   one of its apps, and it isn't offered as a module for other setups. Platform-wide objects stay the owner's. The
   owner console lists every object, marking the ones that belong to a product.
+- **D-80 Email conversations with Reply.** A record's Emails tab groups its linked emails into conversations: messages
+  join when they share a provider thread, when one answers another (In-Reply-To ↔ Message-ID), or when their subjects
+  match once "Re:"/"Fwd:" are stripped. Reply (and Reply all) answers the latest incoming message: the email keeps the
+  thread, gets "Re: subject", carries In-Reply-To/References, goes into the same Gmail thread or uses Outlook's reply
+  when sent from the mailbox that received it. Mailbox sharing rules still apply (subject-only / metadata-only).
+  Compose and reply use the rich-text editor; the HTML is sanitized on the server. Additive migration 0013.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed
