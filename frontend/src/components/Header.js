@@ -40,14 +40,6 @@ export function Header({
   const isDesktop = width >= 768;
 
   const getRoleBadge = () => {
-    if (role === 'admin') {
-      return {
-        label: 'ADMIN',
-        bg: '#FEE2E2',
-        color: '#DC2626',
-        Icon: Shield
-      };
-    }
     if (role === 'owner') {
       return {
         label: 'BUSINESS OWNER',
@@ -66,16 +58,6 @@ export function Header({
 
   const getDesktopNavLinks = () => {
     if (!user || !onSelectTab) return [];
-
-    if (role === 'admin') {
-      return [
-        { id: 'admin_dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'admin_users', label: 'Users & Grants', icon: Users },
-        { id: 'admin_businesses', label: 'Directory', icon: Building2 },
-        { id: 'admin_kyc', label: 'KYC Queue', icon: ShieldAlert },
-        { id: 'admin_settings', label: 'Settings', icon: Settings }
-      ];
-    }
 
     return [
       { id: 'user_dashboard', label: 'Dashboard', icon: Home },
@@ -103,7 +85,7 @@ export function Header({
 
           {isDesktop ? (
             <TouchableOpacity
-              onPress={() => onSelectTab && onSelectTab(role === 'admin' ? 'admin_dashboard' : 'user_dashboard')}
+              onPress={() => onSelectTab && onSelectTab('user_dashboard')}
               style={styles.desktopLogoRow}
               activeOpacity={0.8}
             >

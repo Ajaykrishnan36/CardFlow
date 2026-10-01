@@ -3,7 +3,6 @@ package support
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -281,104 +280,6 @@ func (h *SupportHandler) GetMyTickets(w http.ResponseWriter, r *http.Request) {
 		"tickets": userTickets,
 		"count":   len(userTickets),
 	})
-}
-
-// Admin lists all tickets
-func (h *SupportHandler) AdminListTickets(w http.ResponseWriter, r *http.Request) {
-	if h.persistent() {
-		list, err := h.queryTickets(r.Context(), ``)
-		if err != nil {
-			slog.Error("support: admin list failed", "error", err)
-			response.InternalServerError(w, "could not load tickets")
-			return
-		}
-		h.withMessages(r.Context(), list)
-		response.JSON(w, http.StatusOK, map[string]interface{}{"tickets": list, "count": len(list)})
-		return
-	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"tickets": h.tickets,
-		"count":   len(h.tickets),
-	})
-}
-
-// Admin updates / resolves ticket
-func (h *SupportHandler) AdminUpdateTicket(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-
-	var req struct {
-		Status     string `json:"status"` // 'open', 'in_progress', 'resolved'
-		AdminReply string `json:"admin_reply"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.BadRequest(w, "invalid request", err.Error())
-		return
-	}
-
-	if h.persistent() {
-		if req.Status != "" && req.Status != "open" && req.Status != "in_progress" && req.Status != "resolved" {
-			response.BadRequest(w, "invalid status", "")
-			return
-		}
-		t, err := scanTicket(h.db.Pool.QueryRow(r.Context(), `
-			UPDATE support_tickets
-			SET status = COALESCE(NULLIF($2, ''), status),
-			    admin_reply = COALESCE(NULLIF($3, ''), admin_reply),
-			    replied_at = CASE WHEN $3 <> '' THEN NOW() ELSE replied_at END,
-			    replied_by = CASE WHEN $3 <> '' THEN 'CardFlow admin' ELSE replied_by END,
-			    updated_at = NOW()
-			WHERE id = $1
-			RETURNING `+ticketColumns, id, req.Status, req.AdminReply))
-		if errors.Is(err, pgx.ErrNoRows) {
-			response.NotFound(w, "ticket not found")
-			return
-		}
-		if err != nil {
-			slog.Error("support: update ticket failed", "error", err)
-			response.InternalServerError(w, "could not update ticket")
-			return
-		}
-		if req.AdminReply != "" {
-			if _, err := h.db.Pool.Exec(r.Context(), `
-				INSERT INTO support_ticket_messages (ticket_id, sender, author_name, author_role, body)
-				VALUES ($1, 'support', 'CardFlow admin', 'Support team', $2)`, id, req.AdminReply); err != nil {
-				slog.Warn("support: reply message not saved", "ticket", id, "error", err)
-			}
-		}
-		list := []Ticket{t}
-		h.withMessages(r.Context(), list)
-		response.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Ticket updated successfully", "ticket": list[0]})
-		return
-	}
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	for i, t := range h.tickets {
-		if t.ID == id {
-			if req.Status != "" {
-				h.tickets[i].Status = req.Status
-			}
-			if req.AdminReply != "" {
-				h.tickets[i].AdminReply = req.AdminReply
-				now := time.Now()
-				h.tickets[i].RepliedAt = &now
-			}
-			h.tickets[i].UpdatedAt = time.Now()
-
-			response.JSON(w, http.StatusOK, map[string]interface{}{
-				"success": true,
-				"message": "Ticket updated successfully",
-				"ticket":  h.tickets[i],
-			})
-			return
-		}
-	}
-
-	response.NotFound(w, "ticket not found")
 }
 
 // ownTicket loads one of the signed-in person's tickets (matched like GetMyTickets).

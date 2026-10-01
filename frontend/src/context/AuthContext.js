@@ -8,7 +8,10 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null); // 'user' | 'owner' | 'admin'
+  const [role, setRoleState] = useState(null); // 'user' | 'owner'
+  // The app has no admin console (the CRM manages the app); an account still marked
+  // "admin" on the server gets the normal user flow.
+  const setRole = (r) => setRoleState(r === 'admin' ? 'user' : r);
   const [token, setToken] = useState(null);
   const [activeBusinessId, setActiveBusinessId] = useState('biz-1');
   const [isLoading, setIsLoading] = useState(false);

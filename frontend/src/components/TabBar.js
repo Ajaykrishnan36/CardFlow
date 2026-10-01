@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { ScanLine, FolderOpen, User, Store, Compass, LayoutDashboard, Users, Building2, LifeBuoy, Home } from 'lucide-react';
+import { ScanLine, FolderOpen, Store, Compass, Home } from 'lucide-react';
 import { colors, spacing, shadows } from '../theme';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,15 +8,6 @@ export function TabBar({ currentTab, onSelectTab }) {
   const { role } = useAuth();
 
   const getTabs = () => {
-    if (role === 'admin') {
-      return [
-        { id: 'admin_dashboard', label: 'Overview', icon: LayoutDashboard },
-        { id: 'admin_users', label: 'People', icon: Users },
-        { id: 'admin_businesses', label: 'Businesses', icon: Building2 },
-        { id: 'admin_support', label: 'Support', icon: LifeBuoy },
-        { id: 'admin_profile', label: 'Profile', icon: User }
-      ];
-    }
     // Home is a first-class destination. Profile is reached from Home — not via Scan.
     return [
       { id: 'user_dashboard', label: 'Home', icon: Home },

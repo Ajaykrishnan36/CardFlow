@@ -119,8 +119,6 @@ const styles = StyleSheet.create({
   },
   error: { color: colors.danger, fontSize: 12, alignSelf: 'flex-start', marginBottom: spacing.sm },
   cta: { marginTop: spacing.sm, width: '100%' },
-  adminLink: { marginTop: spacing.xl, paddingVertical: spacing.sm },
-  adminText: { fontSize: 14, color: colors.textSecondary, textDecorationLine: 'underline' },
   legal: { marginTop: spacing.lg, fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
   legalGold: { color: colors.gold, fontWeight: '600' },
   devSection: { marginTop: spacing.xxxl, width: '100%', opacity: 0.7 },

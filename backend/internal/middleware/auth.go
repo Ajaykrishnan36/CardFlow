@@ -86,21 +86,3 @@ func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
-// RequireAdmin strictly denies any non-admin caller
-func (m *Middleware) RequireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, ok := r.Context().Value(UserContextKey).(*domain.User)
-		if !ok || user == nil {
-			response.Unauthorized(w, "authentication required")
-			return
-		}
-
-		if user.Role != domain.RoleAdmin {
-			response.Forbidden(w, "admin privileges required")
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}

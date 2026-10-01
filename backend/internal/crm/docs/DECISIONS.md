@@ -420,6 +420,11 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   seconds, with a reply box for anyone who may edit the case; each reply records the sender's name and their role in the
   product (Super Admin, Admin…, or Platform owner). The old "Reply in app" field still works and joins the conversation
   the same way. Opening the conversation asks the connector to sync, so the case follows new app messages.
+- **D-92 The app has no admin console.** The in-app admin flow is removed from CardFlow (owner's instruction, 1 Oct
+  2026): the seven admin screens, the admin top bar and tabs, the app's admin API calls, the server's `/api/v1/admin/*`
+  routes, the `internal/admin` package and the admin-only middleware. The CRM is where the app is managed (app users,
+  premium access, businesses, tickets as Cases). An account whose app role is still "admin" simply gets the normal
+  user flow. No table or data is dropped; `users.role` keeps its values.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
 ## Seed

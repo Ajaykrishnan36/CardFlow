@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme';
 import { Layout } from '../components/Layout';
 import { TabBar } from '../components/TabBar';
-import { AdminTopBar } from '../components/AdminTopBar';
 
 import { SplashScreen } from '../screens/auth/SplashScreen';
 import { LoginScreen } from '../screens/auth/LoginScreen';
@@ -26,11 +25,6 @@ import { SupportRequestScreen } from '../screens/user/SupportRequestScreen';
 import { SupportTicketsScreen } from '../screens/user/SupportTicketsScreen';
 import { SupportTicketDetailScreen } from '../screens/user/SupportTicketDetailScreen';
 
-import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
-import { AdminUsersScreen } from '../screens/admin/AdminUsersScreen';
-import { AdminBusinessesScreen } from '../screens/admin/AdminBusinessesScreen';
-import { AdminSupportScreen } from '../screens/admin/AdminSupportScreen';
-import { AdminProfileScreen } from '../screens/admin/AdminProfileScreen';
 
 const HOME_TAB = 'user_dashboard';
 
@@ -122,7 +116,7 @@ export function AppNavigator() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      setCurrentTab(role === 'admin' ? 'admin_dashboard' : HOME_TAB);
+      setCurrentTab(HOME_TAB);
       setShowProfile(false);
     } else {
       setCurrentTab(null);
@@ -273,16 +267,6 @@ export function AppNavigator() {
   };
 
   const renderPrimaryTab = () => {
-    if (role === 'admin') {
-      switch (currentTab) {
-        case 'admin_users': return <AdminUsersScreen />;
-        case 'admin_businesses': return <AdminBusinessesScreen />;
-        case 'admin_support': return <AdminSupportScreen />;
-        case 'admin_profile': return <AdminProfileScreen />;
-        default: return <AdminDashboardScreen onNavigate={selectTab} />;
-      }
-    }
-
     switch (currentTab) {
       case 'user_vault':
         return (
@@ -409,7 +393,7 @@ export function AppNavigator() {
   return (
     <>
       <Layout
-        header={role === 'admin' ? <AdminTopBar /> : null}
+        header={null}
         footer={
           hideTabBar ? null : (
             <TabBar

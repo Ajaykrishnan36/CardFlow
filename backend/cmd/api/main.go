@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"cardflow-backend/internal/admin"
 	"cardflow-backend/internal/auth"
 	"cardflow-backend/internal/billing"
 	"cardflow-backend/internal/business"
@@ -113,7 +112,6 @@ func main() {
 	enquiryHandler := enquiry.NewEnquiryHandler(dbPool)
 	billingHandler := billing.NewBillingHandler(dbPool, cfg)
 	contactsHandler := contacts.NewContactsHandler(dbPool)
-	adminHandler := admin.NewAdminHandler(dbPool)
 	supportHandler := support.NewSupportHandler(dbPool)
 
 	// 5. Setup Router & Routes
@@ -237,28 +235,6 @@ func main() {
 				r.Post("/businesses/{id}/verify/gst", businessHandler.VerifyGST)
 				r.Get("/businesses/{id}/card", businessHandler.GetDigitalCard)
 				r.Get("/businesses/{id}/enquiries", enquiryHandler.ListBusinessEnquiries)
-			})
-
-			// In-App Admin Endpoints (Strict Admin Authorization Guard)
-			r.Route("/admin", func(r chi.Router) {
-				r.Use(appMiddleware.RequireAdmin)
-
-				r.Get("/dashboard", adminHandler.GetDashboard)
-				r.Get("/users", adminHandler.ListUsers)
-				r.Delete("/users/{id}", adminHandler.DeleteUser)
-				r.Patch("/users/{id}/status", adminHandler.UpdateUserStatus)
-				r.Post("/users/grant-access", adminHandler.GrantFreeAccess)
-				r.Get("/businesses", adminHandler.ListBusinesses)
-				r.Put("/businesses/{id}", adminHandler.UpdateBusiness)
-				r.Delete("/businesses/{id}", adminHandler.DeleteBusiness)
-				r.Post("/businesses/manual-create", adminHandler.CreateBusinessManual)
-				r.Get("/verification", adminHandler.ListPendingVerifications)
-				r.Post("/verification/{id}/decision", adminHandler.VerifyDecision)
-				r.Get("/audit-logs", adminHandler.ListAuditLogs)
-
-				// Admin Support Ticket Management
-				r.Get("/support/tickets", supportHandler.AdminListTickets)
-				r.Patch("/support/tickets/{id}", supportHandler.AdminUpdateTicket)
 			})
 		})
 	})
