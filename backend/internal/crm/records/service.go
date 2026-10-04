@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"cardflow-backend/internal/crm/identity"
+	"cardflow-backend/internal/crm/plans"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -114,6 +115,13 @@ func checkUnique(ctx context.Context, q querier, ws uuid.UUID, spec *objectSpec,
 func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *objectSpec, a actorInfo, values map[string]any) (*Row, error) {
 	if values == nil {
 		values = map[string]any{}
+	}
+	// The business's plan decides how many records it may hold (D-101). Work the system
+	// does on its own (workflows, the app connector) is never blocked.
+	if a.Kind != "system" {
+		if err := plans.CheckRecords(ctx, tx, ws); err != nil {
+			return nil, err
+		}
 	}
 	fields, err := allFields(ctx, tx, ws, spec)
 	if err != nil {

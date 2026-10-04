@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"cardflow-backend/internal/crm/access"
+	"cardflow-backend/internal/crm/plans"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -22,6 +23,11 @@ import (
 func (h *Handler) businessRoutes(r chi.Router) {
 	r.Get("/business", h.handleGetBusiness)
 	r.Patch("/business", h.handleUpdateBusiness)
+	// The business's plan, what it uses, and the plans on offer (any member may look).
+	r.Get("/plan", func(w http.ResponseWriter, r *http.Request) {
+		out, err := plans.NewHandler(h.store).Overview(r, scopeFrom(r.Context()).WS)
+		respond(w, r, http.StatusOK, out, err)
+	})
 }
 
 type businessProfile struct {

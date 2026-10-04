@@ -529,6 +529,31 @@ meetings for a record are on the record screen. After a scan the app offers "Sav
 (D-98), and a saved card shows what it is linked to. Record creation honours `Idempotency-Key`.
 `DEV_MOCK_SMS=true` on a non-production server always previews codes (never calls a provider).
 
+### D-101 — Plans belong to a business; limits are enforced on the server
+
+`crm.plans` (Free · Pro · Business, editable by the owner), `crm.workspace_subscriptions` (one row
+per business: plan, status, period end, source), `crm.subscription_events` and
+`crm.usage_counters`. A business's plan is resolved in this order: its own live subscription →
+a business the owner provisioned (no limits) → the creator holds the app's premium subscription
+(Pro for the businesses they created — the app-store subscription stays per account, so nothing
+changes in the stores) → the default plan. A lapsed subscription falls back to the default plan and
+reports `expired`.
+
+Limits (`members`, `records`, `cardScansPerMonth`; 0 = unlimited) are checked where the thing is
+created — `createRecord`, every path that adds a membership (`platform.SeatCheck`), and a new card
+scan — and answer `402 plan_limit` with the limit in `details`. Work the system does on its own
+(workflows, the app connector) is never blocked. `GET /w/{code}/plan` shows any member the plan,
+real usage and the plans on offer; only the platform owner changes plans
+(`PUT /platform/plans/{key}`) or a business's subscription (`PUT /platform/subscriptions/{id}`),
+both audited.
+
+### D-102 — Add a teammate by mobile number
+
+`POST /w/{code}/admin/members` with a phone and no email adds the person at once: the identity is
+found or created by that number, the membership is active, and they get the role's default
+permission set (roles are hierarchy positions, D-48). They sign in with a code sent to the number —
+no email, password or invitation link. The number counts as verified only after that first sign-in.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

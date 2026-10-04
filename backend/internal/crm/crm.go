@@ -14,6 +14,7 @@ import (
 	"cardflow-backend/internal/crm/connectors/cardflow"
 	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/crm/mail"
+	"cardflow-backend/internal/crm/plans"
 	"cardflow-backend/internal/crm/platform"
 	"cardflow-backend/internal/crm/records"
 	"cardflow-backend/internal/crm/seed"
@@ -22,6 +23,7 @@ import (
 	"cardflow-backend/internal/crm/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -32,6 +34,7 @@ type Module struct {
 	platform       *platform.Handler
 	records        *records.Handler
 	cardflow       *cardflow.Connector
+	plans          *plans.Handler
 }
 
 // New prepares the CRM: config, migrations, safety checks and seed. It never returns
@@ -89,6 +92,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	m.identity.SetAppProfile(newAppProfile(context.Background(), st))
 	go backfillAppIdentities(context.Background(), st)
 	m.platform = platform.NewHandler(st, cfg, mailer, m.identity)
+	m.plans = plans.NewHandler(st)
 	m.records = records.NewHandler(st, cfg, m.platform, recordMailer{mailer})
 	identity.SetAPIKeyResolver(m.records.ResolveAPIKey)
 	records.SetAllowedMethodsHook(identity.AllowedMethods)
@@ -144,6 +148,8 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		return m.disable("standard CRM setup failed: " + err.Error())
 	}
 	identity.SetSelfServePolicy(func(ctx context.Context) bool { return platform.SelfServe(ctx, st.Pool).Enabled })
+	// A business's plan limits how many members it may have (D-101).
+	platform.SeatCheck = func(ctx context.Context, tx pgx.Tx, ws uuid.UUID) error { return plans.CheckSeats(ctx, tx, ws) }
 	// Standard and custom objects (D-45): seed, create their views, load the catalog.
 	objCtx, cancelObj := context.WithTimeout(context.Background(), 60*time.Second)
 	err := m.records.LoadObjects(objCtx)
@@ -203,6 +209,7 @@ func (m *Module) Mount(r chi.Router) {
 		m.identity.Routes(r)
 		m.platform.Routes(r)
 		m.platform.SelfServeRoutes(r)
+		m.plans.OwnerRoutes(r)
 		m.records.Routes(r)
 		m.records.PublicRoutes(r)
 		r.Get("/oauth/{provider}/callback", m.oauthCallback)

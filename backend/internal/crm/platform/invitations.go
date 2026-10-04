@@ -122,6 +122,9 @@ func (h *Handler) InviteTx(ctx context.Context, tx pgx.Tx, actor, workspaceID uu
 		workspaceID, identityID).Scan(&membershipID, &mStatus)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
+		if err := checkSeat(ctx, tx, workspaceID); err != nil {
+			return nil, err
+		}
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO crm.memberships (workspace_id, identity_id, status, created_by) VALUES ($1, $2, 'invited', $3) RETURNING id`,
 			workspaceID, identityID, actor).Scan(&membershipID); err != nil {
@@ -364,4 +367,15 @@ func (h *Handler) handleRevokeInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// SeatCheck is set by the CRM module: it fails when a business's plan has no room for
+// another member (D-101). nil = no limit.
+var SeatCheck func(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) error
+
+func checkSeat(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID) error {
+	if SeatCheck == nil {
+		return nil
+	}
+	return SeatCheck(ctx, tx, workspaceID)
 }

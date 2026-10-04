@@ -882,6 +882,22 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 		shared.WriteError(w, r, err)
 		return
 	}
+	// A teammate added by mobile number alone signs in with a code sent to that number
+	// (D-93): no email, no password, no invitation link. Access is theirs from the first sign-in.
+	if phone, ok := identity.NormalizePhone(in.Phone); ok && strings.TrimSpace(in.Email) == "" {
+		var res *GiveLoginResult
+		err := h.store.WithTx(ctx, func(tx pgx.Tx) error {
+			var err error
+			res, err = h.addMemberByPhone(ctx, tx, actorID(r), sc.WS, strings.TrimSpace(in.DisplayName), phone, in.RoleKey, in.ProductIDs, in.PermissionSetIDs, in.UserType)
+			return err
+		})
+		if err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+		shared.WriteJSON(w, http.StatusCreated, res)
+		return
+	}
 	gl := GiveLoginInput{
 		Workspace: GiveLoginWorkspace{Mode: "existing", WorkspaceID: sc.WS}, RoleKey: in.RoleKey, ProductIDs: in.ProductIDs,
 		PermissionSetIDs: in.PermissionSetIDs, Method: in.Method, Password: in.Password, UserType: in.UserType,
@@ -907,4 +923,76 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 		res.Invitation = h.DeliverInvitation(ctx, sent)
 	}
 	shared.WriteJSON(w, http.StatusCreated, res)
+}
+
+// addMemberByPhone gives a person access to a workspace by their mobile number. The
+// number is theirs once they sign in with a code sent to it; until then nobody can use it.
+func (h *Handler) addMemberByPhone(ctx context.Context, tx pgx.Tx, actor, ws uuid.UUID, name, phone, roleKey string,
+	productIDs, permissionSetIDs []uuid.UUID, userType string) (*GiveLoginResult, error) {
+	res := &GiveLoginResult{WorkspaceID: ws}
+	if err := checkUserType(ctx, tx, ws, userType, roleKey, ""); err != nil {
+		return nil, err
+	}
+	err := tx.QueryRow(ctx, `SELECT identity_id FROM crm.verified_identifiers WHERE kind = 'phone' AND namespace = 'global' AND value_normalized = $1`,
+		phone).Scan(&res.IdentityID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		if err := tx.QueryRow(ctx, `INSERT INTO crm.identities (display_name, source) VALUES ($1, 'invited_by_phone') RETURNING id`, name).Scan(&res.IdentityID); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO crm.verified_identifiers (identity_id, kind, value_normalized, namespace) VALUES ($1, 'phone', $2, 'global')`,
+			res.IdentityID, phone); err != nil {
+			return nil, err
+		}
+	case err != nil:
+		return nil, err
+	default:
+		res.ExistingLogin = true
+	}
+	var mStatus string
+	err = tx.QueryRow(ctx, `SELECT id, status FROM crm.memberships WHERE workspace_id = $1 AND identity_id = $2 FOR UPDATE`, ws, res.IdentityID).
+		Scan(&res.MembershipID, &mStatus)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		if err := checkSeat(ctx, tx, ws); err != nil {
+			return nil, err
+		}
+		if err := tx.QueryRow(ctx, `INSERT INTO crm.memberships (workspace_id, identity_id, status, created_by) VALUES ($1, $2, 'active', $3) RETURNING id`,
+			ws, res.IdentityID, actor).Scan(&res.MembershipID); err != nil {
+			return nil, err
+		}
+	case err != nil:
+		return nil, err
+	case mStatus == "active":
+		return nil, shared.Validation(map[string]string{"phone": "This person already has access. Change their access from the members list."})
+	default:
+		if _, err := tx.Exec(ctx, `UPDATE crm.memberships SET status = 'active' WHERE id = $1`, res.MembershipID); err != nil {
+			return nil, err
+		}
+	}
+	role, pids, sets := roleKey, productIDs, permissionSetIDs
+	// A role is a place in the hierarchy; what a person may do comes from permission sets
+	// (D-48). With none chosen, an Admin or Staff member gets that role's default set.
+	if len(sets) == 0 {
+		if id, ok := DefaultPermissionSetFor(ctx, tx, ws, roleKey); ok {
+			sets = []uuid.UUID{id}
+		}
+	}
+	if err := setMembershipAccess(ctx, tx, actor, ws, res.MembershipID, &role, &pids, &sets, ""); err != nil {
+		return nil, err
+	}
+	if err := setUserType(ctx, tx, res.MembershipID, userType); err != nil {
+		return nil, err
+	}
+	if len(productIDs) == 0 {
+		if _, err := tx.Exec(ctx, `
+			UPDATE crm.role_assignments SET product_ids = COALESCE((SELECT array_agg(product_id) FROM crm.workspace_products
+			  WHERE workspace_id = $1 AND status = 'active'), '{}') WHERE membership_id = $2`, ws, res.MembershipID); err != nil {
+			return nil, err
+		}
+	}
+	return res, shared.WriteAudit(ctx, tx, shared.AuditEvent{
+		WorkspaceID: &ws, ActorID: &actor, Action: "identity.login_granted", EntityType: "identity", EntityID: &res.IdentityID,
+		After: map[string]any{"method": "phone", "role": roleKey, "membershipId": res.MembershipID, "existing": res.ExistingLogin},
+	})
 }

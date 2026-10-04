@@ -621,6 +621,9 @@ func (h *Handler) GiveLoginTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, p
 		res.WorkspaceID, res.IdentityID).Scan(&res.MembershipID, &mStatus)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
+		if err := checkSeat(ctx, tx, res.WorkspaceID); err != nil {
+			return nil, nil, err
+		}
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO crm.memberships (workspace_id, identity_id, status, created_by) VALUES ($1, $2, 'active', $3) RETURNING id`,
 			res.WorkspaceID, res.IdentityID, actor).Scan(&res.MembershipID); err != nil {
@@ -762,6 +765,9 @@ func (h *Handler) handleAddMembership(w http.ResponseWriter, r *http.Request) {
 			in.WorkspaceID, id).Scan(&mid, &mStatus)
 		switch {
 		case errors.Is(err, pgx.ErrNoRows):
+			if err := checkSeat(r.Context(), tx, in.WorkspaceID); err != nil {
+				return err
+			}
 			if err := tx.QueryRow(r.Context(), `
 				INSERT INTO crm.memberships (workspace_id, identity_id, status, created_by) VALUES ($1, $2, 'active', $3) RETURNING id`,
 				in.WorkspaceID, id, actorID(r)).Scan(&mid); err != nil {
