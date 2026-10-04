@@ -452,6 +452,21 @@ The app and the CRM become one product: the CRM is the core, business-card scann
   API accepts either token. The old JWT refuses the built-in or a short key in production. Phone sign-in is a method
   in each app's setup (`loginMethods.phone`), on wherever a password or an email code is allowed.
 
+- **D-94 Customers create their own business.** `POST /businesses` (any signed-in person) creates a workspace on the
+  platform's one **Standard CRM** setup (`crm.products` key `standard_crm`, ensured at start-up) and makes the creator
+  its active Super Admin in the same transaction; no owner involvement, no invitation. The person only types a name:
+  the workspace code is derived from it. Limits are platform settings the owner can change
+  (`/platform/settings/self-serve`: on/off, businesses per person, default 5), checked under a per-person lock.
+  `GET /businesses` lists a person's businesses with their role. A person with no business may sign in (they are sent
+  to create one); with self-serve off, joining is by invitation only as before. Workspaces record
+  `created_by_identity`, `origin` (`owner` / `self_serve`) and a `profile` (industry, phone, address…); a directory
+  listing can be linked as a business's public profile (`public.businesses.workspace_id`). Product and App stay as
+  internal configuration; customers never see those words. Migration 0018.
+- **D-95 One place builds the server; end-to-end tests.** Route wiring moved from `cmd/api/main.go` to
+  `internal/server`, so `internal/e2e` can run the real server against a throwaway database (created and dropped per
+  run) and drive it over HTTP. CORS allows only `ALLOWED_ORIGINS` and the native shells in production (any origin
+  elsewhere); credentials stay off because the app uses bearer tokens.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

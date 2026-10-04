@@ -74,7 +74,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	m.identity = identity.NewService(st, cfg, mailer)
 	// Phone sign-in (D-93): the SMS provider comes from the environment; without one, codes
 	// can't be sent and sign-in by phone says so instead of pretending.
-	smsSender := sms.New(sms.LoadConfig(cfg.AppName, cfg.IsProduction()))
+	// "Production" here is the app's own ENV setting: a server that says ENV=development and
+	// DEV_MOCK_SMS=true has asked for on-screen codes explicitly.
+	smsSender := sms.New(sms.LoadConfig(cfg.AppName, strings.EqualFold(cardflowEnv, "production")))
 	m.identity.SetSMS(smsSender)
 	switch smsSender.Mode() {
 	case "none":
@@ -136,6 +138,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		t.Allowed = status == "active" && len(t.Domains) > 0 && t.RoleKey != "SUPER_ADMIN"
 		return t, nil
 	})
+	// Self-serve (D-94): the standard setup every customer business runs on, and the
+	// owner's switch for whether people may create a business.
+	if _, err := platform.EnsureStandardSetup(context.Background(), st.Pool); err != nil {
+		return m.disable("standard CRM setup failed: " + err.Error())
+	}
+	identity.SetSelfServePolicy(func(ctx context.Context) bool { return platform.SelfServe(ctx, st.Pool).Enabled })
 	// Standard and custom objects (D-45): seed, create their views, load the catalog.
 	objCtx, cancelObj := context.WithTimeout(context.Background(), 60*time.Second)
 	err := m.records.LoadObjects(objCtx)
@@ -194,6 +202,7 @@ func (m *Module) Mount(r chi.Router) {
 		})
 		m.identity.Routes(r)
 		m.platform.Routes(r)
+		m.platform.SelfServeRoutes(r)
 		m.records.Routes(r)
 		m.records.PublicRoutes(r)
 		r.Get("/oauth/{provider}/callback", m.oauthCallback)
