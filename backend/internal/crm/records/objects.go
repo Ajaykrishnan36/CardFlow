@@ -170,7 +170,167 @@ func standardObjects() []ObjectDefinition {
 					ofSelect("origin", "Origin", opts("email", "Email", "phone", "Phone", "web", "Web", "chat", "Chat", "app", "App")),
 					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
 					of("description", "Description", "richtext"), of("resolution", "Resolution", "richtext")}}},
+
+		// ---- finance (D-96): money in and money out of the business ----
+		{Key: "income", Module: "finance", Singular: "Income", Plural: "Income", Icon: "banknote", Prefix: "INC",
+			Description: "Money the business received: amount, date, category and who it came from.",
+			ObjectBody: ObjectBody{NameLabel: "Title", StatusLabel: "Status", Statuses: []StatusOption{
+				st("received", "Received", "success"), st("pending", "Pending", "warning"), st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofReq(of("amount", "Amount", "currency")), ofReq(of("date", "Date", "date")),
+					ofSelect("category", "Category", opts("sales", "Sales", "service", "Service", "subscription", "Subscription", "interest", "Interest", "other", "Other")),
+					ofSelect("paymentMethod", "Payment method", paymentMethods),
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("opportunityId", "Opportunity", "opportunities"),
+					of("reference", "Reference", "text"), ofSelect("recurring", "Repeats", recurrence), of("description", "Notes", "textarea")}}},
+		{Key: "expenses", Module: "finance", Singular: "Expense", Plural: "Expenses", Icon: "banknote", Prefix: "EXP",
+			Description: "Money the business spent: amount, date, category and who was paid.",
+			ObjectBody: ObjectBody{NameLabel: "Title", StatusLabel: "Status", Statuses: []StatusOption{
+				st("paid", "Paid", "success"), st("pending", "Pending", "warning"), st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofReq(of("amount", "Amount", "currency")), ofReq(of("date", "Date", "date")),
+					ofSelect("category", "Category", opts("rent", "Rent", "salary", "Salaries", "travel", "Travel", "marketing", "Marketing", "supplies", "Supplies",
+						"utilities", "Utilities", "software", "Software", "tax", "Taxes", "other", "Other")),
+					of("vendor", "Paid to", "text"), ofSelect("paymentMethod", "Payment method", paymentMethods),
+					ofLookup("accountId", "Account", "accounts"), of("reference", "Reference", "text"),
+					ofSelect("recurring", "Repeats", recurrence), of("description", "Notes", "textarea")}}},
+
+		// ---- quotes, orders and invoices (D-97) ----
+		{Key: "price_books", Module: "sales_docs", Singular: "Price book", Plural: "Price books", Icon: "book", Prefix: "PB",
+			Description: "A named price list: which catalog items it covers and at what price.",
+			ObjectBody: ObjectBody{NameLabel: "Price book name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("active", "Active", "success"), st("inactive", "Inactive", "neutral")},
+				Fields: []ObjectField{of("validFrom", "Valid from", "date"), of("validTo", "Valid to", "date"), of("description", "Description", "textarea")}}},
+		{Key: "quotes", Module: "sales_docs", Singular: "Quote", Plural: "Quotes", Icon: "file-text", Prefix: "QT",
+			Description: "A priced offer to a customer, with its items and totals.",
+			ObjectBody: ObjectBody{NameLabel: "Quote name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("sent", "Sent", "primary"), st("accepted", "Accepted", "success"),
+				st("declined", "Declined", "danger"), st("expired", "Expired", "neutral")},
+				Fields: []ObjectField{
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("opportunityId", "Opportunity", "opportunities"),
+					ofLookup("priceBookId", "Price book", "price_books"), of("quoteDate", "Quote date", "date"), of("validUntil", "Valid until", "date"),
+					of("subtotal", "Subtotal", "currency"), of("discount", "Discount", "currency"), of("tax", "Tax", "currency"), of("total", "Total", "currency"),
+					of("terms", "Terms", "textarea"), of("description", "Notes", "textarea")}}},
+		{Key: "sales_orders", Module: "sales_docs", Singular: "Sales order", Plural: "Sales orders", Icon: "shopping-cart", Prefix: "SO",
+			Description: "A confirmed order from a customer.",
+			ObjectBody: ObjectBody{NameLabel: "Order name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("confirmed", "Confirmed", "primary"), st("shipped", "Shipped", "warning"),
+				st("delivered", "Delivered", "success"), st("cancelled", "Cancelled", "danger")},
+				Fields: []ObjectField{
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("opportunityId", "Opportunity", "opportunities"),
+					ofLookup("quoteId", "Quote", "quotes"), of("orderDate", "Order date", "date"), of("deliveryDate", "Delivery date", "date"),
+					of("subtotal", "Subtotal", "currency"), of("tax", "Tax", "currency"), of("total", "Total", "currency"), of("description", "Notes", "textarea")}}},
+		{Key: "invoices", Module: "sales_docs", Singular: "Invoice", Plural: "Invoices", Icon: "file-text", Prefix: "INV",
+			Description: "A bill sent to a customer and what has been paid against it.",
+			ObjectBody: ObjectBody{NameLabel: "Invoice name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("sent", "Sent", "primary"), st("partially_paid", "Partially paid", "warning"),
+				st("paid", "Paid", "success"), st("overdue", "Overdue", "danger"), st("void", "Void", "neutral")},
+				Fields: []ObjectField{
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("orderId", "Sales order", "sales_orders"),
+					of("invoiceDate", "Invoice date", "date"), of("dueDate", "Due date", "date"),
+					of("subtotal", "Subtotal", "currency"), of("tax", "Tax", "currency"), of("total", "Total", "currency"), of("amountPaid", "Amount paid", "currency"),
+					of("description", "Notes", "textarea")}}},
+		{Key: "purchase_orders", Module: "sales_docs", Singular: "Purchase order", Plural: "Purchase orders", Icon: "truck", Prefix: "PO",
+			Description: "An order the business placed with a supplier.",
+			ObjectBody: ObjectBody{NameLabel: "Order name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("ordered", "Ordered", "primary"), st("received", "Received", "success"), st("cancelled", "Cancelled", "danger")},
+				Fields: []ObjectField{
+					of("vendor", "Supplier", "text"), ofLookup("accountId", "Supplier account", "accounts"), of("orderDate", "Order date", "date"),
+					of("expectedDate", "Expected on", "date"), of("total", "Total", "currency"), of("description", "Notes", "textarea")}}},
+		{Key: "line_items", Module: "sales_docs", Singular: "Line item", Plural: "Line items", Icon: "clipboard", Prefix: "LI",
+			Description: "One priced line on a quote, order, invoice, opportunity or price book.",
+			ObjectBody: ObjectBody{NameLabel: "Item", Statuses: []StatusOption{},
+				Fields: []ObjectField{
+					ofLookup("itemId", "Catalog item", "catalog_items"), of("quantity", "Quantity", "number"), of("unitPrice", "Unit price", "currency"),
+					of("discountPercent", "Discount", "percent"), of("total", "Line total", "currency"),
+					ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("quoteId", "Quote", "quotes"), ofLookup("orderId", "Sales order", "sales_orders"),
+					ofLookup("invoiceId", "Invoice", "invoices"), ofLookup("priceBookId", "Price book", "price_books")}}},
+
+		// ---- service knowledge (D-97) ----
+		{Key: "solutions", Module: "knowledge", Singular: "Article", Plural: "Knowledge base", Icon: "book", Prefix: "KB",
+			Description: "Answers and how-tos the team reuses when solving cases.",
+			ObjectBody: ObjectBody{NameLabel: "Title", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("published", "Published", "success"), st("archived", "Archived", "neutral")},
+				Fields: []ObjectField{of("category", "Category", "text"), ofReq(of("body", "Answer", "richtext")), of("keywords", "Keywords", "text")}}},
 	}
+}
+
+// standardFieldAdditions are fields added to standard objects after they first shipped
+// (D-97). Each batch is applied to stored definitions once (see addStandardFields), so a
+// field an owner later removes on purpose stays removed.
+func standardFieldAdditions() map[string][]ObjectField {
+	return map[string][]ObjectField{
+		"opportunities": {
+			ofSelect("pipeline", "Pipeline", opts("sales", "Sales", "renewals", "Renewals", "partners", "Partners")),
+			ofSelect("forecastCategory", "Forecast category", opts("pipeline", "Pipeline", "best_case", "Best case", "commit", "Commit", "closed", "Closed", "omitted", "Omitted")),
+			of("lostReason", "Lost reason", "text"), ofLookup("priceBookId", "Price book", "price_books"),
+		},
+		"tasks": {
+			ofSelect("recurrence", "Repeats", recurrence), of("reminderAt", "Remind me", "datetime"), ofLookup("caseId", "Case", "cases"),
+		},
+		"events": {
+			of("attendees", "Attendees", "text"), ofSelect("reminderMinutes", "Reminder", opts("0", "At start", "10", "10 minutes before", "30", "30 minutes before", "60", "1 hour before", "1440", "1 day before")),
+			ofSelect("kind", "Type", opts("meeting", "Meeting", "call", "Call", "visit", "Visit", "follow_up", "Follow-up")),
+			ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("caseId", "Case", "cases"),
+		},
+		"cases": {
+			ofSelect("category", "Category", opts("question", "Question", "problem", "Problem", "feature_request", "Feature request", "billing", "Billing", "other", "Other")),
+			of("slaDueAt", "Respond by", "datetime"), of("closedAt", "Closed on", "datetime"), ofLookup("solutionId", "Knowledge article", "solutions"),
+		},
+		"communications": {
+			of("durationMinutes", "Duration (minutes)", "number"), ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("caseId", "Case", "cases"),
+		},
+		"catalog_items": {
+			of("cost", "Cost", "currency"),
+		},
+	}
+}
+
+var (
+	paymentMethods = opts("cash", "Cash", "upi", "UPI", "bank_transfer", "Bank transfer", "card", "Card", "cheque", "Cheque", "other", "Other")
+	recurrence     = opts("none", "Doesn't repeat", "weekly", "Weekly", "monthly", "Monthly", "quarterly", "Quarterly", "yearly", "Yearly")
+)
+
+// addStandardFields appends the field additions to stored standard definitions, once
+// (marker in crm.connector_state). Existing fields and their values are never touched.
+func addStandardFields(ctx context.Context, tx pgx.Tx) error {
+	const marker = "objects:standard-fields-v2"
+	var done bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.connector_state WHERE key = $1)`, marker).Scan(&done); err != nil || done {
+		return err
+	}
+	for key, add := range standardFieldAdditions() {
+		var raw []byte
+		err := tx.QueryRow(ctx, `SELECT definition FROM crm.object_definitions WHERE key = $1 AND is_standard`, key).Scan(&raw)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		var stored ObjectBody
+		if json.Unmarshal(raw, &stored) != nil {
+			continue
+		}
+		have := map[string]bool{}
+		for _, f := range stored.Fields {
+			have[f.Key] = true
+		}
+		changed := false
+		for _, f := range add {
+			if !have[f.Key] {
+				stored.Fields = append(stored.Fields, f)
+				changed = true
+			}
+		}
+		if changed {
+			out, _ := json.Marshal(stored)
+			if _, err := tx.Exec(ctx, `UPDATE crm.object_definitions SET definition = $2, updated_at = now() WHERE key = $1`, key, out); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO crm.connector_state (key, value) VALUES ($1, '{"done":true}') ON CONFLICT (key) DO NOTHING`, marker)
+	return err
 }
 
 // ---- registry ----
@@ -295,13 +455,16 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 			raw, _ := json.Marshal(d.ObjectBody)
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO crm.object_definitions (key, module, singular, plural, description, icon, prefix, definition, is_standard)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) ON CONFLICT (key) DO NOTHING`,
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) ON CONFLICT DO NOTHING`,
 				d.Key, d.Module, d.Singular, d.Plural, d.Description, d.Icon, d.Prefix, raw); err != nil {
 				return err
 			}
 			if err := addMissingStandardOptions(ctx, tx, d); err != nil {
 				return err
 			}
+		}
+		if err := addStandardFields(ctx, tx); err != nil {
+			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT key FROM crm.object_definitions`)
 		if err != nil {

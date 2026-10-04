@@ -30,6 +30,7 @@ const StandardSetupKey = "standard_crm"
 var StandardModules = []string{
 	"leads", "accounts", "contacts", "opportunities", "tasks", "calendar", "notes", "files",
 	"communications", "tickets", "catalog", "subscriptions", "workflows", "reports",
+	"finance", "sales_docs", "knowledge", "cards",
 }
 
 // SelfServeSettings is the owner's switchboard for self-serve (crm.platform_settings 'self_serve').

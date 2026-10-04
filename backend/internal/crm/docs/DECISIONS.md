@@ -467,6 +467,22 @@ The app and the CRM become one product: the CRM is the core, business-card scann
   run) and drive it over HTTP. CORS allows only `ALLOWED_ORIGINS` and the native shells in production (any origin
   elsewhere); credentials stay off because the app uses bearer tokens.
 
+- **D-96 Finance on the record engine; dashboard summary.** Income and Expenses are standard objects (module
+  `finance`): amount, date, category, payment method, account / contact / opportunity, reference, repeats, notes. They
+  get lists, filters, views, import/export, reports and permissions like any object; no separate finance tables.
+  The default Staff permission set doesn't include them (Admin and Super Admin do). `GET /w/{code}/dashboard/summary`
+  (`range=today|week|month|year|all|custom`, in the business's time zone) returns, for what the caller may read and
+  within their record scope: active / new / converted / lost leads, contacts, accounts, open opportunities, pipeline
+  and weighted pipeline value, won and lost deals, win rate, tasks due today / overdue / upcoming, upcoming meetings,
+  open cases, income, expenses and net income (cancelled entries excluded; totals in the business currency, no
+  conversion), plus short lists (follow-ups, recent leads, tasks, meetings, opportunities, contacts). Computed in SQL.
+- **D-97 Commerce and knowledge objects.** Standard objects added: price books, quotes, sales orders, invoices,
+  purchase orders, line items (one object used by quotes, orders, invoices, opportunities and price books) and
+  knowledge articles (`solutions`). Modules `sales_docs`, `knowledge`, `finance`, `cards`. Existing standard objects
+  gain fields once (marker `objects:standard-fields-v2`): opportunity pipeline, forecast category, lost reason, price
+  book; task repeats and reminder; event attendees, reminder, type; case category, respond-by, closed-on, article;
+  communication duration; catalog cost. Calls are Communications with channel Call; meetings are Calendar events.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

@@ -369,6 +369,7 @@ type dashboardKPI struct {
 }
 
 type recentList struct {
+	Key    string       `json:"key,omitempty"`
 	Object string       `json:"object"`
 	Label  string       `json:"label"`
 	Rows   []RelatedRow `json:"rows"`

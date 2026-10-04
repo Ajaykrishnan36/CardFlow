@@ -68,6 +68,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Use(identity.RequireReady, h.memberScope)
 		r.Get("/context", h.handleContext)
 		r.Get("/dashboard", h.handleDashboard)
+		r.Get("/dashboard/summary", h.handleDashboardSummary)
 		r.Get("/access/fields", h.handleWorkspaceFieldCatalog)
 		h.reportRoutes(r)
 		h.mountRecords(r, "")
