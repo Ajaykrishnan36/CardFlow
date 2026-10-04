@@ -21,6 +21,8 @@ type Error struct {
 	Message     string
 	FieldErrors map[string]string
 	RetryAfter  int
+	// Details: extra data the client needs to act on the error (e.g. the duplicates found).
+	Details map[string]any
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%d %s: %s", e.Status, e.Code, e.Message) }
@@ -70,6 +72,7 @@ type errorBody struct {
 	Code        string            `json:"code"`
 	Message     string            `json:"message"`
 	FieldErrors map[string]string `json:"fieldErrors,omitempty"`
+	Details     map[string]any    `json:"details,omitempty"`
 	RequestID   string            `json:"requestId,omitempty"`
 }
 
@@ -98,6 +101,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 		Code:        appErr.Code,
 		Message:     appErr.Message,
 		FieldErrors: appErr.FieldErrors,
+		Details:     appErr.Details,
 		RequestID:   reqID,
 	})
 }

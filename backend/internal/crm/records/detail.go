@@ -116,6 +116,11 @@ func (h *Handler) related(ctx context.Context, ws uuid.UUID, spec *objectSpec, r
 	if err != nil {
 		return nil, err
 	}
+	if cards, ok, err := h.relatedCards(ctx, ws, spec.Key, id); err != nil {
+		return nil, err
+	} else if ok {
+		out = append(out, cards)
+	}
 	out = append(out, linked...)
 	// Activity timeline (sign-ups, app sign-ins, tickets…) for the built-in objects.
 	col := map[string]string{"leads": "lead_id", "accounts": "account_id", "contacts": "contact_id"}[spec.Key]
@@ -216,7 +221,8 @@ func (h *Handler) detail(ctx context.Context, sc *Scope, me uuid.UUID, spec *obj
 func (h *Handler) filterRelated(ctx context.Context, sc *Scope, me uuid.UUID, lists []RelatedList) ([]RelatedList, error) {
 	out := []RelatedList{}
 	for _, l := range lists {
-		if l.Object == "activities" {
+		// Cards hang off a record the caller has already been allowed to open.
+		if l.Object == "activities" || l.Object == "cards" {
 			out = append(out, l)
 			continue
 		}

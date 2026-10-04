@@ -483,6 +483,25 @@ The app and the CRM become one product: the CRM is the core, business-card scann
   book; task repeats and reminder; event attendees, reminder, type; case category, respond-by, closed-on, article;
   communication duration; catalog cost. Calls are Communications with channel Call; meetings are Calendar events.
 
+### D-98 — Business cards are part of the CRM
+
+A scanned card is saved by a member inside one business. `POST /w/{code}/cards/match` looks for the
+person among **that business's** leads, contacts and accounts only (last 10 digits of a phone number,
+lower-cased email, exact company name for accounts), respects read permission and "own records"
+scope, and reports records the caller may not open only as a count (`hidden`). `POST /w/{code}/cards`
+saves in one transaction: the card (or an existing `cardId` from the caller's vault), a new lead or
+contact (optionally with its account, reusing an account of the same name), or an attachment to an
+existing record that only fills empty fields; plus the `crm.card_links` row, a "Business card
+scanned" timeline entry, an optional note and follow-up (a lead's next follow-up, otherwise a task).
+Creating a lead or contact for a phone/email already in the business answers `409 possible_duplicate`
+with the matches unless `allowDuplicate` is sent. `Idempotency-Key` is honoured.
+
+The vault stays in `public.saved_cards` (no second card store); it gains `identity_id` and
+`workspace_id`, and `user_id` becomes optional so CRM-only people can keep cards. There is no
+separate permission object for cards: a card is visible to the person who saved it and to anyone who
+can read a record it is linked to; creating/attaching needs the lead/contact/account permission.
+Lead, contact and account pages show a "Business cards" related list.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.
