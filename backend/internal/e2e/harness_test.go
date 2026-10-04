@@ -171,6 +171,9 @@ func call(t *testing.T, method, path, token string, body any) resp {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Session-Transport", "bearer")
+	if clientIP != "" {
+		req.Header.Set("X-Forwarded-For", clientIP)
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -201,6 +204,10 @@ func truncate(s string, n int) string {
 
 var phoneSeq = 0
 
+// clientIP: sign-ins come from a different address per person, as they would in real
+// use (the server limits code requests per address as well as per number).
+var clientIP = ""
+
 // freshPhone returns a number no other test uses (each has its own SMS rate limit).
 func freshPhone() string {
 	phoneSeq++
@@ -210,6 +217,9 @@ func freshPhone() string {
 // signIn signs a phone in through the real flow and returns the bearer token.
 func signIn(t *testing.T, phone, name string) string {
 	t.Helper()
+	phoneSeq++
+	clientIP = fmt.Sprintf("10.9.%d.%d", phoneSeq/250, phoneSeq%250+1)
+	defer func() { clientIP = "" }()
 	r := call(t, "POST", crmAPI+"/auth/phone/request", "", map[string]any{"phone": phone})
 	want(t, r, 200, "request code for "+phone)
 	code := r.str("devCode")
