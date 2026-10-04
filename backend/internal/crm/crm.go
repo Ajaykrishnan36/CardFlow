@@ -18,6 +18,7 @@ import (
 	"cardflow-backend/internal/crm/records"
 	"cardflow-backend/internal/crm/seed"
 	"cardflow-backend/internal/crm/shared"
+	"cardflow-backend/internal/crm/sms"
 	"cardflow-backend/internal/crm/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -71,6 +72,20 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		}()
 	}
 	m.identity = identity.NewService(st, cfg, mailer)
+	// Phone sign-in (D-93): the SMS provider comes from the environment; without one, codes
+	// can't be sent and sign-in by phone says so instead of pretending.
+	smsSender := sms.New(sms.LoadConfig(cfg.AppName, cfg.IsProduction()))
+	m.identity.SetSMS(smsSender)
+	switch smsSender.Mode() {
+	case "none":
+		slog.Warn("CRM sign-in by phone is off: no SMS provider is configured (set SMS_PROVIDER and its keys)")
+	case "preview":
+		slog.Warn("CRM sign-in codes are shown on screen instead of being sent by SMS (preview mode). Configure an SMS provider before real use")
+	default:
+		slog.Info("CRM sign-in codes are sent by SMS", "provider", smsSender.Mode())
+	}
+	m.identity.SetAppProfile(newAppProfile(context.Background(), st))
+	go backfillAppIdentities(context.Background(), st)
 	m.platform = platform.NewHandler(st, cfg, mailer, m.identity)
 	m.records = records.NewHandler(st, cfg, m.platform, recordMailer{mailer})
 	identity.SetAPIKeyResolver(m.records.ResolveAPIKey)
@@ -89,7 +104,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		for _, m := range []struct {
 			on  bool
 			key string
-		}{{lm.Password, "password"}, {lm.OTP, "otp"}, {lm.Google, "google"}, {lm.Microsoft, "microsoft"}, {lm.LinkedIn, "linkedin"}, {lm.SSO, "sso"}} {
+		}{{lm.Password, "password"}, {lm.OTP, "otp"}, {lm.Phone, "phone"}, {lm.Google, "google"}, {lm.Microsoft, "microsoft"}, {lm.LinkedIn, "linkedin"}, {lm.SSO, "sso"}} {
 			if m.on {
 				out = append(out, m.key)
 			}
@@ -145,6 +160,14 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	m.records.StartWorker(context.Background())
 	slog.Info("CRM module ready", "env", cfg.AppEnv, "base_url", cfg.BaseURL)
 	return m
+}
+
+// Identity is the unified identity service, or nil while the CRM is disabled.
+func (m *Module) Identity() *identity.Service {
+	if m == nil || m.disabledReason != "" {
+		return nil
+	}
+	return m.identity
 }
 
 func (m *Module) disable(reason string) *Module {

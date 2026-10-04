@@ -2,8 +2,13 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"cardflow-backend/internal/crm/identity"
+	"cardflow-backend/internal/crm/shared"
 	"cardflow-backend/internal/domain"
 	"cardflow-backend/pkg/response"
 	"github.com/google/uuid"
@@ -11,6 +16,25 @@ import (
 
 type AuthHandler struct {
 	authSvc *AuthService
+}
+
+// writeAuthError answers with the identity service's own status and message (wrong code,
+// too many attempts, SMS unavailable…) instead of flattening everything into "bad request".
+func writeAuthError(w http.ResponseWriter, err error) {
+	var se *shared.Error
+	if errors.As(err, &se) {
+		if se.RetryAfter > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(se.RetryAfter))
+		}
+		msg := se.Message
+		for _, m := range se.FieldErrors {
+			msg = m // the app shows one message under the field
+			break
+		}
+		response.Error(w, se.Status, strings.ToUpper(se.Code), msg, nil)
+		return
+	}
+	response.BadRequest(w, err.Error(), nil)
 }
 
 func NewAuthHandler(authSvc *AuthService) *AuthHandler {
@@ -46,9 +70,9 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.authSvc.SendOTP(r.Context(), req.Phone, req.DeviceID, req.Platform)
+	res, err := h.authSvc.SendOTP(r.Context(), req.Phone, identity.Meta(r))
 	if err != nil {
-		response.BadRequest(w, err.Error(), nil)
+		writeAuthError(w, err)
 		return
 	}
 
@@ -67,9 +91,9 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		code = req.OTP
 	}
 
-	tokenPair, err := h.authSvc.VerifyOTP(r.Context(), req.Phone, code, req.DeviceID, req.Platform, req.PushToken)
+	tokenPair, err := h.authSvc.VerifyOTP(r.Context(), req.Phone, code, req.DeviceID, req.Platform, req.PushToken, identity.Meta(r))
 	if err != nil {
-		response.BadRequest(w, err.Error(), nil)
+		writeAuthError(w, err)
 		return
 	}
 
@@ -152,9 +176,9 @@ func (h *AuthHandler) ChangePhone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.authSvc.ChangePhone(r.Context(), user, req.Phone, req.OTPCode)
+	updated, err := h.authSvc.ChangePhone(r.Context(), user, req.Phone, req.OTPCode, identity.Meta(r))
 	if err != nil {
-		response.BadRequest(w, err.Error(), nil)
+		writeAuthError(w, err)
 		return
 	}
 

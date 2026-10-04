@@ -427,6 +427,31 @@ Neon Postgres, Capacitor iOS/Android). Hard rule from the owner: do not touch Ca
   user flow. No table or data is dropped; `users.role` keeps its values.
 - **Known gap:** the app doesn't record logouts (logout is client-side only), so only sign-ins are logged.
 
+## Unified CRM platform (from 5 Oct 2026)
+
+The app and the CRM become one product: the CRM is the core, business-card scanning is a feature of it
+(`CRM_TRANSFORMATION_PLAN.md`). Open decisions in that plan were settled with its recommendations; each is recorded here.
+
+- **D-93 One identity; phone sign-in; sessions for the native app.** `crm.identities` is the only login record.
+  Customers sign in with a mobile number and a 6-digit SMS code (`POST /auth/phone/request`, `/auth/phone/verify`):
+  hashed in `crm.otp_challenges` (channel `sms`), 10 minutes, 5 attempts, single use; 3 requests per number per 10
+  minutes, 10 per day, 20 per IP per hour. The first correct code for a number creates the identity, so sign-up and
+  sign-in are one flow. The code is never logged and never returned, except by the *preview* sender, which exists only
+  when asked for explicitly: `SMS_PROVIDER=preview` or `DEV_MOCK_SMS=true` outside production, or
+  `OTP_PREVIEW_INSECURE=true` anywhere. Providers sit behind `crm/sms.Sender` (MSG91 and Twilio built in); with none
+  configured, phone sign-in answers 503 `sms_unavailable` instead of pretending.
+  A native app asks for a bearer session (`X-Session-Transport: bearer`): the same `crm.sessions` row as a cookie
+  session, sent as `Authorization: Bearer crms_…`, revocable, 30 days idle / 90 days absolute, renewable
+  (`POST /auth/session/renew` rotates the token). Bearer requests skip the CSRF check (no cookie is involved).
+  A phone session isn't forced into authenticator-app MFA or the 30-minute privileged idle limit (the code proves
+  possession); anyone who enrolled MFA is still challenged; the platform owner can't sign in by phone.
+  The app's profile row is linked, not moved: `public.users.identity_id`. Existing app users get an identity at
+  start-up (idempotent, `source = 'app_backfill'`; the phone counts as proved only if they had signed in before) and
+  at sign-in. The app's old endpoints (`/api/v1/auth/otp/*`) now call the same service, so there is one code store and
+  one set of limits; they still return the old JWT for app builds in use, plus the unified `session_token`. The app's
+  API accepts either token. The old JWT refuses the built-in or a short key in production. Phone sign-in is a method
+  in each app's setup (`loginMethods.phone`), on wherever a password or an email code is allowed.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

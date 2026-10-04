@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"cardflow-backend/internal/config"
@@ -29,6 +32,13 @@ type TokenPair struct {
 	ClaimedBusinesses []ClaimedBusiness `json:"claimed_businesses,omitempty"`
 	// SuggestedName pre-fills onboarding for a new user (the name on their card).
 	SuggestedName string `json:"suggested_name,omitempty"`
+	// SessionToken is the unified session (D-93): the same sign-in works for the CRM API
+	// and, as "Authorization: Bearer <token>", for this API. It can be revoked; the JWT
+	// above is kept only for app builds from before the identities were unified.
+	SessionToken     string     `json:"session_token,omitempty"`
+	SessionExpiresAt *time.Time `json:"session_expires_at,omitempty"`
+	// HasBusiness: the person already belongs to a business; false sends them to create one.
+	HasBusiness bool `json:"has_business"`
 }
 
 type ClaimedBusiness struct {
@@ -41,7 +51,21 @@ type JWTService struct {
 	cfg *config.Config
 }
 
+// devJWTSecret is the built-in key from config. It is public (it is in the source), so a
+// production server must never sign with it.
+const devJWTSecret = "cardflow-dev-secret-key-ed25519-placeholder-for-dev"
+
 func NewJWTService(cfg *config.Config) *JWTService {
+	if cfg.IsProduction() && (cfg.JWTPrivateKey == devJWTSecret || len(cfg.JWTPrivateKey) < 32) {
+		// Refuse the known or a short key: sign with a random one for this run. Tokens stop
+		// working at the next restart, which is the safe failure. Set JWT_PRIVATE_KEY to a
+		// long random value to fix it.
+		buf := make([]byte, 48)
+		if _, err := rand.Read(buf); err == nil {
+			cfg.JWTPrivateKey = hex.EncodeToString(buf)
+			slog.Error("JWT_PRIVATE_KEY is missing, the built-in default or shorter than 32 characters; using a random key for this run. Set a long random JWT_PRIVATE_KEY")
+		}
+	}
 	return &JWTService{cfg: cfg}
 }
 

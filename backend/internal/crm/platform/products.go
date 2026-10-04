@@ -56,12 +56,16 @@ type ProductConfig struct {
 		RequireQualified  bool `json:"requireQualified"`
 	} `json:"conversion"`
 	LoginMethods struct {
-		Password  bool `json:"password"`
-		OTP       bool `json:"otp"` // email sign-in code or link
-		Google    bool `json:"google"`
-		Microsoft bool `json:"microsoft"`
-		LinkedIn  bool `json:"linkedin"`
-		SSO       bool `json:"sso"` // the product's SAML or OpenID Connect identity provider
+		Password bool `json:"password"`
+		OTP      bool `json:"otp"`   // email sign-in code or link
+		Phone    bool `json:"phone"` // code sent to the person's mobile number (D-93)
+		// PhoneAsked marks configs saved since phone sign-in exists. Older ones allow it
+		// wherever a password or an email code is allowed (not for SSO-only products).
+		PhoneAsked bool `json:"phoneAsked"`
+		Google     bool `json:"google"`
+		Microsoft  bool `json:"microsoft"`
+		LinkedIn   bool `json:"linkedin"`
+		SSO        bool `json:"sso"` // the product's SAML or OpenID Connect identity provider
 		// Enforced marks configs saved since sign-in methods are enforced (D-64). Older
 		// configs only enforced the password, and an email code always worked too.
 		Enforced bool `json:"enforced"`
@@ -178,6 +182,8 @@ func DefaultProductConfig() ProductConfig {
 	c.Conversion.CreateOpportunity = false
 	c.LoginMethods.Password = true
 	c.LoginMethods.OTP = true
+	c.LoginMethods.Phone = true
+	c.LoginMethods.PhoneAsked = true
 	c.LoginMethods.Enforced = true
 	return c
 }
@@ -236,8 +242,12 @@ func (c *ProductConfig) normalize() {
 		}
 		c.LoginMethods.Enforced = true
 	}
+	if !c.LoginMethods.PhoneAsked {
+		c.LoginMethods.Phone = c.LoginMethods.Password || c.LoginMethods.OTP
+		c.LoginMethods.PhoneAsked = true
+	}
 	lm := c.LoginMethods
-	if !lm.Password && !lm.OTP && !lm.Google && !lm.Microsoft && !lm.LinkedIn && !lm.SSO {
+	if !lm.Password && !lm.OTP && !lm.Phone && !lm.Google && !lm.Microsoft && !lm.LinkedIn && !lm.SSO {
 		c.LoginMethods.Password = true // a product always has a way in
 	}
 }
@@ -824,6 +834,7 @@ func WorkspaceSetup(ctx context.Context, q interface {
 		out.Conversion.RequireQualified = out.Conversion.RequireQualified || c.Conversion.RequireQualified
 		out.LoginMethods.Password = out.LoginMethods.Password || c.LoginMethods.Password
 		out.LoginMethods.OTP = out.LoginMethods.OTP || c.LoginMethods.OTP
+		out.LoginMethods.Phone = out.LoginMethods.Phone || c.LoginMethods.Phone
 		out.LoginMethods.Google = out.LoginMethods.Google || c.LoginMethods.Google
 		out.LoginMethods.LinkedIn = out.LoginMethods.LinkedIn || c.LoginMethods.LinkedIn
 		out.LoginMethods.Microsoft = out.LoginMethods.Microsoft || c.LoginMethods.Microsoft

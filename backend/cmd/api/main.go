@@ -85,6 +85,9 @@ func main() {
 	// 3. Initialize Services
 	jwtSvc := auth.NewJWTService(cfg)
 	authSvc := auth.NewAuthService(dbPool, redisClient, jwtSvc, cfg)
+	// One identity for the app and the CRM (D-93): the app's sign-in codes and sessions
+	// come from the CRM identity service.
+	authSvc.SetIdentity(crmModule.Identity())
 	discoverySvc := discovery.NewDiscoveryService(dbPool)
 	businessSvc := business.NewBusinessService(dbPool)
 	var s3Svc *storage.S3Service
@@ -105,6 +108,7 @@ func main() {
 
 	// 4. Initialize Handlers & Middlewares
 	appMiddleware := middleware.NewMiddleware(jwtSvc, dbPool)
+	appMiddleware.SetIdentity(crmModule.Identity())
 	authHandler := auth.NewAuthHandler(authSvc)
 	discoveryHandler := discovery.NewDiscoveryHandler(discoverySvc)
 	businessHandler := business.NewBusinessHandler(businessSvc)

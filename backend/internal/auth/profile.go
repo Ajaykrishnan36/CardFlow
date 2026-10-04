@@ -6,79 +6,80 @@ import (
 	"strings"
 	"time"
 
+	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/domain"
-	"cardflow-backend/pkg/validator"
 	"github.com/google/uuid"
 )
 
+// UpdateUserProfile changes only the fields that were sent (a missing field is left as it
+// is) and returns the stored profile. A new name is copied to the person's identity, so
+// the app and the CRM show the same name.
 func (s *AuthService) UpdateUserProfile(ctx context.Context, user *domain.User, req UpdateProfileRequest) (*domain.User, error) {
 	if user == nil {
 		return nil, fmt.Errorf("user required")
 	}
-
-	if req.Name != nil {
-		user.Name = *req.Name
+	if s.db == nil || s.db.Pool == nil {
+		return nil, fmt.Errorf("database unavailable")
 	}
-	if req.Email != nil {
-		user.Email = req.Email
+	trim := func(p *string) *string {
+		if p == nil {
+			return nil
+		}
+		v := strings.TrimSpace(*p)
+		return &v
 	}
-	if req.City != nil {
-		user.City = *req.City
+	name := trim(req.Name)
+	if name != nil && (*name == "" || len(*name) > 100) {
+		return nil, fmt.Errorf("enter a name up to 100 characters")
 	}
-	if req.State != nil {
-		user.State = *req.State
+	tx, err := s.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
 	}
-	user.UpdatedAt = time.Now()
-
-	if s.db != nil && s.db.Pool != nil {
-		_, err := s.db.Pool.Exec(ctx, `
-			UPDATE users
-			SET name = $2, email = $3, city = $4, state = $5, updated_at = NOW()
-			WHERE id = $1 AND deleted_at IS NULL
-		`, user.ID, user.Name, user.Email, user.City, user.State)
-		if err != nil {
+	defer func() { _ = tx.Rollback(ctx) }()
+	var identityID *uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		UPDATE users
+		SET name = COALESCE($2, name), email = COALESCE($3, email), city = COALESCE($4, city), state = COALESCE($5, state), updated_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+		RETURNING identity_id`, user.ID, name, trim(req.Email), trim(req.City), trim(req.State)).Scan(&identityID); err != nil {
+		return nil, err
+	}
+	if name != nil && identityID != nil {
+		if _, err := tx.Exec(ctx, `UPDATE crm.identities SET display_name = $2, updated_at = now() WHERE id = $1`, *identityID, *name); err != nil {
 			return nil, err
 		}
 	}
-
-	return user, nil
+	updated, err := scanUser(tx.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id = $1`, user.ID))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 // ChangePhone updates the caller's own mobile number after verifying an OTP
 // sent to the new number — unlike VerifyOTP (login), this never resolves or
 // creates a different account; it only ever touches the caller's own row.
-func (s *AuthService) ChangePhone(ctx context.Context, user *domain.User, rawPhone, otpCode string) (*domain.User, error) {
+func (s *AuthService) ChangePhone(ctx context.Context, user *domain.User, rawPhone, otpCode string, meta identity.RequestMeta) (*domain.User, error) {
 	if user == nil {
 		return nil, fmt.Errorf("user required")
 	}
-
-	phone, ok := validator.NormalizePhone(rawPhone)
-	if !ok {
-		return nil, fmt.Errorf("invalid phone number format")
+	if s.ident == nil || s.db == nil || s.db.Pool == nil {
+		return nil, errSignInUnavailable
 	}
-
-	code := strings.TrimSpace(otpCode)
-	if len(code) != 6 {
-		return nil, fmt.Errorf("OTP must be 6 digits")
+	var identityID *uuid.UUID
+	if err := s.db.Pool.QueryRow(ctx, `SELECT identity_id FROM users WHERE id = $1 AND deleted_at IS NULL`, user.ID).Scan(&identityID); err != nil || identityID == nil {
+		return nil, fmt.Errorf("sign in again to change your number")
 	}
-	if !s.validateOTP(ctx, phone, code) {
-		return nil, fmt.Errorf("invalid OTP code. Please enter the 6-digit code")
+	// The identity service checks the code sent to the new number, moves the identity to
+	// it and updates this profile row in the same transaction.
+	phone, err := s.ident.ChangePhone(ctx, *identityID, rawPhone, strings.TrimSpace(otpCode), meta)
+	if err != nil {
+		return nil, err
 	}
-
-	if s.db != nil && s.db.Pool != nil {
-		var existingID uuid.UUID
-		err := s.db.Pool.QueryRow(ctx, `SELECT id FROM users WHERE phone = $1 AND deleted_at IS NULL`, phone).Scan(&existingID)
-		if err == nil && existingID != user.ID {
-			return nil, fmt.Errorf("this mobile number is already linked to another account")
-		}
-
-		if _, err := s.db.Pool.Exec(ctx, `
-			UPDATE users SET phone = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL
-		`, user.ID, phone); err != nil {
-			return nil, err
-		}
-	}
-
 	user.Phone = phone
 	user.UpdatedAt = time.Now()
 	return user, nil

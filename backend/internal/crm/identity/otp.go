@@ -212,6 +212,6 @@ func (s *Service) handleOTPVerify(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	s.setSessionCookie(w, out.token, out.expires)
+	s.deliverSession(w, r, out.token, out.expires, &out.step)
 	shared.WriteJSON(w, http.StatusOK, out.step)
 }

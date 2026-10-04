@@ -11,6 +11,7 @@ import (
 	"cardflow-backend/internal/crm/access"
 	"cardflow-backend/internal/crm/mail"
 	"cardflow-backend/internal/crm/shared"
+	"cardflow-backend/internal/crm/sms"
 	"cardflow-backend/internal/crm/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,6 +33,13 @@ type Service struct {
 	resetIPLimiter    *limiter
 	resetIdentLimiter *limiter
 	otpLimiter        *limiter // sign-in code requests, per email
+
+	// Phone sign-in (D-93).
+	sms             sms.Sender
+	phoneLimiter    *limiter // code requests per phone, short window
+	phoneDayLimiter *limiter // code requests per phone, per day (SMS cost and abuse)
+	phoneIPLimiter  *limiter // code requests per IP
+	appProfile      AppProfile
 }
 
 func NewService(st *store.Store, cfg shared.Config, mailer mail.Mailer) *Service {
@@ -44,13 +52,26 @@ func NewService(st *store.Store, cfg shared.Config, mailer mail.Mailer) *Service
 		resetIPLimiter:    newLimiter(5, 15*time.Minute),
 		resetIdentLimiter: newLimiter(3, time.Hour),
 		otpLimiter:        newLimiter(5, 15*time.Minute),
+		sms:               sms.New(sms.Config{}),
+		phoneLimiter:      newLimiter(3, 10*time.Minute),
+		phoneDayLimiter:   newLimiter(10, 24*time.Hour),
+		phoneIPLimiter:    newLimiter(20, time.Hour),
 	}
 }
+
+// SetSMS installs the text-message sender for phone sign-in codes.
+func (s *Service) SetSMS(sender sms.Sender) { s.sms = sender }
+
+// SMSMode names the configured text-message provider ("none" when codes can't be sent).
+func (s *Service) SMSMode() string { return s.sms.Mode() }
 
 type RequestMeta struct {
 	IP        string
 	UserAgent string
 	RequestID string
+	// Transport is "bearer" when the caller is a native app that keeps the session token
+	// itself (X-Session-Transport: bearer); otherwise the session travels in a cookie.
+	Transport string
 }
 
 type LoginInput struct {
@@ -65,6 +86,15 @@ type AuthStep struct {
 	MFAEnrollmentRequired bool   `json:"mfaEnrollmentRequired"`
 	MustChangePassword    bool   `json:"mustChangePassword"`
 	Next                  string `json:"next"`
+	// Token and ExpiresAt are set only for a bearer session (native app).
+	Token     string     `json:"token,omitempty"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// IsNewUser: this sign-in created the account (phone sign-up).
+	IsNewUser bool `json:"isNewUser,omitempty"`
+	// HasBusiness: the person belongs to at least one business; false sends them to create one.
+	HasBusiness bool `json:"hasBusiness"`
+	// App carries what the app's profile link reports (e.g. businesses claimed from scanned cards).
+	App map[string]any `json:"app,omitempty"`
 }
 
 type loginOutcome struct {
@@ -631,9 +661,14 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 				return nil, err
 			}
 		}
-		if !row.isOwner && len(memberships) == 0 {
+		// Self-serve (D-94): a person with no business yet is let in to create one. With
+		// self-serve switched off, joining stays by invitation only.
+		if !row.isOwner && len(memberships) == 0 && !SelfServeEnabled(ctx) {
 			return nil, shared.Forbidden("no_workspace_access", "Your account doesn't have access to a workspace yet. Ask your administrator for an invitation.")
 		}
+	}
+	if method == "phone" && row.isOwner {
+		return nil, shared.Forbidden("sign_in_method_not_allowed", "The owner console signs in with a password, an email code, Google, Microsoft or LinkedIn.")
 	}
 
 	var mfaEnrolled bool
@@ -644,6 +679,13 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 	}
 	privileged := access.IsPrivileged(row.isOwner, memberships)
 	mfaRequired := mfaEnrolled || (privileged && s.cfg.MFAEnforced())
+	if method == "phone" {
+		// The SMS code already proves possession of the phone (D-93): a customer who runs
+		// their own business isn't forced into an authenticator app or a 30-minute idle
+		// limit. Anyone who enrolled MFA is still challenged.
+		mfaRequired = mfaEnrolled
+		privileged = false
+	}
 	sessionAudience := "workspace"
 	if row.isOwner {
 		sessionAudience = "owner"
@@ -670,6 +712,7 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 			ip:          meta.IP,
 			userAgent:   meta.UserAgent,
 			method:      method, // a product that only allows SSO (say) checks this later
+			transport:   meta.Transport,
 		})
 		if err != nil {
 			return err
@@ -699,6 +742,7 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 		MFAEnrollmentRequired: enrollRequired,
 		MustChangePassword:    row.mustChange,
 		Next:                  nextPath(row.isOwner, mfaRequired, enrollRequired, row.mustChange),
+		HasBusiness:           len(memberships) > 0,
 	}
 	return &out, nil
 }

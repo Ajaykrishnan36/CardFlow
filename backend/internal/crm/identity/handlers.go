@@ -31,7 +31,45 @@ func Meta(r *http.Request) RequestMeta {
 		IP:        shared.ClientIP(r),
 		UserAgent: r.UserAgent(),
 		RequestID: chiMiddleware.GetReqID(r.Context()),
+		Transport: transportOf(r),
 	}
+}
+
+// transportOf is "bearer" when a native app asks to hold the session token itself.
+func transportOf(r *http.Request) string {
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get(TransportHeader)), "bearer") || sessionBearer(r) != "" {
+		return "bearer"
+	}
+	return "cookie"
+}
+
+// sessionBearer returns a session token sent as "Authorization: Bearer crms_…", or "".
+func sessionBearer(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	if len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
+		t := strings.TrimSpace(h[7:])
+		if strings.HasPrefix(t, BearerPrefix) {
+			return strings.TrimPrefix(t, BearerPrefix)
+		}
+	}
+	return ""
+}
+
+// deliverSession hands a new or rotated session token to the caller: in the response
+// (body field and X-Session-Token header) for a native app, in the cookie for a browser.
+func (s *Service) deliverSession(w http.ResponseWriter, r *http.Request, token string, expires time.Time, step *AuthStep) {
+	if token == "" {
+		return
+	}
+	if transportOf(r) == "bearer" {
+		w.Header().Set(TokenHeader, BearerPrefix+token)
+		if step != nil {
+			step.Token = BearerPrefix + token
+			step.ExpiresAt = &expires
+		}
+		return
+	}
+	s.setSessionCookie(w, token, expires)
 }
 
 // APIKeyResolver turns an API key (Authorization: Bearer crm_…) into a session for the
@@ -64,6 +102,11 @@ func csrfExempt(path string) bool {
 		}
 	}
 	return false
+}
+
+func hasCookie(r *http.Request, name string) bool {
+	c, err := r.Cookie(name)
+	return err == nil && c.Value != ""
 }
 
 // IsAPIRequest reports whether the request authenticates with an API key.
@@ -99,8 +142,11 @@ func (s *Service) CSRF(next http.Handler) http.Handler {
 				SameSite: http.SameSiteLaxMode,
 			})
 		}
-		// API keys aren't sent by browsers automatically, so they need no CSRF token.
-		if !isSafeMethod(r.Method) && !IsAPIRequest(r) && !csrfExempt(r.URL.Path) {
+		// API keys and bearer sessions aren't sent by browsers automatically, so they need
+		// no CSRF token. A request that asks for a bearer session and carries no session
+		// cookie (a native app signing in) can't be a cross-site forgery either.
+		native := sessionBearer(r) != "" || (transportOf(r) == "bearer" && !hasCookie(r, SessionCookie))
+		if !isSafeMethod(r.Method) && !IsAPIRequest(r) && !native && !csrfExempt(r.URL.Path) {
 			header := r.Header.Get(CSRFHeader)
 			if cookieVal == "" || header == "" || !shared.ConstantTimeEqual(header, cookieVal) {
 				shared.WriteError(w, r, shared.Forbidden("csrf_failed", "Your security token expired. Refresh the page and try again."))
@@ -125,6 +171,21 @@ func (s *Service) LoadSession(next http.Handler) http.Handler {
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, sessionKey, sess)))
+			return
+		}
+		if tok := sessionBearer(r); tok != "" {
+			sess, err := s.lookupSession(r.Context(), tok)
+			if err != nil {
+				shared.WriteError(w, r, err)
+				return
+			}
+			if sess == nil || sess.Transport != "bearer" {
+				// Tell the app plainly, so it asks for a new code instead of showing empty screens.
+				shared.WriteError(w, r, shared.NewError(http.StatusUnauthorized, "session_expired", "Your session has ended. Sign in again."))
+				return
+			}
+			s.touchSession(r.Context(), sess)
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey, sess)))
 			return
 		}
 		c, err := r.Cookie(SessionCookie)
@@ -209,6 +270,8 @@ func (s *Service) Routes(r chi.Router) {
 	r.Get("/auth/join/{token}", s.handleInviteLinkInfo)
 	r.Post("/auth/otp/request", s.handleOTPRequest)
 	r.Post("/auth/otp/verify", s.handleOTPVerify)
+	r.Post("/auth/phone/request", s.handlePhoneRequest)
+	r.Post("/auth/phone/verify", s.handlePhoneVerify)
 	r.Get("/invitations/preview", s.handleInvitationPreview)
 	r.Post("/invitations/accept", s.handleInvitationAccept)
 
@@ -216,6 +279,7 @@ func (s *Service) Routes(r chi.Router) {
 		r.Use(RequireSession)
 		r.Get("/me", s.handleMe)
 		r.Post("/auth/logout", s.handleLogout)
+		r.Post("/auth/session/renew", s.handleRenewSession)
 		r.Post("/auth/mfa/verify", s.handleMFAVerify)
 		r.Post("/auth/mfa/enroll", s.handleMFAEnroll)
 		r.Post("/auth/mfa/confirm", s.handleMFAConfirm)
@@ -224,6 +288,9 @@ func (s *Service) Routes(r chi.Router) {
 		r.Use(RequireMFAComplete)
 		r.Post("/auth/logout-all", s.handleLogoutAll)
 		r.Post("/auth/password/change", s.handleChangePassword)
+		r.Patch("/me", s.handleUpdateMe)
+		r.Post("/me/phone/request", s.handleChangePhoneRequest)
+		r.Post("/me/phone/verify", s.handleChangePhoneVerify)
 		r.Get("/me/sessions", s.handleListSessions)
 		r.Delete("/me/sessions/{id}", s.handleRevokeSession)
 	})
@@ -249,7 +316,7 @@ func (s *Service) handleLogin(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	s.setSessionCookie(w, out.token, out.expires)
+	s.deliverSession(w, r, out.token, out.expires, &out.step)
 	shared.WriteJSON(w, http.StatusOK, out.step)
 }
 
@@ -287,7 +354,7 @@ func (s *Service) handleMFAVerify(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	s.setSessionCookie(w, out.token, sess.AbsoluteExpiresAt)
+	s.deliverSession(w, r, out.token, sess.AbsoluteExpiresAt, nil)
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -312,9 +379,7 @@ func (s *Service) handleMFAConfirm(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	if out.token != "" {
-		s.setSessionCookie(w, out.token, sess.AbsoluteExpiresAt)
-	}
+	s.deliverSession(w, r, out.token, sess.AbsoluteExpiresAt, nil)
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 
@@ -369,7 +434,7 @@ func (s *Service) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	s.setSessionCookie(w, out.token, sess.AbsoluteExpiresAt)
+	s.deliverSession(w, r, out.token, sess.AbsoluteExpiresAt, nil)
 	shared.WriteJSON(w, http.StatusOK, out)
 }
 

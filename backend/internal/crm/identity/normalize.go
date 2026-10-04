@@ -58,6 +58,10 @@ func normalizePhone(raw string) (string, bool) {
 		}
 	}
 	d := digits.String()
+	// A leading 0 before a 10-digit Indian mobile number (09876543210) is trunk dialling.
+	if len(d) == 11 && strings.HasPrefix(d, "0") && !hasPlus {
+		d = d[1:]
+	}
 	switch {
 	case len(d) == 10 && !hasPlus:
 		return "+91" + d, true

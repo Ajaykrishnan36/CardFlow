@@ -20,8 +20,22 @@ var methodPolicy MethodPolicy
 func SetMethodPolicy(p MethodPolicy) { methodPolicy = p }
 
 // MethodLabels name sign-in methods for people.
-var MethodLabels = map[string]string{"password": "a password", "otp": "an email sign-in code", "google": "Google", "microsoft": "Microsoft",
-	"linkedin": "LinkedIn", "sso": "your company's single sign-on"}
+var MethodLabels = map[string]string{"password": "a password", "otp": "an email sign-in code", "phone": "a code sent to your phone", "google": "Google",
+	"microsoft": "Microsoft", "linkedin": "LinkedIn", "sso": "your company's single sign-on"}
+
+// SelfServePolicy says whether people may create their own business (D-94). It is set by
+// the platform at start-up; without one, self-serve is on.
+var selfServePolicy func(ctx context.Context) bool
+
+func SetSelfServePolicy(p func(ctx context.Context) bool) { selfServePolicy = p }
+
+// SelfServeEnabled reports whether a signed-in person without a business may create one.
+func SelfServeEnabled(ctx context.Context) bool {
+	if selfServePolicy == nil {
+		return true
+	}
+	return selfServePolicy(ctx)
+}
 
 // AllowedMethods is the list for a workspace (nil = anything).
 func AllowedMethods(ctx context.Context, code string) []string {
@@ -94,7 +108,7 @@ func (s *Service) handleMethods(w http.ResponseWriter, r *http.Request) {
 	code := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("product")))
 	list := AllowedMethods(r.Context(), code)
 	if list == nil {
-		list = []string{"password", "otp", "google", "microsoft", "linkedin"}
+		list = []string{"password", "otp", "phone", "google", "microsoft", "linkedin"}
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"methods": list, "product": code, "signup": SignupAllowed(r.Context(), code)})
 }

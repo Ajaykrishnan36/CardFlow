@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"cardflow-backend/internal/config"
+	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/domain"
 	"github.com/google/uuid"
 )
@@ -47,31 +48,27 @@ func TestJWTGenerationAndValidation(t *testing.T) {
 	}
 }
 
-func TestGeneratedOTPRequiresDatabase(t *testing.T) {
-	cfg := &config.Config{
-		Env:           "development",
-		JWTPrivateKey: "secret",
-	}
+// The app keeps no one-time codes of its own any more (D-93): without the identity
+// service there is no way to request or check a code, and nothing is ever "accepted".
+func TestSignInNeedsIdentityService(t *testing.T) {
+	cfg := &config.Config{Env: "development", JWTPrivateKey: "secret"}
 	authSvc := NewAuthService(nil, nil, NewJWTService(cfg), cfg)
 
-	preview, err := authSvc.RequestOTP(context.Background(), "9876543211")
-	if err != nil {
-		t.Fatalf("RequestOTP failed: %v", err)
+	if _, err := authSvc.SendOTP(context.Background(), "9876543211", identity.RequestMeta{}); err == nil {
+		t.Fatal("expected SendOTP to fail without the identity service")
 	}
-	if len(preview) != 6 {
-		t.Fatalf("expected 6-digit OTP, got %q", preview)
-	}
-
-	if preview != "123456" {
-		_, errFixed := authSvc.VerifyOTP(context.Background(), "9876543211", "123456", "device1", "web", "")
-		if errFixed == nil {
-			t.Fatal("fixed OTP 123456 must not succeed")
+	for _, code := range []string{"123456", "000000"} {
+		if _, err := authSvc.VerifyOTP(context.Background(), "9876543211", code, "device1", "web", "", identity.RequestMeta{}); err == nil {
+			t.Fatalf("code %s must not be accepted without the identity service", code)
 		}
 	}
+}
 
-	// Without DB, even a correct OTP must fail (roles live in PostgreSQL only)
-	_, err = authSvc.VerifyOTP(context.Background(), "9876543211", preview, "device1", "web", "")
-	if err == nil {
-		t.Fatal("expected verify to fail without PostgreSQL")
+// A production server must not sign tokens with the key that ships in the source.
+func TestProductionRefusesBuiltInJWTKey(t *testing.T) {
+	cfg := &config.Config{Env: "production", JWTPrivateKey: devJWTSecret}
+	NewJWTService(cfg)
+	if cfg.JWTPrivateKey == devJWTSecret || len(cfg.JWTPrivateKey) < 32 {
+		t.Fatal("production kept the built-in JWT key")
 	}
 }

@@ -19,8 +19,18 @@ const (
 	idlePrivileged   = 30 * time.Minute   // PRD AUTH-03
 	idleStandard     = 7 * 24 * time.Hour // PRD AUTH-03
 	absoluteLifetime = 30 * 24 * time.Hour
-	touchInterval    = time.Minute
-	maxMFAAttempts   = 5
+	// A native app keeps its session in the device's secure storage (D-93): it slides for
+	// 30 days of use and ends after 90 days whatever happens, then asks for a new code.
+	idleBearer     = 30 * 24 * time.Hour
+	absoluteBearer = 90 * 24 * time.Hour
+	// BearerPrefix marks a session token sent as "Authorization: Bearer crms_…".
+	BearerPrefix = "crms_"
+	// TransportHeader asks sign-in to return a bearer session instead of setting a cookie.
+	TransportHeader = "X-Session-Transport"
+	// TokenHeader carries a new or rotated bearer token back to a native app.
+	TokenHeader    = "X-Session-Token"
+	touchInterval  = time.Minute
+	maxMFAAttempts = 5
 )
 
 // Session is a validated, unexpired, unrevoked session joined with its identity.
@@ -39,8 +49,10 @@ type Session struct {
 	DisplayName        string
 	IsPlatformOwner    bool
 	MustChangePassword bool
-	// AuthMethod is how the session signed in: password | otp | google | microsoft | linkedin | sso.
+	// AuthMethod is how the session signed in: password | otp | phone | google | microsoft | linkedin | sso.
 	AuthMethod string
+	// Transport is how the token travels: cookie (web) or bearer (native app).
+	Transport string
 }
 
 // MFAComplete reports whether the second factor (if any) has been satisfied (D-13).
@@ -56,6 +68,14 @@ func idleFor(privileged bool) time.Duration {
 	return idleStandard
 }
 
+// idleWindow is how long a session may sit unused, by how it is carried.
+func idleWindow(privileged bool, transport string) time.Duration {
+	if transport == "bearer" && !privileged {
+		return idleBearer
+	}
+	return idleFor(privileged)
+}
+
 type newSession struct {
 	identityID  uuid.UUID
 	audience    string
@@ -64,6 +84,7 @@ type newSession struct {
 	ip          string
 	userAgent   string
 	method      string
+	transport   string // "" or "cookie" | "bearer"
 }
 
 // createSession stores a fresh session and returns its raw token (only the hash is kept).
@@ -73,14 +94,21 @@ func createSession(ctx context.Context, tx pgx.Tx, n newSession) (string, time.T
 		return "", time.Time{}, err
 	}
 	now := time.Now()
+	transport := "cookie"
 	absolute := now.Add(absoluteLifetime)
+	if n.transport == "bearer" {
+		transport = "bearer"
+		if !n.privileged {
+			absolute = now.Add(absoluteBearer)
+		}
+	}
 	_, err = tx.Exec(ctx, `
 		INSERT INTO crm.sessions
 			(identity_id, token_hash, audience, privileged, mfa_required, mfa_passed, recent_auth_at,
-			 ip, user_agent, idle_expires_at, absolute_expires_at, auth_method)
-		VALUES ($1, $2, $3, $4, $5, false, $6, NULLIF($7, '')::inet, NULLIF($8, ''), $9, $10, COALESCE(NULLIF($11, ''), 'password'))`,
+			 ip, user_agent, idle_expires_at, absolute_expires_at, auth_method, transport)
+		VALUES ($1, $2, $3, $4, $5, false, $6, NULLIF($7, '')::inet, NULLIF($8, ''), $9, $10, COALESCE(NULLIF($11, ''), 'password'), $12)`,
 		n.identityID, shared.HashToken(token), n.audience, n.privileged, n.mfaRequired, now,
-		n.ip, truncate(n.userAgent, 400), now.Add(idleFor(n.privileged)), absolute, n.method)
+		n.ip, truncate(n.userAgent, 400), now.Add(idleWindow(n.privileged, transport)), absolute, n.method, transport)
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -95,7 +123,7 @@ func (s *Service) lookupSession(ctx context.Context, token string) (*Session, er
 	err := s.store.Pool.QueryRow(ctx, `
 		SELECT s.id, s.identity_id, s.audience, s.mfa_required, s.mfa_passed, s.mfa_attempts, s.recent_auth_at,
 		       s.privileged, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
-		       i.display_name, i.is_platform_owner, COALESCE(pc.must_change, false), s.auth_method
+		       i.display_name, i.is_platform_owner, COALESCE(pc.must_change, false), s.auth_method, s.transport
 		FROM crm.sessions s
 		JOIN crm.identities i ON i.id = s.identity_id
 		LEFT JOIN crm.password_credentials pc ON pc.identity_id = i.id
@@ -106,7 +134,7 @@ func (s *Service) lookupSession(ctx context.Context, token string) (*Session, er
 		  AND i.status = 'active'`, shared.HashToken(token)).Scan(
 		&sess.ID, &sess.IdentityID, &sess.Audience, &sess.MFARequired, &sess.MFAPassed, &sess.MFAAttempts,
 		&sess.RecentAuthAt, &sess.Privileged, &sess.LastSeenAt, &sess.IdleExpiresAt, &sess.AbsoluteExpiresAt,
-		&sess.DisplayName, &sess.IsPlatformOwner, &sess.MustChangePassword, &sess.AuthMethod)
+		&sess.DisplayName, &sess.IsPlatformOwner, &sess.MustChangePassword, &sess.AuthMethod, &sess.Transport)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -121,7 +149,7 @@ func (s *Service) touchSession(ctx context.Context, sess *Session) {
 	if time.Since(sess.LastSeenAt) < touchInterval {
 		return
 	}
-	idle := time.Now().Add(idleFor(sess.Privileged))
+	idle := time.Now().Add(idleWindow(sess.Privileged, sess.Transport))
 	if idle.After(sess.AbsoluteExpiresAt) {
 		idle = sess.AbsoluteExpiresAt
 	}
