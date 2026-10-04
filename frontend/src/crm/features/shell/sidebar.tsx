@@ -1,10 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Check, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Search } from 'lucide-react';
+import { Building2, Check, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Plus, Search } from 'lucide-react';
 import type { Me, NavItem, WorkspaceContext } from '@crm/api/types';
 import { isOwnerSession, workspaceHomePath } from '@crm/auth/session';
 import { LogoMark } from '@crm/components/brand';
-import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger, Tooltip } from '@crm/components/ui/menu';
+import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Tooltip } from '@crm/components/ui/menu';
 import { Skeleton } from '@crm/components/ui/spinner';
 import { cn, initials } from '@crm/lib/utils';
 import { useUI } from '@crm/lib/ui-store';
@@ -209,7 +209,8 @@ function WorkspaceHeader({ workspace, code, collapsed, onNavigate }: { workspace
   const options = workspace
     ? [{ code, name }, ...workspace.workspaces.filter((w) => w.code !== code && w.code !== workspace.workspace.code)]
     : [];
-  const switchable = options.length > 1;
+  // Members can always get to "Your businesses" (switch, or create another one).
+  const switchable = options.length > 0 && !workspace?.viewerIsOwner;
 
   const body = (
     <>
@@ -278,6 +279,25 @@ function WorkspaceHeader({ workspace, code, collapsed, onNavigate }: { workspace
               </MenuItem>
             );
           })}
+          <MenuSeparator />
+          <MenuItem
+            onSelect={() => {
+              onNavigate?.();
+              navigate('/crm/businesses');
+            }}
+          >
+            <Building2 />
+            <span className="min-w-0 flex-1 truncate">All businesses</span>
+          </MenuItem>
+          <MenuItem
+            onSelect={() => {
+              onNavigate?.();
+              navigate('/crm/businesses?new=1');
+            }}
+          >
+            <Plus />
+            <span className="min-w-0 flex-1 truncate">New business</span>
+          </MenuItem>
         </MenuContent>
       </Menu>
     </div>

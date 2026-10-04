@@ -45,6 +45,9 @@ const AppUserDetailPage = lazy(() => import('@crm/features/workspace/app/app-use
 const BusinessesPage = lazy(() => import('@crm/features/workspace/app/businesses-page').then((m) => ({ default: m.BusinessesPage })));
 const BusinessDetailPage = lazy(() => import('@crm/features/workspace/app/business-detail-page').then((m) => ({ default: m.BusinessDetailPage })));
 const WorkspaceDashboardPage = lazy(() => import('@crm/features/workspace/dashboard-page').then((m) => ({ default: m.WorkspaceDashboardPage })));
+const BusinessesHomePage = lazy(() => import('@crm/features/business/businesses-page').then((m) => ({ default: m.BusinessesHomePage })));
+const BusinessProfilePage = lazy(() => import('@crm/features/business/business-profile-page').then((m) => ({ default: m.BusinessProfilePage })));
+const CardsPage = lazy(() => import('@crm/features/cards/cards-page').then((m) => ({ default: m.CardsPage })));
 const ProfilePage = lazy(() => import('@crm/features/me/profile-page').then((m) => ({ default: m.ProfilePage })));
 const AcceptInvitePage = lazy(() => import('@crm/features/auth/accept-invite-page').then((m) => ({ default: m.AcceptInvitePage })));
 const ProductsPage = lazy(() => import('@crm/features/products/products-page').then((m) => ({ default: m.ProductsPage })));
@@ -132,6 +135,7 @@ function AppRoutes() {
         <Route element={<RequireSession />}>
           <Route element={<AppShell />}>
             <Route path="/crm/me" element={<ProfilePage />} />
+            <Route path="/crm/businesses" element={<BusinessesHomePage />} />
             <Route path="/crm/home" element={<WorkspaceHomePage />} />
             <Route path="/crm/home/*" element={<WorkspaceHomePage />} />
             {/* Member workspace app: navigation and permissions come from GET /w/{code}/context. */}
@@ -139,6 +143,8 @@ function AppRoutes() {
               <Route index element={<WorkspaceIndexRedirect />} />
               <Route path="home" element={<WorkspaceDashboardPage />} />
               <Route path="settings/access" element={<WorkspaceAccessPage />} />
+              <Route path="settings/business" element={<BusinessProfilePage />} />
+              <Route path="cards" element={<CardsPage />} />
               {/* App support tickets are Cases now (D-72); old links still work. */}
               <Route path="support" element={<Navigate to="../cases" relative="path" replace />} />
               <Route path="support/:id" element={<TicketToCase />} />

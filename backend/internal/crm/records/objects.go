@@ -78,7 +78,7 @@ var (
 	prefixRe      = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,5}$`)
 	reservedKeys  = map[string]bool{"leads": true, "accounts": true, "contacts": true, "users": true, "products": true, "workspaces": true,
 		"activities": true, "tickets": true, "meta": true, "objects": true, "support": true, "home": true, "settings": true, "setup": true,
-		"dashboard": true, "context": true, "admin": true, "app": true, "businesses": true}
+		"dashboard": true, "context": true, "admin": true, "app": true, "businesses": true, "business": true, "cards": true}
 	reservedFields = map[string]bool{"id": true, "name": true, "status": true, "code": true, "ownerId": true, "createdAt": true,
 		"createdBy": true, "updatedAt": true, "updatedBy": true, "version": true, "custom": true, "title": true}
 	reservedPrefixes = map[string]bool{"L": true, "A": true, "C": true}

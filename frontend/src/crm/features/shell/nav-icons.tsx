@@ -1,4 +1,5 @@
 import {
+  ScanLine,
   BarChart3,
   LayoutGrid,
   Banknote,
@@ -80,6 +81,7 @@ const icons: Record<string, LucideIcon> = {
   'id-card': IdCard,
   smartphone: Smartphone,
   store: Store,
+  'scan-line': ScanLine,
   workflow: Workflow,
   megaphone: Megaphone,
   mail: Mail,

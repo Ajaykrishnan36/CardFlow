@@ -16,6 +16,7 @@ import { useAfterAuth } from '@crm/auth/session';
 import { safeReturnTo } from '@crm/lib/utils';
 import { useFormError } from './use-form-error';
 import { EmailCodeForm } from './email-code-form';
+import { PhoneCodeForm } from './phone-code-form';
 
 interface Values {
   identifier: string;
@@ -33,9 +34,16 @@ export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
   const methodsQ = useQuery({ queryKey: ['auth', 'methods', product], queryFn: () => signInApi.methods(product || undefined), staleTime: 60_000, retry: false });
   const providersQ = useQuery({ queryKey: ['auth', 'providers'], queryFn: () => signInApi.providers(), staleTime: 5 * 60_000, retry: false });
   const allowed = methodsQ.data?.methods ?? ['password', 'otp'];
-  const tabs = (['password', 'code'] as const).filter((m) => allowed.includes(m === 'password' ? 'password' : 'otp'));
+  // Customers sign in with their mobile number first (the same one as in the app, D-93);
+  // the owner console never uses phone sign-in.
+  const tabs = (['phone', 'password', 'code'] as const).filter((m) =>
+    m === 'phone' ? audience === 'workspace' && allowed.includes('phone') : allowed.includes(m === 'password' ? 'password' : 'otp')
+  );
   // Magic link from the sign-in email: ?method=code&email=…&code=… opens the code tab.
-  const [picked, setMethod] = useState<'password' | 'code'>(searchParams.get('method') === 'code' ? 'code' : 'password');
+  const asked = searchParams.get('method');
+  const [picked, setMethod] = useState<'phone' | 'password' | 'code'>(
+    asked === 'code' ? 'code' : asked === 'password' || audience === 'owner' || searchParams.get('expired') ? 'password' : 'phone'
+  );
   const method = tabs.includes(picked) ? picked : tabs[0];
   const providers = (['google', 'microsoft', 'linkedin'] as const).filter((p) => allowed.includes(p) && providersQ.data?.[p] && (audience === 'workspace' || p !== 'linkedin'));
   const sso = audience === 'workspace' && Boolean(product) && allowed.includes('sso');
@@ -44,7 +52,7 @@ export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
     <div className="space-y-5">
       {oauthError ? <Alert tone="danger">{oauthError}</Alert> : null}
       {tabs.length > 1 ? (
-        <div role="tablist" aria-label={t('auth.login.submit')} className="grid grid-cols-2 rounded-lg border bg-muted/60 p-1">
+        <div role="tablist" aria-label={t('auth.login.submit')} className={'grid rounded-lg border bg-muted/60 p-1 ' + (tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
           {tabs.map((m) => (
             <button
               key={m}
@@ -57,12 +65,12 @@ export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
                 (method === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')
               }
             >
-              {m === 'password' ? t('auth.login.methodPassword') : t('auth.login.methodCode')}
+              {m === 'phone' ? 'Mobile' : m === 'password' ? t('auth.login.methodPassword') : t('auth.login.methodCode')}
             </button>
           ))}
         </div>
       ) : null}
-      {method === 'password' ? <PasswordLoginForm audience={audience} /> : method === 'code' ? <EmailCodeForm audience={audience} /> : null}
+      {method === 'phone' ? <PhoneCodeForm /> : method === 'password' ? <PasswordLoginForm audience={audience} /> : method === 'code' ? <EmailCodeForm audience={audience} /> : null}
       {buttons ? (
         <>
           {tabs.length ? (

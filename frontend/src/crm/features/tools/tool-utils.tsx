@@ -31,7 +31,7 @@ export function useWorkspaceObjects(): Array<{ key: ObjectKey; label: string }> 
   return useMemo(
     () =>
       context.navigation
-        .filter((n) => n.group === 'CRM' && n.key !== 'support')
+        .filter((n) => ['CRM', 'Finance', 'Sales', 'Service'].includes(n.group ?? '') && n.key !== 'support' && n.key !== 'cards')
         .map((n) => ({ key: n.path.split('/').pop() as ObjectKey, label: n.label })),
     [context.navigation]
   );

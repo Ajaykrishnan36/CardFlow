@@ -275,7 +275,7 @@ func navForApp(nav []access.NavItem, app workspaceApp) []access.NavItem {
 	}
 	out := make([]access.NavItem, 0, len(nav))
 	for _, n := range nav {
-		if n.Group == "CRM" || n.Group == "App" {
+		if access.IsRecordGroup(n.Group) {
 			if on, known := keys[n.Key]; known && !on {
 				continue
 			}

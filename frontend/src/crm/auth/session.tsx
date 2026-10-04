@@ -56,7 +56,7 @@ export function workspaceHomePath(code: string): string {
 export function homeFor(me: Me): string {
   if (isOwnerSession(me)) return '/crm/owner/dashboard';
   const ws = homeWorkspace(me);
-  return ws ? workspaceHomePath(ws.workspaceCode) : '/crm/home';
+  return ws ? workspaceHomePath(ws.workspaceCode) : '/crm/businesses';
 }
 
 /**

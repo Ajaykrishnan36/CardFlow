@@ -10,8 +10,10 @@ export class ApiError extends Error {
   readonly fieldErrors: Record<string, string>;
   readonly requestId?: string;
   readonly retryAfter?: number;
+  /** Extra data some errors carry (e.g. the duplicates found when saving a card). */
+  readonly details?: Record<string, unknown>;
 
-  constructor(status: number, code: string, message: string, fieldErrors: Record<string, string> = {}, requestId?: string, retryAfter?: number) {
+  constructor(status: number, code: string, message: string, fieldErrors: Record<string, string> = {}, requestId?: string, retryAfter?: number, details?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
@@ -19,6 +21,7 @@ export class ApiError extends Error {
     this.fieldErrors = fieldErrors;
     this.requestId = requestId;
     this.retryAfter = retryAfter;
+    this.details = details;
   }
 }
 
@@ -94,7 +97,8 @@ export async function api<T>(path: string, opts: RequestOptions = {}, retried = 
       data?.message ?? FALLBACK_MESSAGES[res.status] ?? FALLBACK_MESSAGES[500],
       data?.fieldErrors ?? {},
       data?.requestId,
-      Number(res.headers.get('Retry-After')) || undefined
+      Number(res.headers.get('Retry-After')) || undefined,
+      data?.details
     );
     if (err.code === 'csrf_failed' && !retried) {
       await ensureCsrf(true);

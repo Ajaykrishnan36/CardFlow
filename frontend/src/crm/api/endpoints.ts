@@ -523,3 +523,130 @@ export const signInApi = {
   oauthStartUrl: (provider: string, params: { product?: string; audience?: 'owner' | 'workspace' }) => `${API_BASE}/auth/oauth/${provider}/start${qs(params)}`,
   ssoStartUrl: (code: string) => `${API_BASE}/auth/sso/${enc(code)}/start`
 };
+
+// ---- Unified sign-in, businesses, cards and the dashboard summary (D-93…D-98) ----
+
+export interface BusinessSummary {
+  id: string;
+  code: string;
+  name: string;
+  roleKey: string;
+  roleName: string;
+  isPlatform: boolean;
+  currency: string;
+  timezone: string;
+  origin: string;
+  profile: Record<string, string>;
+  members: number;
+  createdAt: string;
+}
+
+export interface BusinessProfile {
+  code: string;
+  name: string;
+  currency: string;
+  timezone: string;
+  locale: string;
+  origin: string;
+  profile: Record<string, string>;
+  members: number;
+  createdAt: string;
+  canEdit: boolean;
+}
+
+export interface BusinessDashboardSummary {
+  range: { key: string; from?: string; to?: string; timezone: string };
+  metrics: Record<string, number>;
+  finance?: { currency: string; income: number; expenses: number; net: number };
+  lists: Array<{ key?: string; object: string; label: string; rows: Array<{ id: string; code?: string; title: string; subtitle?: string; status?: string }> }>;
+  currency: string;
+  can: Record<string, boolean>;
+}
+
+export interface CardFields {
+  personName?: string;
+  designation?: string;
+  company?: string;
+  website?: string;
+  phones?: string[];
+  emails?: string[];
+  address?: string;
+  gstin?: string;
+  notes?: string;
+  metContext?: string;
+}
+
+export interface CardLink {
+  id: string;
+  object: string;
+  recordId: string;
+  code: string;
+  title: string;
+}
+
+export interface SavedCard extends Required<Omit<CardFields, 'phones' | 'emails'>> {
+  id: string;
+  phones: string[];
+  emails: string[];
+  eventTag: string;
+  hasImage: boolean;
+  hasBack: boolean;
+  mine: boolean;
+  savedBy?: string;
+  createdAt: string;
+  links: CardLink[];
+}
+
+export interface CardMatch {
+  object: string;
+  id: string;
+  code: string;
+  title: string;
+  subtitle?: string;
+  status?: string;
+  matchedOn: string[];
+}
+
+export interface CardMatches {
+  matches: CardMatch[];
+  hidden: number;
+  suggested: 'lead' | 'contact' | 'attach';
+  can: Record<string, boolean>;
+}
+
+export interface SaveCardBody {
+  cardId?: string;
+  card?: CardFields;
+  action: 'lead' | 'contact' | 'attach' | 'card_only';
+  target?: { object: string; id: string };
+  createAccount?: boolean;
+  allowDuplicate?: boolean;
+  followUpAt?: string;
+  note?: string;
+}
+
+export const phoneAuthApi = {
+  /** Text a 6-digit code. `devCode` is present only where the server runs without an SMS provider. */
+  request: (phone: string) => api<{ sent: boolean; expiresIn: number; channel: string; devCode?: string }>('/auth/phone/request', { method: 'POST', body: { phone } }),
+  verify: (body: { phone: string; code: string; name?: string }) => api<AuthStep & { hasBusiness: boolean; isNewUser?: boolean }>('/auth/phone/verify', { method: 'POST', body })
+};
+
+export const businessApi = {
+  list: () => api<{ data: BusinessSummary[]; canCreate: boolean; limit: number; created: number }>('/businesses'),
+  create: (body: { name: string; industry?: string; phone?: string; email?: string; website?: string; city?: string; state?: string; country?: string }) =>
+    api<{ business: BusinessSummary; next: string }>('/businesses', { method: 'POST', body }),
+  profile: (code: string) => api<BusinessProfile>(`/w/${enc(code)}/business`),
+  update: (code: string, body: { name?: string; currency?: string; timezone?: string; profile?: Record<string, string | null> }) =>
+    api<BusinessProfile>(`/w/${enc(code)}/business`, { method: 'PATCH', body }),
+  summary: (code: string, params: { range: string; from?: string; to?: string }) => api<BusinessDashboardSummary>(`/w/${enc(code)}/dashboard/summary${qs(params)}`)
+};
+
+export const cardsApi = {
+  list: (code: string, params: { q?: string; object?: string; recordId?: string } = {}) => api<{ items: SavedCard[]; total: number }>(`/w/${enc(code)}/cards${qs(params)}`),
+  get: (code: string, id: string) => api<SavedCard>(`/w/${enc(code)}/cards/${enc(id)}`),
+  match: (code: string, card: CardFields) => api<CardMatches>(`/w/${enc(code)}/cards/match`, { method: 'POST', body: card }),
+  save: (code: string, body: SaveCardBody) =>
+    api<{ card: SavedCard; record?: CardLink; account?: CardLink; created: boolean; task?: { id: string; code: string; title: string } }>(`/w/${enc(code)}/cards`, { method: 'POST', body }),
+  unlink: (code: string, cardId: string, linkId: string) => api<void>(`/w/${enc(code)}/cards/${enc(cardId)}/links/${enc(linkId)}`, { method: 'DELETE' }),
+  imageUrl: (code: string, id: string, side: 'front' | 'back' = 'front') => `${API_BASE}/w/${enc(code)}/cards/${enc(id)}/image${side === 'back' ? '?side=back' : ''}`
+};

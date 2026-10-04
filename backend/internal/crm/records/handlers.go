@@ -72,6 +72,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/access/fields", h.handleWorkspaceFieldCatalog)
 		h.reportRoutes(r)
 		h.cardRoutes(r)
+		h.businessRoutes(r)
 		h.mountRecords(r, "")
 		for _, ext := range h.extensions {
 			if ext.MemberRoutes != nil {

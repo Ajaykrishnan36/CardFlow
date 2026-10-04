@@ -20,7 +20,7 @@ import (
 type Sender interface {
 	// SendCode delivers the code. Implementations must not log it.
 	SendCode(ctx context.Context, phone, code string) error
-	// Mode names the provider for status pages: "msg91", "twilio", "preview" or "none".
+	// Mode names the provider for status pages: "msg91", "twilio", "fast2sms", "preview" or "none".
 	Mode() string
 }
 
@@ -39,8 +39,8 @@ func IsPreview(s Sender) bool {
 
 // Config is read from the environment (names only; values live in the host's settings).
 type Config struct {
-	Provider   string // SMS_PROVIDER: msg91 | twilio | preview | "" (none)
-	AuthKey    string // SMS_AUTH_KEY (MSG91 auth key)
+	Provider   string // SMS_PROVIDER: msg91 | twilio | fast2sms | preview | "" (none)
+	AuthKey    string // SMS_AUTH_KEY (MSG91 auth key or Fast2SMS API key)
 	SenderID   string // SMS_SENDER_ID
 	TemplateID string // SMS_OTP_TEMPLATE_ID (MSG91 DLT template / flow id)
 	TwilioSID  string // TWILIO_ACCOUNT_SID
@@ -90,6 +90,10 @@ func New(c Config) Sender {
 	case "twilio":
 		if c.TwilioSID != "" && c.TwilioAuth != "" && c.TwilioFrom != "" {
 			return &twilio{cfg: c, http: client}
+		}
+	case "fast2sms":
+		if c.AuthKey != "" {
+			return &fast2sms{cfg: c, http: client}
 		}
 	}
 	if c.PreviewAllowed {
@@ -183,6 +187,44 @@ func (t *twilio) SendCode(ctx context.Context, phone, code string) error {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 		_ = json.Unmarshal(body, &out)
 		return fmt.Errorf("sms: twilio refused the message (status %d: %s)", res.StatusCode, out.Message)
+	}
+	return nil
+}
+
+// fast2sms sends through Fast2SMS's OTP route (Indian numbers only), which wraps the
+// code in the provider's own approved OTP message.
+type fast2sms struct {
+	cfg  Config
+	http *http.Client
+}
+
+func (f *fast2sms) Mode() string { return "fast2sms" }
+
+func (f *fast2sms) SendCode(ctx context.Context, phone, code string) error {
+	number := strings.TrimPrefix(phone, "+")
+	if !strings.HasPrefix(number, "91") || len(number) != 12 {
+		return fmt.Errorf("sms: fast2sms delivers to Indian numbers only")
+	}
+	payload, _ := json.Marshal(map[string]string{"route": "otp", "variables_values": code, "numbers": number[2:]})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://www.fast2sms.com/dev/bulkV2", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("authorization", f.cfg.AuthKey)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := f.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("sms: fast2sms unreachable: %w", err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+	var out struct {
+		Return  bool `json:"return"`
+		Message any  `json:"message"`
+	}
+	_ = json.Unmarshal(body, &out)
+	if res.StatusCode >= 300 || !out.Return {
+		return fmt.Errorf("sms: fast2sms refused the message (status %d: %v)", res.StatusCode, out.Message)
 	}
 	return nil
 }

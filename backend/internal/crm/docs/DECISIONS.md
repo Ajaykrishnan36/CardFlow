@@ -502,6 +502,17 @@ separate permission object for cards: a card is visible to the person who saved 
 can read a record it is linked to; creating/attaching needs the lead/contact/account permission.
 Lead, contact and account pages show a "Business cards" related list.
 
+### D-99 — Web CRM: phone sign-in, "Your businesses", business profile, summary, cards
+
+`/crm/login` opens on a **Mobile** tab (the same number as the app; a new number creates the account
+and lands on "Create a business"). `/crm/businesses` lists every business the person belongs to and
+creates new ones; the sidebar's business menu always links to it. `GET/PATCH /w/{code}/business` is
+the business profile (name, currency, time zone, contact and tax details; editing needs
+`access.manage` or `members.manage`). The dashboard shows the D-96 summary with a date range. The
+sidebar groups objects by module: CRM, Service, Sales, Finance. `/crm/w/{code}/cards` lists, adds and
+converts business cards (D-98). Fast2SMS joins MSG91 and Twilio as an SMS provider
+(`SMS_PROVIDER=fast2sms`, `SMS_AUTH_KEY`).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

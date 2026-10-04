@@ -709,6 +709,7 @@ function RelatedCard({ list, compact, onViewAll }: { list: RelatedList; compact?
   // The connected app's pages (profile, businesses, saved cards) live in the workspace.
   const appHref = (id: string) => {
     if (scope.audience !== 'member') return null;
+    if (list.object === 'cards') return `${scope.routeBase}/cards?card=${encodeURIComponent(id)}`;
     if (list.object === 'app-users') return `${scope.routeBase}/app-users/${encodeURIComponent(id)}`;
     if (list.object === 'app-businesses') return `${scope.routeBase}/businesses/${encodeURIComponent(id)}`;
     const [userId] = id.split('#');
@@ -719,7 +720,7 @@ function RelatedCard({ list, compact, onViewAll }: { list: RelatedList; compact?
       ? scope.audience === 'member'
         ? `${scope.routeBase}/support/${encodeURIComponent(id)}`
         : null
-      : list.object.startsWith('app-')
+      : list.object.startsWith('app-') || list.object === 'cards'
         ? appHref(id)
         : isTimeline
           ? null

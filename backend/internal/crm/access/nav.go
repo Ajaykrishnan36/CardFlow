@@ -35,16 +35,21 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	}
 	icons := map[string]string{"lead": "user-plus", "account": "briefcase", "contact": "contact"}
 	for _, o := range CatalogObjects() {
-		if o.Key == "ticket" || o.App {
+		// Line items are edited from their quote, order or invoice, not from the menu.
+		if o.Key == "ticket" || o.App || o.Key == "line_items" {
 			continue
 		}
 		if e.Can(o.Key, "read") {
 			if o.Custom {
-				nav = append(nav, NavItem{Key: o.Key, Label: o.Label, Path: base + "/" + o.Route, Icon: o.Icon, Group: "CRM", Available: true})
+				nav = append(nav, NavItem{Key: o.Key, Label: o.Label, Path: base + "/" + o.Route, Icon: o.Icon, Group: navGroup(o.Module), Available: true})
 				continue
 			}
 			nav = append(nav, NavItem{Key: o.Module, Label: o.Label, Path: base + "/" + o.Module, Icon: icons[o.Key], Group: "CRM", Available: true})
 		}
+	}
+	// Scanned business cards (D-98): for anyone who works with leads or contacts.
+	if e.Can("lead", "read") || e.Can("contact", "read") {
+		nav = append(nav, NavItem{Key: "cards", Label: "Business cards", Path: base + "/cards", Icon: "scan-line", Group: "CRM", Available: true})
 	}
 	// A connected app's support tickets are Cases like in every other product (D-72).
 	// The connected app's own data (Business Card Snap): users with their access, and business listings.
@@ -73,6 +78,7 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	}
 	if e.HasCapability(CapAccessManage) || e.HasCapability(CapMembersManage) {
 		nav = append(nav,
+			NavItem{Key: "business", Label: "Business profile", Path: base + "/settings/business", Icon: "store", Group: "Settings", Available: true},
 			NavItem{Key: "admin", Label: "Users & access", Path: base + "/settings/access", Icon: "shield-check", Group: "Settings", Available: true},
 			NavItem{Key: "teams", Label: "Teams", Path: base + "/settings/teams", Icon: "users", Group: "Settings", Available: true},
 		)
@@ -89,6 +95,25 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	}
 	nav = append(nav, NavItem{Key: "settings", Label: "Profile & security", Path: "/crm/me", Icon: "settings", Group: "Account", Available: true})
 	return nav
+}
+
+// navGroup is the sidebar section of an object, by its module.
+func navGroup(module string) string {
+	switch module {
+	case "finance":
+		return "Finance"
+	case "sales_docs", "catalog", "subscriptions":
+		return "Sales"
+	case "tickets", "knowledge":
+		return "Service"
+	}
+	return "CRM"
+}
+
+// IsRecordGroup reports whether a sidebar section lists record objects (an app's menu
+// may hide those; settings and analytics always stay).
+func IsRecordGroup(g string) bool {
+	return g == "CRM" || g == "App" || g == "Finance" || g == "Sales" || g == "Service"
 }
 
 // DefaultMembership picks the membership a member lands in: the first customer
