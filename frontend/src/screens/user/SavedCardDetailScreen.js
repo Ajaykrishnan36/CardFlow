@@ -19,6 +19,7 @@ import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { DetailScreenHeader } from '../../components/DetailScreenHeader';
+import { CardCrmPanel } from '../crm/CardCrmPanel';
 import { CardViewToggle } from '../../components/CardViewToggle';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { Snackbar } from '../../components/Snackbar';
@@ -36,7 +37,7 @@ function whatsappNumber(card, phone) {
   return (wa?.raw || wa?.e164 || phone || '').replace(/[^0-9]/g, '');
 }
 
-export function SavedCardDetailScreen({ card, onBack, onHome, onUpdated, onDeleted }) {
+export function SavedCardDetailScreen({ card, onBack, onHome, onUpdated, onDeleted, onOpenRecord }) {
   const { token, loadUserVault } = useAuth();
   const [viewMode, setViewMode] = useState('digital');
   const [originalSide, setOriginalSide] = useState('front');
@@ -416,6 +417,8 @@ export function SavedCardDetailScreen({ card, onBack, onHome, onUpdated, onDelet
             e.target.value = '';
           }}
         />
+
+        {!editing ? <CardCrmPanel card={liveCard} onOpenRecord={onOpenRecord} /> : null}
 
         {!editing ? (
           <>

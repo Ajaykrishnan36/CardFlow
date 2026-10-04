@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { ScanLine, FolderOpen, Store, Compass, Home } from 'lucide-react';
+import { ScanLine, FolderOpen, Briefcase, Compass, Home } from 'lucide-react';
 import { colors, spacing, shadows } from '../theme';
 import { useAuth } from '../context/AuthContext';
 
@@ -11,9 +11,9 @@ export function TabBar({ currentTab, onSelectTab }) {
     // Home is a first-class destination. Profile is reached from Home — not via Scan.
     return [
       { id: 'user_dashboard', label: 'Home', icon: Home },
-      { id: 'user_vault', label: 'My Cards', icon: FolderOpen },
+      { id: 'user_crm', label: 'My CRM', icon: Briefcase },
       { id: 'user_scan', label: 'SCAN', icon: ScanLine, isCenter: true },
-      { id: 'user_my_business', label: 'My Business', icon: Store },
+      { id: 'user_vault', label: 'My Cards', icon: FolderOpen },
       { id: 'user_search', label: 'Browse', icon: Compass }
     ];
   };

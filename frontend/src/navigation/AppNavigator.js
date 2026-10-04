@@ -10,7 +10,6 @@ import { LoginScreen } from '../screens/auth/LoginScreen';
 import { OtpScreen } from '../screens/auth/OtpScreen';
 import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
 
-import { DashboardScreen } from '../screens/user/DashboardScreen';
 import { SearchScreen } from '../screens/user/SearchScreen';
 import { BusinessDetailsScreen } from '../screens/user/BusinessDetailsScreen';
 import { SavedCardsScreen } from '../screens/user/SavedCardsScreen';
@@ -24,6 +23,14 @@ import { SupportHubScreen } from '../screens/user/SupportHubScreen';
 import { SupportRequestScreen } from '../screens/user/SupportRequestScreen';
 import { SupportTicketsScreen } from '../screens/user/SupportTicketsScreen';
 import { SupportTicketDetailScreen } from '../screens/user/SupportTicketDetailScreen';
+import { CrmHomeScreen } from '../screens/crm/CrmHomeScreen';
+import { CrmModulesScreen } from '../screens/crm/CrmModulesScreen';
+import { RecordListScreen } from '../screens/crm/RecordListScreen';
+import { RecordDetailScreen } from '../screens/crm/RecordDetailScreen';
+import { RecordFormScreen } from '../screens/crm/RecordFormScreen';
+import { BusinessGate, BusinessSwitcher } from '../screens/crm/BusinessScreens';
+import { useCrm } from '../context/CrmContext';
+import { apiClient } from '../services/api';
 
 
 const HOME_TAB = 'user_dashboard';
@@ -84,13 +91,26 @@ function AuthFlow({ authStep, setAuthStep, currentPhone, setCurrentPhone }) {
 
 /**
  * App navigation model:
- * - primaryTab: one of the 5 bottom destinations (Home is user_dashboard)
+ * - primaryTab: one of the 5 bottom destinations — Home (CRM dashboard), My CRM, Scan, My Cards, Browse
+ * - CRM screens (list → record → form) are a stack over the Home / My CRM tabs
+ * - primaryTab ids keep their old names (Home is user_dashboard)
  * - Scan remembers which tab opened it (never used as a bridge to Home)
  * - Business/Card details overlay the active tab so Browse search state is preserved
  * - Profile is a secondary screen reached from Home (not a bottom tab)
  */
 export function AppNavigator() {
-  const { isAuthenticated, role, isNewUser, subscriptionOverlayOpen, closeSubscription } = useAuth();
+  const { isAuthenticated, role, isNewUser, subscriptionOverlayOpen, closeSubscription, token } = useAuth();
+  const { activeCode } = useCrm();
+  // CRM stack: [{ type: 'list' | 'detail' | 'form', object, id, query, initialValues, initialLookups }]
+  const [crmStack, setCrmStack] = useState([]);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [crmVersion, setCrmVersion] = useState(0);
+  const pushCrm = useCallback((entry) => setCrmStack((st) => [...st, entry]), []);
+  const popCrm = useCallback(() => setCrmStack((st) => st.slice(0, -1)), []);
+  // Another business means other records: leave whatever record was open.
+  useEffect(() => {
+    setCrmStack([]);
+  }, [activeCode]);
 
   const [authStep, setAuthStep] = useState('splash');
   const [currentTab, setCurrentTab] = useState(null);
@@ -130,6 +150,7 @@ export function AppNavigator() {
   const clearOverlays = useCallback(() => {
     setSelectedBusiness(null);
     setSelectedCard(null);
+    setCrmStack([]);
   }, []);
 
   const goHome = useCallback(() => {
@@ -182,6 +203,18 @@ export function AppNavigator() {
     setSelectedBusiness(null);
     setSelectedCard(card);
   }, []);
+
+  const openCardById = useCallback(async (cardId) => {
+    const cards = await apiClient.getCards(token);
+    const found = Array.isArray(cards) ? cards.find((c) => c.id === cardId) : null;
+    if (found) {
+      setCrmStack([]);
+      setCurrentTab('user_vault');
+      setSelectedCard(found);
+    }
+  }, [token]);
+
+  const openRecord = useCallback((object, id) => pushCrm({ type: 'detail', object, id }), [pushCrm]);
 
   const exitScan = useCallback(() => {
     const target = scanOriginRef.current || HOME_TAB;
@@ -293,6 +326,18 @@ export function AppNavigator() {
         );
       case 'user_my_business':
         return <MyBusinessHubScreen onSelectBusiness={openBusiness} />;
+      case 'user_crm':
+        return (
+          <BusinessGate>
+            <CrmModulesScreen
+              onOpenSwitcher={() => setSwitcherOpen(true)}
+              onOpenList={(object, opts) => pushCrm({ type: 'list', object, query: opts?.q || '' })}
+              onOpenRecord={openRecord}
+              onOpenCards={() => selectTab('user_vault')}
+              onOpenListing={() => selectTab('user_my_business')}
+            />
+          </BusinessGate>
+        );
       case 'user_support':
         return renderSupport();
       case 'user_search':
@@ -300,15 +345,17 @@ export function AppNavigator() {
       case HOME_TAB:
       default:
         return (
-          <DashboardScreen
-            onNavigate={(id) => {
-              if (id === 'user_profile') openProfile();
-              else selectTab(id);
-            }}
-            onOpenProfile={openProfile}
-            onSelectCard={openCard}
-            onSelectBusiness={openBusiness}
-          />
+          <BusinessGate>
+            <CrmHomeScreen
+              key={`home-${crmVersion}`}
+              onOpenProfile={openProfile}
+              onOpenSwitcher={() => setSwitcherOpen(true)}
+              onOpenList={(object) => pushCrm({ type: 'list', object })}
+              onCreate={(object) => pushCrm({ type: 'form', object })}
+              onOpenRecord={openRecord}
+              onScan={() => selectTab('user_scan')}
+            />
+          </BusinessGate>
         );
     }
   };
@@ -345,11 +392,61 @@ export function AppNavigator() {
     return (
       <View style={styles.stack}>
         <View
-          style={[styles.tabLayer, (selectedBusiness || selectedCard) && styles.tabLayerHidden]}
-          pointerEvents={selectedBusiness || selectedCard ? 'none' : 'auto'}
+          style={[styles.tabLayer, (selectedBusiness || selectedCard || crmStack.length > 0) && styles.tabLayerHidden]}
+          pointerEvents={selectedBusiness || selectedCard || crmStack.length > 0 ? 'none' : 'auto'}
         >
           {renderPrimaryTab()}
         </View>
+
+        {crmStack.map((entry, i) => {
+          const top = i === crmStack.length - 1;
+          const key = `${entry.type}-${entry.object}-${entry.id || 'new'}-${i}`;
+          return (
+            <View key={key} style={[styles.overlay, !top && styles.tabLayerHidden]} pointerEvents={top ? 'auto' : 'none'}>
+              {entry.type === 'list' ? (
+                <RecordListScreen
+                  key={`${key}-${crmVersion}`}
+                  object={entry.object}
+                  initialQuery={entry.query}
+                  onBack={popCrm}
+                  onOpenRecord={openRecord}
+                  onCreate={(object) => pushCrm({ type: 'form', object })}
+                />
+              ) : entry.type === 'detail' ? (
+                <RecordDetailScreen
+                  key={`${key}-${crmVersion}`}
+                  object={entry.object}
+                  id={entry.id}
+                  onBack={popCrm}
+                  onEdit={(object, id) => pushCrm({ type: 'form', object, id })}
+                  onOpenRecord={openRecord}
+                  onCreateRelated={(object, prefill) => pushCrm({ type: 'form', object, initialValues: prefill.values, initialLookups: prefill.lookups })}
+                  onOpenCard={openCardById}
+                  onDeleted={() => {
+                    setCrmVersion((v) => v + 1);
+                    popCrm();
+                  }}
+                />
+              ) : (
+                <RecordFormScreen
+                  object={entry.object}
+                  id={entry.id}
+                  initialValues={entry.initialValues}
+                  initialLookups={entry.initialLookups}
+                  onBack={popCrm}
+                  onSaved={(row) => {
+                    // Lists and the record underneath reload; a new record opens.
+                    setCrmVersion((v) => v + 1);
+                    setCrmStack((st) => {
+                      const rest = st.slice(0, -1);
+                      return entry.id || !row?.id ? rest : [...rest, { type: 'detail', object: entry.object, id: row.id }];
+                    });
+                  }}
+                />
+              )}
+            </View>
+          );
+        })}
 
         {selectedBusiness ? (
           <View style={styles.overlay}>
@@ -370,6 +467,11 @@ export function AppNavigator() {
               onHome={goHome}
               onUpdated={(next) => setSelectedCard(next)}
               onDeleted={() => setSelectedCard(null)}
+              onOpenRecord={(object, id) => {
+                setSelectedCard(null);
+                setCurrentTab('user_crm');
+                setCrmStack([{ type: 'detail', object, id }]);
+              }}
             />
           </View>
         ) : null}
@@ -377,10 +479,12 @@ export function AppNavigator() {
     );
   };
 
+  const crmFormOpen = crmStack.length > 0 && crmStack[crmStack.length - 1].type === 'form';
   const hideTabBar =
     currentTab === 'user_scan' ||
     currentTab === 'user_support' ||
-    showProfile;
+    showProfile ||
+    crmFormOpen;
 
   // Highlight Home when dashboard is under an overlay
   const tabBarCurrent =
@@ -405,6 +509,8 @@ export function AppNavigator() {
       >
         {renderStack()}
       </Layout>
+
+      <BusinessSwitcher visible={switcherOpen} onClose={() => setSwitcherOpen(false)} />
 
       {subscriptionOverlayOpen ? (
         <View style={styles.paywallOverlay}>

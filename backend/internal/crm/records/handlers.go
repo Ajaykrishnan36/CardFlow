@@ -692,16 +692,24 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	var row *Row
-	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
-		var err error
-		row, err = h.createRecord(r.Context(), tx, ws, spec, actorFromRequest(r, "ui"), in.Values)
-		return err
-	})
+	// A retried request (flaky mobile network) with the same Idempotency-Key creates once.
+	status, resp, err := shared.Idempotent(r.Context(), h.store.Pool, actor(r), r.Header.Get("Idempotency-Key"),
+		map[string]any{"ws": ws, "object": spec.Key, "values": in.Values}, func() (int, any, error) {
+			var row *Row
+			err := h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
+				var err error
+				row, err = h.createRecord(r.Context(), tx, ws, spec, actorFromRequest(r, "ui"), in.Values)
+				return err
+			})
+			if err != nil {
+				return 0, nil, err
+			}
+			return http.StatusCreated, row, nil
+		})
 	if err == nil {
 		h.bus.Kick()
 	}
-	respond(w, r, http.StatusCreated, row, err)
+	respond(w, r, status, resp, err)
 }
 
 func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {

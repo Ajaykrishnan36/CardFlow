@@ -23,6 +23,8 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { Input } from '../../components/Input';
 import { useAuth } from '../../context/AuthContext';
+import { useCrm } from '../../context/CrmContext';
+import { SaveCardSheet } from '../crm/CardCrmPanel';
 import { apiClient } from '../../services/api';
 import { extractCardWithTesseract, mergeExtractions } from '../../utils/ocrParser';
 import { DetailScreenHeader } from '../../components/DetailScreenHeader';
@@ -58,6 +60,9 @@ function applyExtractionToForm(data, setters) {
 }
 
 export function ScanCardScreen({ onCardSaved, onBack }) {
+  const crm = useCrm();
+  const [crmSheet, setCrmSheet] = useState(false);
+  const [crmSaved, setCrmSaved] = useState('');
   const { token, loadUserVault, savedCards, isPremiumActive } = useAuth();
   const [showUpgrade, setShowUpgrade] = useState(false);
 
@@ -451,8 +456,21 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
               </Text>
             </View>
           ) : null}
+          {crm.status === 'ready' && crm.active && savedCard?.id ? (
+            crmSaved ? (
+              <Text style={[styles.successSub, { color: colors.success, fontWeight: '700' }]}>{crmSaved}</Text>
+            ) : (
+              <Button
+                title={`Save to CRM · ${crm.active.name}`}
+                onPress={() => setCrmSheet(true)}
+                size="lg"
+                style={{ width: '100%', marginBottom: spacing.sm }}
+              />
+            )
+          ) : null}
           <Button
             title="View Card"
+            variant={crm.status === 'ready' && crm.active && !crmSaved ? 'outline' : 'primary'}
             onPress={() => onCardSaved && onCardSaved(savedCard)}
             size="lg"
             style={{ width: '100%', marginBottom: spacing.sm }}
@@ -465,6 +483,15 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
             style={{ width: '100%' }}
           />
         </View>
+        <SaveCardSheet
+          visible={crmSheet}
+          card={savedCard}
+          onClose={() => setCrmSheet(false)}
+          onSaved={(res) => {
+            setCrmSheet(false);
+            setCrmSaved(res.record ? `${res.created ? 'Created' : 'Updated'}: ${res.record.title}` : 'Saved to your CRM');
+          }}
+        />
       </View>
     );
   }

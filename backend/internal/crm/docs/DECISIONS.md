@@ -513,6 +513,22 @@ sidebar groups objects by module: CRM, Service, Sales, Finance. `/crm/w/{code}/c
 converts business cards (D-98). Fast2SMS joins MSG91 and Twilio as an SMS provider
 (`SMS_PROVIDER=fast2sms`, `SMS_AUTH_KEY`).
 
+### D-100 — The mobile app is the CRM on a phone
+
+Tabs: **Home · My CRM · Scan · My Cards · Browse**. The app keeps one session token (the unified
+`crms_` bearer session, D-93) for both APIs; a token is never invented on the device, sign-out
+revokes the session on the server, and a session from before the change is asked to sign in again
+before the CRM opens. `CrmContext` holds the person's businesses and the open one (remembered per
+device); switching it resets every CRM screen. Home is `/dashboard/summary` with a date range, quick
+add and what's due. My CRM lists the modules the member's role allows (the same navigation the web
+sidebar uses) with one search across leads, contacts, accounts, deals, tasks and cases. List, record
+and form are **one generic implementation driven by `/crm/meta/{object}`** — fields, types, options,
+lookups, required and statuses come from the server, so a custom field or object added on the web
+appears in the app without a release. Lead conversion, status change, notes, call log, tasks and
+meetings for a record are on the record screen. After a scan the app offers "Save to CRM"
+(D-98), and a saved card shows what it is linked to. Record creation honours `Idempotency-Key`.
+`DEV_MOCK_SMS=true` on a non-production server always previews codes (never calls a provider).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

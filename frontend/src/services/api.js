@@ -87,7 +87,6 @@ export const apiClient = {
   // 1. Auth: Send OTP
   async sendOtp(phone) {
     const formattedPhone = formatE164(phone);
-    console.log('📡 [API CALL] POST /auth/otp/send', { phone: formattedPhone });
     try {
       const res = await fetch(`${API_BASE_URL}/auth/otp/send`, {
         method: 'POST',
@@ -95,11 +94,10 @@ export const apiClient = {
         body: JSON.stringify({ phone: formattedPhone, platform: 'web', device_id: 'browser-client' })
       });
       const data = await res.json();
-      console.log('📥 [API RESPONSE] /auth/otp/send', data);
       if (!res.ok) {
         return {
           status: 'error',
-          error: { message: data?.error?.message || "Couldn't send OTP. Please try again." }
+          error: { message: data?.error?.message || data?.message || "Couldn't send OTP. Please try again." }
         };
       }
       return data;
@@ -112,7 +110,6 @@ export const apiClient = {
   // 2. Auth: Verify OTP
   async verifyOtp(phone, otp) {
     const formattedPhone = formatE164(phone);
-    console.log('📡 [API CALL] POST /auth/otp/verify', { phone: formattedPhone, otp });
     try {
       const res = await fetch(`${API_BASE_URL}/auth/otp/verify`, {
         method: 'POST',
@@ -120,7 +117,6 @@ export const apiClient = {
         body: JSON.stringify({ phone: formattedPhone, otp, otp_code: otp, platform: 'web', device_id: 'browser-client' })
       });
       const data = await res.json();
-      console.log('📥 [API RESPONSE] /auth/otp/verify', data);
       if (!res.ok) {
         return {
           status: 'error',

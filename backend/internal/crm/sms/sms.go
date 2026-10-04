@@ -51,6 +51,9 @@ type Config struct {
 	// SMS_PROVIDER=preview, DEV_MOCK_SMS=true outside production, or
 	// OTP_PREVIEW_INSECURE=true anywhere.
 	PreviewAllowed bool
+	// ForcePreview: DEV_MOCK_SMS=true on a non-production server means "don't send real
+	// messages from here" — preview wins even when a provider key is present.
+	ForcePreview bool
 }
 
 // LoadConfig reads the SMS settings. production says whether this is a production server.
@@ -71,6 +74,7 @@ func LoadConfig(appName string, production bool) Config {
 		c.PreviewAllowed = true
 	case !production && (c.Provider == "preview" || explicit("DEV_MOCK_SMS")):
 		c.PreviewAllowed = true
+		c.ForcePreview = explicit("DEV_MOCK_SMS") || c.Provider == "preview"
 	}
 	if c.Provider == "mock" { // the old name for "no real provider"
 		c.Provider = ""
@@ -82,6 +86,9 @@ func LoadConfig(appName string, production bool) Config {
 // otherwise codes can't be delivered and sign-in by phone reports that honestly.
 func New(c Config) Sender {
 	client := &http.Client{Timeout: 12 * time.Second}
+	if c.ForcePreview {
+		return preview{}
+	}
 	switch c.Provider {
 	case "msg91":
 		if c.AuthKey != "" && c.TemplateID != "" {

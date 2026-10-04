@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { mockBusinesses } from '../data/mockData';
 import { apiClient } from '../services/api';
+import { crmApi, isUnifiedToken } from '../services/crmApi';
 import { syncAuthNotifications } from '../utils/pushNotifications';
 import * as subscriptionService from '../services/subscription/subscriptionService';
 
@@ -291,7 +292,14 @@ export function AuthProvider({ children }) {
         await options.beforeCommit();
       }
 
-      const liveJwt = apiRes?.data?.access_token || apiRes?.access_token || `cf_token_${matchedAccount.phone}`;
+      // The unified session token works for the app API and the CRM API (D-93). The
+      // legacy access token is only a fallback for an older server.
+      const liveJwt = apiRes?.data?.session_token || apiRes?.session_token || apiRes?.data?.access_token || apiRes?.access_token || '';
+      if (!liveJwt) {
+        setIsLoading(false);
+        return { success: false, error: 'Could not start your session. Please try again.' };
+      }
+      matchedAccount.hasBusiness = !!(apiRes?.data?.has_business ?? apiRes?.has_business);
       setUser(matchedAccount);
       setRole(matchedAccount.role);
       setToken(liveJwt);
@@ -650,7 +658,12 @@ export function AuthProvider({ children }) {
     return saved;
   };
 
-  const logout = () => {
+  const logout = (opts = {}) => {
+    // Revoke the session on the server too (skipped when the server already refused it).
+    const current = token;
+    if (current && !opts.expired && isUnifiedToken(current)) {
+      crmApi.logout(current).catch(() => {});
+    }
     subscriptionService.reset();
     setSubscription(null);
     setUser(null);
