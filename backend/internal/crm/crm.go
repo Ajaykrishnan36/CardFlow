@@ -35,6 +35,8 @@ type Module struct {
 	records        *records.Handler
 	cardflow       *cardflow.Connector
 	plans          *plans.Handler
+	store          *store.Store
+	profile        *appProfile
 }
 
 // New prepares the CRM: config, migrations, safety checks and seed. It never returns
@@ -89,7 +91,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	default:
 		slog.Info("CRM sign-in codes are sent by SMS", "provider", smsSender.Mode())
 	}
-	m.identity.SetAppProfile(newAppProfile(context.Background(), st))
+	m.store = st
+	m.profile = newAppProfile(context.Background(), st)
+	m.identity.SetAppProfile(m.profile)
 	go backfillAppIdentities(context.Background(), st)
 	m.platform = platform.NewHandler(st, cfg, mailer, m.identity)
 	m.plans = plans.NewHandler(st)

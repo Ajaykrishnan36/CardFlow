@@ -18,6 +18,7 @@ import (
 	"cardflow-backend/internal/config"
 	"cardflow-backend/internal/contacts"
 	"cardflow-backend/internal/crm"
+	"cardflow-backend/internal/crm/platform"
 	"cardflow-backend/internal/database"
 	"cardflow-backend/internal/discovery"
 	"cardflow-backend/internal/enquiry"
@@ -29,6 +30,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -88,6 +90,38 @@ func New(d Deps) (http.Handler, *crm.Module) {
 		}
 	} else {
 		slog.Info("S3 disabled (localhost or unset); original card images persist in PostgreSQL")
+	}
+	// A business created in the CRM gets its public listing here (D-105): the directory
+	// entry, digital card and QR that the app's "My business" screens work with.
+	if d.DB != nil && d.DB.Pool != nil {
+		platform.AfterBusinessCreated = func(ctx context.Context, creator, workspaceID uuid.UUID, in platform.CreateBusinessInput) {
+			var userID uuid.UUID
+			var userPhone string
+			if err := d.DB.Pool.QueryRow(ctx, `SELECT id, COALESCE(phone, '') FROM users WHERE identity_id = $1 AND deleted_at IS NULL`, creator).Scan(&userID, &userPhone); err != nil {
+				return // no app profile (signed up by email): no listing until they add a phone
+			}
+			phone := strings.TrimSpace(in.Phone)
+			if phone == "" {
+				phone = userPhone
+			}
+			// The directory's category, by name where the industry has one (else its default).
+			category := strings.TrimSpace(in.Industry)
+			if category == "Technology" {
+				category = "IT & Software"
+			}
+			biz, err := businessSvc.CreateBusiness(ctx, userID, business.CreateBusinessInput{
+				Name: in.Name, Phone: phone, Email: in.Email, Website: in.Website, City: in.City, State: in.State,
+				Description: strings.TrimSpace(in.Industry),
+				CategoryID:  category,
+			})
+			if err != nil {
+				slog.Warn("business listing not created", "business", in.Name, "error", err)
+				return
+			}
+			if _, err := d.DB.Pool.Exec(ctx, `UPDATE businesses SET workspace_id = $1 WHERE id = $2`, workspaceID, biz.ID); err != nil {
+				slog.Warn("business listing not linked", "business", in.Name, "error", err)
+			}
+		}
 	}
 	geminiSvc := extractor.NewGeminiService(d.Cfg)
 	cardSvc := card.NewCardService(d.DB, s3Svc, geminiSvc)
@@ -258,5 +292,7 @@ func New(d Deps) (http.Handler, *crm.Module) {
 		})
 	}
 
+	// Only when the host asks for it with CRM_FRESH_START (one run per value, D-106).
+	crmModule.FreshStart(context.Background())
 	return r, crmModule
 }

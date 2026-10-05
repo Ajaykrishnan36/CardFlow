@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"cardflow-backend/internal/database"
 	"cardflow-backend/internal/domain"
@@ -12,6 +13,32 @@ import (
 
 type DiscoveryService struct {
 	db *database.DB
+
+	dialectOnce sync.Once
+	latLng      bool // businesses keep latitude/longitude columns (no PostGIS)
+}
+
+// columns adapts the queries to the database: with PostGIS a listing has a geography
+// "location" and a search vector; without it, plain latitude/longitude columns.
+type geoSQL struct{ lat, lng, distance, tradeName string }
+
+func (s *DiscoveryService) geo(ctx context.Context) (geoSQL, bool) {
+	s.dialectOnce.Do(func() {
+		if s.db == nil || s.db.Pool == nil {
+			return
+		}
+		_ = s.db.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'businesses' AND column_name = 'latitude')`).Scan(&s.latLng)
+	})
+	if s.latLng {
+		// Great-circle distance in km from ($1 = longitude, $2 = latitude).
+		dist := `(6371 * acos(least(1, greatest(-1, cos(radians($2::float8)) * cos(radians(b.latitude)) * cos(radians(b.longitude) - radians($1::float8))
+			+ sin(radians($2::float8)) * sin(radians(b.latitude))))))`
+		return geoSQL{lat: "b.latitude", lng: "b.longitude", distance: dist, tradeName: "NULL::text"}, true
+	}
+	return geoSQL{lat: "ST_Y(b.location::geometry)", lng: "ST_X(b.location::geometry)",
+		distance:  "(ST_Distance(b.location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) / 1000.0)",
+		tradeName: "b.trade_name"}, false
 }
 
 func NewDiscoveryService(db *database.DB) *DiscoveryService {
@@ -76,18 +103,24 @@ func (s *DiscoveryService) SearchBusinesses(ctx context.Context, p SearchParams)
 		p.RadiusKm = 25.0
 	}
 
-	// PostGIS spatial query with FTS rank and distance
+	// Distance from the caller when they share a location, newest first otherwise.
+	g, latLng := s.geo(ctx)
+	located := p.Latitude != 0 && p.Longitude != 0
+	distance := "0.0::float8"
+	if located {
+		distance = "COALESCE(" + g.distance + ", 0.0)"
+	}
 	query := `
 		SELECT b.id, b.owner_user_id, b.name, b.slug, COALESCE(b.description, ''), b.primary_category_id,
 		       c.name as category_name, b.logo_url, b.website, b.email, b.address_line1, b.locality,
 		       b.city, b.district, b.state, b.pincode, b.country,
-		       ST_Y(b.location::geometry) as lat, ST_X(b.location::geometry) as lng,
-		       COALESCE(ST_Distance(b.location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) / 1000.0, 0.0) as distance_km,
-		       b.service_area_km, b.year_established, b.gstin, b.trade_name, b.status::text, b.verification::text,
+		       ` + g.lat + ` as lat, ` + g.lng + ` as lng,
+		       ` + distance + ` as distance_km,
+		       b.service_area_km, b.year_established::text, b.gstin, ` + g.tradeName + `, b.status::text, b.verification::text,
 		       b.listing::text, b.phone_verified, b.completeness, b.created_at, b.updated_at
 		FROM businesses b
 		JOIN categories c ON c.id = b.primary_category_id
-		WHERE b.status = 'live' AND b.listing = 'listed'
+		WHERE b.status = 'live' AND b.listing = 'listed' AND b.deleted_at IS NULL AND ($1::float8 IS NOT NULL) AND ($2::float8 IS NOT NULL)
 	`
 
 	var args []interface{}
@@ -95,19 +128,29 @@ func (s *DiscoveryService) SearchBusinesses(ctx context.Context, p SearchParams)
 
 	argIndex := 3
 	if p.CategoryID != "" {
-		query += fmt.Sprintf(" AND (b.primary_category_id = $%d OR c.slug = $%d)", argIndex, argIndex)
+		query += fmt.Sprintf(" AND (b.primary_category_id::text = $%d OR c.slug = $%d)", argIndex, argIndex)
 		args = append(args, p.CategoryID)
 		argIndex++
 	}
 
 	if p.Query != "" {
-		query += fmt.Sprintf(" AND (b.search_tsv @@ plainto_tsquery('english', $%d) OR b.name ILIKE $%d OR b.city ILIKE $%d)", argIndex, argIndex+1, argIndex+1)
-		args = append(args, p.Query, "%"+p.Query+"%")
-		argIndex += 2
+		if latLng {
+			query += fmt.Sprintf(" AND (b.name ILIKE $%d OR b.city ILIKE $%d OR COALESCE(b.description, '') ILIKE $%d OR b.pincode ILIKE $%d)", argIndex, argIndex, argIndex, argIndex)
+			args = append(args, "%"+p.Query+"%")
+			argIndex++
+		} else {
+			query += fmt.Sprintf(" AND (b.search_tsv @@ plainto_tsquery('english', $%d) OR b.name ILIKE $%d OR b.city ILIKE $%d)", argIndex, argIndex+1, argIndex+1)
+			args = append(args, p.Query, "%"+p.Query+"%")
+			argIndex += 2
+		}
 	}
 
-	if p.Latitude != 0 && p.Longitude != 0 {
-		query += fmt.Sprintf(" AND ST_DWithin(b.location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $%d * 1000.0)", argIndex)
+	if located {
+		if latLng {
+			query += fmt.Sprintf(" AND %s <= $%d", g.distance, argIndex)
+		} else {
+			query += fmt.Sprintf(" AND ST_DWithin(b.location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $%d * 1000.0)", argIndex)
+		}
 		args = append(args, p.RadiusKm)
 		argIndex++
 		query += " ORDER BY distance_km ASC"
@@ -119,7 +162,7 @@ func (s *DiscoveryService) SearchBusinesses(ctx context.Context, p SearchParams)
 
 	rows, err := s.db.Pool.Query(ctx, query, args...)
 	if err != nil {
-		return s.getFallbackBusinesses(p.Query, p.CategoryID), nil
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -159,10 +202,10 @@ func (s *DiscoveryService) SearchBusinesses(ctx context.Context, p SearchParams)
 		}
 	}
 
-	if len(businesses) == 0 {
-		return s.getFallbackBusinesses(p.Query, p.CategoryID), nil
+	// No listings means an empty directory — never sample businesses.
+	if businesses == nil {
+		businesses = []domain.Business{}
 	}
-
 	return businesses, nil
 }
 
@@ -182,12 +225,13 @@ func (s *DiscoveryService) GetBusinessByIDOrSlug(ctx context.Context, identifier
 	var yearEst *int
 	var status, verif, list string
 
+	g, _ := s.geo(ctx)
 	err := s.db.Pool.QueryRow(ctx, `
 		SELECT b.id, b.owner_user_id, b.name, b.slug, COALESCE(b.description, ''), b.primary_category_id,
 		       c.name as category_name, b.logo_url, b.website, b.email, b.address_line1, b.locality,
 		       b.city, b.district, b.state, b.pincode, b.country,
-		       ST_Y(b.location::geometry) as lat, ST_X(b.location::geometry) as lng,
-		       b.service_area_km, b.year_established, b.gstin, b.trade_name, b.status::text, b.verification::text,
+		       `+g.lat+` as lat, `+g.lng+` as lng,
+		       b.service_area_km, b.year_established, b.gstin, `+g.tradeName+`, b.status::text, b.verification::text,
 		       b.listing::text, b.phone_verified, b.completeness, b.created_at, b.updated_at
 		FROM businesses b
 		JOIN categories c ON c.id = b.primary_category_id

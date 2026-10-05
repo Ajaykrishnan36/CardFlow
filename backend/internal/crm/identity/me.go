@@ -17,6 +17,11 @@ type MeIdentity struct {
 	Locale          string     `json:"locale"`
 	Timezone        string     `json:"timezone"`
 	LastLoginAt     *time.Time `json:"lastLoginAt,omitempty"`
+	// Email and Phone are listed only once verified; HasPassword says whether "change
+	// password" needs the current one.
+	EmailVerified bool `json:"emailVerified"`
+	PhoneVerified bool `json:"phoneVerified"`
+	HasPassword   bool `json:"hasPassword"`
 }
 
 type MeSession struct {
@@ -45,14 +50,16 @@ func (s *Service) Me(ctx context.Context, sess *Session) (*MeResponse, error) {
 		SELECT i.id, i.display_name, i.is_platform_owner, i.locale, i.timezone, i.last_login_at,
 		       COALESCE((SELECT value_normalized FROM crm.verified_identifiers WHERE identity_id = i.id AND kind = 'email' AND verified_at IS NOT NULL ORDER BY verified_at LIMIT 1), ''),
 		       COALESCE((SELECT value_normalized FROM crm.verified_identifiers WHERE identity_id = i.id AND kind = 'phone' AND verified_at IS NOT NULL ORDER BY verified_at LIMIT 1), ''),
-		       EXISTS (SELECT 1 FROM crm.mfa_methods WHERE identity_id = i.id AND confirmed_at IS NOT NULL)
+		       EXISTS (SELECT 1 FROM crm.mfa_methods WHERE identity_id = i.id AND confirmed_at IS NOT NULL),
+		       EXISTS (SELECT 1 FROM crm.password_credentials WHERE identity_id = i.id)
 		FROM crm.identities i WHERE i.id = $1`, sess.IdentityID).Scan(
 		&out.Identity.ID, &out.Identity.DisplayName, &out.Identity.IsPlatformOwner, &out.Identity.Locale,
 		&out.Identity.Timezone, &out.Identity.LastLoginAt, &out.Identity.Email, &out.Identity.Phone,
-		&out.Session.MFAEnrolled)
+		&out.Session.MFAEnrolled, &out.Identity.HasPassword)
 	if err != nil {
 		return nil, err
 	}
+	out.Identity.EmailVerified, out.Identity.PhoneVerified = out.Identity.Email != "", out.Identity.Phone != ""
 
 	// A session still waiting for its second factor learns nothing beyond what the
 	// MFA screen needs.

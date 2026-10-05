@@ -40,12 +40,29 @@ func (m *Middleware) userForSession(r *http.Request, token string) (*domain.User
 	if err != nil || sess == nil || !sess.Ready() {
 		return nil, false
 	}
+	return m.userForIdentity(r, sess.IdentityID)
+}
+
+// userForCookie resolves the browser's CRM session (one sign-in for the whole site, D-104)
+// to the app profile. Requests that change something must carry the CSRF token.
+func (m *Middleware) userForCookie(r *http.Request) (*domain.User, bool) {
+	if m.ident == nil || m.db == nil || m.db.Pool == nil {
+		return nil, false
+	}
+	sess := m.ident.CookieSession(r)
+	if sess == nil {
+		return nil, false
+	}
+	return m.userForIdentity(r, sess.IdentityID)
+}
+
+func (m *Middleware) userForIdentity(r *http.Request, identityID uuid.UUID) (*domain.User, bool) {
 	user := &domain.User{}
 	var roleStr, planStr string
-	err = m.db.Pool.QueryRow(r.Context(), `
+	err := m.db.Pool.QueryRow(r.Context(), `
 		SELECT id, COALESCE(phone, ''), COALESCE(name, ''), role::text, plan::text,
 		       is_subscribed, subscription_plan_id, subscription_expires_at
-		FROM users WHERE identity_id = $1 AND deleted_at IS NULL`, sess.IdentityID).Scan(
+		FROM users WHERE identity_id = $1 AND deleted_at IS NULL`, identityID).Scan(
 		&user.ID, &user.Phone, &user.Name, &roleStr, &planStr, &user.IsSubscribed, &user.SubscriptionPlanID, &user.SubscriptionExpiresAt)
 	if err != nil {
 		return nil, false
@@ -59,6 +76,11 @@ func (m *Middleware) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			// A browser signed in to the site carries the session cookie instead of a token.
+			if user, ok := m.userForCookie(r); ok {
+				next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), UserContextKey, user)))
+				return
+			}
 			response.Unauthorized(w, "missing Authorization header")
 			return
 		}

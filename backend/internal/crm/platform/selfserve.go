@@ -378,6 +378,11 @@ func (h *Handler) handleCreateBusiness(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
+		// The business's public listing (directory, digital card, QR) is made by the app
+		// side; a problem there never undoes the business itself.
+		if AfterBusinessCreated != nil && strings.TrimSpace(in.ListingID) == "" {
+			AfterBusinessCreated(ctx, me, wsID, in)
+		}
 		b, err := scanBusiness(h.store.Pool.QueryRow(ctx, businessSelect+` AND w.id = $2`, me, wsID))
 		if err != nil {
 			return 0, nil, err
@@ -418,3 +423,7 @@ func (h *Handler) handleSaveSelfServe(w http.ResponseWriter, r *http.Request) {
 	}
 	shared.WriteJSON(w, http.StatusOK, in)
 }
+
+// AfterBusinessCreated is set by the server: it gives a new business its public listing
+// in the directory (D-105). nil = no directory on this server.
+var AfterBusinessCreated func(ctx context.Context, creator, workspaceID uuid.UUID, in CreateBusinessInput)

@@ -59,7 +59,10 @@ func Run(ctx context.Context, st *store.Store, cfg shared.Config) error {
 		return fmt.Errorf("seed system roles: %w", err)
 	}
 
-	if cfg.IsLocalOrDev() && cfg.SeedDemo {
+	// After a fresh start (D-106) the database stays at its baseline: no demo data again.
+	var freshStarted bool
+	_ = st.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.connector_state WHERE key LIKE 'fresh-start:%')`).Scan(&freshStarted)
+	if cfg.IsLocalOrDev() && cfg.SeedDemo && !freshStarted {
 		if err := seedDemo(ctx, st); err != nil {
 			return fmt.Errorf("seed demo: %w", err)
 		}

@@ -423,3 +423,17 @@ func KickEvents() {
 		eventHandler.bus.Kick()
 	}
 }
+
+// SeedRecord creates one record as a person, with every rule a normal create has. Used
+// by the fresh-start baseline (D-106).
+func (h *Handler) SeedRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, object string, actor uuid.UUID, values map[string]any) (uuid.UUID, error) {
+	spec := specFor(object)
+	if spec == nil {
+		return uuid.Nil, shared.NotFound("object_not_found")
+	}
+	row, err := h.createRecord(ctx, tx, ws, spec, actorInfo{ID: &actor, Kind: "identity", Source: "seed"}, values)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return uuid.Parse(row.ID)
+}

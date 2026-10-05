@@ -314,7 +314,7 @@ func (s *BusinessService) CreateBusiness(ctx context.Context, ownerUserID uuid.U
 			`, newID, ownerUserID, in.Name, slug, in.Description, catUUID,
 				in.AddressLine1, in.Locality, in.City, in.State, in.Pincode,
 				in.Latitude, in.Longitude,
-				in.Website, in.Email, in.GSTIN,
+				in.Website, in.Email, gstinOrNull(in.GSTIN),
 			)
 		} else {
 			_, err = s.db.Pool.Exec(ctx, `
@@ -331,7 +331,7 @@ func (s *BusinessService) CreateBusiness(ctx context.Context, ownerUserID uuid.U
 			`, newID, ownerUserID, in.Name, slug, in.Description, catUUID,
 				in.AddressLine1, in.Locality, in.City, in.State, in.Pincode,
 				in.Longitude, in.Latitude,
-				in.Website, in.Email, in.GSTIN,
+				in.Website, in.Email, gstinOrNull(in.GSTIN),
 			)
 		}
 		if err != nil {
@@ -609,4 +609,13 @@ func (s *BusinessService) UploadCardImage(ctx context.Context, ownerUserID, busi
 		return errors.New("image data required")
 	}
 	return s.persistCardImage(ctx, businessID, side, dataURL)
+}
+
+// gstinOrNull stores "no GSTIN" as NULL: the one-listing-per-GSTIN rule must not treat
+// two businesses without a GSTIN as the same business.
+func gstinOrNull(g string) any {
+	if g = strings.ToUpper(strings.TrimSpace(g)); g == "" {
+		return nil
+	}
+	return g
 }

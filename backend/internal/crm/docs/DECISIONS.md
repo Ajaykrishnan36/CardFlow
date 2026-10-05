@@ -554,6 +554,40 @@ found or created by that number, the membership is active, and they get the role
 permission set (roles are hierarchy positions, D-48). They sign in with a code sent to the number —
 no email, password or invitation link. The number counts as verified only after that first sign-in.
 
+### D-103 — Email and password on a phone account
+
+`POST /me/email/request` sends a 6-digit code to an address the signed-in person wants on their
+account; `POST /me/email/verify` puts it there once the code is typed back (an address counts only
+when verified; it replaces an older address of the same account; one address belongs to one account).
+`POST /me/password` sets a password — directly when the account never had one, with the current
+password otherwise — and signs other devices out. `/me` reports `emailVerified`, `phoneVerified` and
+`hasPassword`. The same account then signs in by mobile code, email code, or email + password.
+
+### D-104 — One sign-in for the whole site
+
+In a browser the session is the CRM's HttpOnly cookie, and the app API (`/api/v1`) accepts it too:
+no token is handed to JavaScript. A request that changes data must carry the CSRF token, exactly as
+CRM requests do. Native apps keep using the bearer session. The front end has one login
+(`/` and `/crm/login` are the same screen: Mobile · Password · Email code); only the owner console has
+its own (`/crm/owner/login`).
+
+### D-105 — A business has one public listing
+
+Creating a business also creates its directory listing (`public.businesses`, linked by
+`workspace_id`) with its digital card and QR, so it appears in Browse and in the app's "My business"
+screens. The directory never shows sample businesses: with no listings, search returns an empty list.
+Search works with and without PostGIS (latitude/longitude columns and a great-circle distance).
+
+### D-106 — Fresh start
+
+`CRM_FRESH_START=erase-everything-<label>` on the host erases every customer's data in one
+transaction and creates the baseline (see `internal/crm/freshstart.go`). Each value runs once and is
+recorded; no API can trigger it. Kept: the platform owner's login, the platform and app-connector
+workspaces with their setup, setups, plans, settings, categories. The baseline is one person
+(+91 98765 43211) as Super Admin of "Ajay tech" and "Ajay finace", each with its own sample records
+and public listing. After a fresh start demo data is never seeded again. Where `CRM_OWNER_EMAIL` is
+set and the single owner has another address, the owner's address becomes that one.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

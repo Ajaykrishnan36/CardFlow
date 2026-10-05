@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"cardflow-backend/internal/config"
+	"cardflow-backend/internal/crm"
 	"cardflow-backend/internal/database"
 	"cardflow-backend/internal/server"
 	"github.com/jackc/pgx/v5"
@@ -118,6 +119,7 @@ func TestMain(m *testing.M) {
 		drop()
 		os.Exit(1)
 	}
+	crmMod = crmModule
 	srv := httptest.NewServer(handler)
 	baseURL = srv.URL
 	code := m.Run()
@@ -203,6 +205,9 @@ func truncate(s string, n int) string {
 }
 
 var phoneSeq = 0
+
+// crmMod is the running CRM module (the fresh-start test calls it directly).
+var crmMod *crm.Module
 
 // clientIP: sign-ins come from a different address per person, as they would in real
 // use (the server limits code requests per address as well as per number).
