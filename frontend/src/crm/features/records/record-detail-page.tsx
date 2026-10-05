@@ -27,6 +27,7 @@ import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys
 import { layoutHref, listHref, recordHref, scopedLookupHref, useRecordScope } from './record-scope';
 import { RunWorkflowButton } from './run-workflow';
 import { isForbidden, RecordNoAccess } from './record-states';
+import { CaseSlaCard, InvoicePaymentsCard, PaymentAllocationsCard, RelationshipsCard, RenewContractButton } from './record-enterprise';
 
 export function RecordDetailPage({ object }: { object: ObjectKey }) {
   const { id = '' } = useParams();
@@ -293,7 +294,11 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   };
   const highlights = meta.layout.highlights.map((k) => byKey.get(k)).filter((f): f is FieldDef => Boolean(f));
   // The activity list lives in the Activity tab now (timeline); the rest stays under Related.
-  const relatedLists = detail.related.filter((r) => r.object !== 'activities');
+  // Links made in the Relationships panel have their own card (add / remove) on workspace pages.
+  const inWorkspace = scope.audience === 'member';
+  const relatedLists = detail.related.filter(
+    (r) => r.object !== 'activities' && !(inWorkspace && (r.key.startsWith('rel:') || (object === 'invoices' && r.object === 'payments')))
+  );
   const relatedCount = relatedLists.reduce((n, r) => n + r.rows.length, 0);
   const canEmail = Boolean(email) && scope.hasCapability('email.send');
 
@@ -398,6 +403,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
               </Button>
             ) : null}
             <RunWorkflowButton object={object} id={id} disabled={editing} />
+            {object === 'contracts' ? <RenewContractButton record={record} disabled={editing} /> : null}
             {canConvert ? (
               <Button size="sm" onClick={() => setConvertOpen(true)} disabled={editing}>
                 <ArrowRightLeft /> {t('records.detail.convert')}
@@ -565,6 +571,10 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
         </div>
 
         <aside className="min-w-0 space-y-4">
+          {inWorkspace && object === 'cases' ? <CaseSlaCard record={record} /> : null}
+          {inWorkspace && object === 'invoices' ? <InvoicePaymentsCard record={record} /> : null}
+          {inWorkspace && object === 'payments' ? <PaymentAllocationsCard record={record} canEdit={canEdit} /> : null}
+          {inWorkspace ? <RelationshipsCard object={object} record={record} canEdit={canEdit} /> : null}
           {relatedLists.map((r) => (
             <RelatedCard key={r.key} list={r} compact onViewAll={() => setTab('related')} />
           ))}

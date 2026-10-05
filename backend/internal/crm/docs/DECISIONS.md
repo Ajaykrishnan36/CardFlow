@@ -632,6 +632,88 @@ anything already there (open it, or create another); a follow-up date and a note
 listing's owner and their CRM are not touched. Shown only to members who may create leads, never on
 your own listing.
 
+### D-111 — Relationships between any two records
+
+Lookup fields say "this record's account"; they can't say "this contact also works for that
+account", "she is the decision maker on this deal" or "this contract covers these assets".
+`crm.record_relationships` holds such links between any two records of one business, typed by
+`crm.relationship_types` (13 built in with `workspace_id` null; a business may add its own with
+the metadata capability). A type can fix the object at each end and a cardinality
+(one-to-one … many-to-many), enforced when a link is made. Both ends must be in the business of
+the URL and readable by the caller: a record of another business is 404 even for someone who is
+a member of both — there is no cross-business link and no shared person registry. A link shows
+on both records with the inverse wording, as related lists (`rel:<type>:<dir>:<object>`) and in
+the Relationships panel (add / remove). Adding and removing write the timeline and the audit
+log. API: `GET/POST /w/{code}/crm/{object}/{id}/relationships`, `DELETE /w/{code}/relationships/{id}`,
+`GET/POST /w/{code}/relationship-types`, `DELETE /w/{code}/relationship-types/{key}`.
+Campaigns are not record objects, so lead ↔ campaign is not in this engine.
+
+### D-112 — Forecasts are sums, not stored numbers
+
+A forecast for a period is computed from opportunities whose `closeDate` is inside it: closed
+won, commit / best case / pipeline by `forecastCategory` (empty = pipeline), omitted and lost
+shown apart; forecast = closed won + commit; weighted = open amount × probability. Periods are
+keys — `YYYY-MM`, `YYYY-Qn`, `FYYYYY` — on the business's financial year
+(`workspaces.profile.fiscalStartMonth`, default April). One aggregate query groups by owner; team
+rows add up their members, and the totals come from the deals themselves, so a person in two
+teams is not counted twice. Row scope applies: "own" sees their own deals and those below them.
+Stored: targets (`crm.forecast_quotas`: company, team or person per period) and submissions
+(`crm.forecast_submissions`: a snapshot, the amount the person stands behind, and the manager's
+approve / reject with an optional override). Targets and approval need the new capability
+`forecast.manage`. API under `/w/{code}/forecast…`; page `/crm/w/{code}/forecasts`.
+
+### D-113 — Payments are records; an invoice's paid amount is derived
+
+New object `payments` and table `crm.payment_allocations` (payment, invoice, amount
+`numeric(16,2)`, unique per pair). Many payments per invoice, many invoices per payment, the
+unapplied rest stays on the payment. Only payments whose money has arrived (Paid, Partially
+refunded) count, less the refunded share. Every change to a payment, an allocation or an
+invoice total recomputes `amountPaid`, `balanceDue` and the invoice status in the same
+transaction (`records/hooks.go` → `afterSave`); a typed-in paid amount doesn't survive. All sums
+are SQL numeric. Refunds are recorded (`POST /payments/{id}/refund`), not sent to a gateway.
+An invoice that carried a typed `amountPaid` from before gets one opening payment for that
+amount on upgrade (marker `payments:opening-balances-v1`); nothing else is invented.
+Payments are in the Finance module, so staff need Finance access to see or record them.
+
+### D-114 — Vendors and services reuse what exists
+
+A vendor is an account of type Vendor or Supplier (account types now also include Partner,
+Reseller, Distributor, Competitor); purchase orders and expenses already point at accounts.
+A service is a catalog item with `itemType` = service, plus `billingFrequency` and
+`durationMinutes`. No new tables. The Vendors and Services menu entries are the same lists
+through a fixed filter carried in the address (`?type=vendor`, `?itemType=service`), shared by
+the desktop list and the phone list (`frontend/src/navigation/presets.js`).
+
+### D-115 — SLA: policies, clocks, working hours
+
+`sla_policies` records give first-response and resolution targets per priority (or any), with
+optional working hours, work days and holidays. A case picks its policy: on the case →
+its entitlement → an active entitlement of its contract or account → priority → default. Two
+clocks per case live in `crm.sla_timers`. Leaving New answers the first response; Pending
+pauses (resume shifts the due time by the working time waited); Resolved/Closed completes;
+reopening restarts resolution. A new case always gets status New. The sweep
+(`Handler.Sweep`, advisory lock, sleeps until the next due time, at most an hour) warns at 80%,
+marks breaches once (case flag, timeline, notification) and escalates when the policy says so.
+`CRM_SWEEPS=off` disables the background loop (tests call `Module.Sweep` directly).
+Cases gained statuses Assigned and Pending, priority Critical, and links to asset, contract,
+entitlement and product.
+
+### D-116 — Contracts, assets, entitlements, appointments
+
+Four standard objects in the generic engine (no new tables): `contracts` (term, value,
+renewal notice; `POST /contracts/{id}/renew` creates the next term, marks the old one Renewed,
+links them with `renewal_of` and copies what it covers), `assets` (serial, warranty, location,
+parent asset), `entitlements` (account, contract, SLA policy, level, dates) and `appointments`
+(distinct from calendar events: own statuses, service, assigned person, reminder, cancellation
+reason). The sweep marks contracts Expiring inside their notice period (one renewal task for
+the owner) and Expired after the end date, and unpaid invoices past due as Overdue.
+
+### D-117 — Menu by area
+
+The sidebar and the phone menu group objects as Sales, Products, Sales operations, Service,
+Purchasing and Finance (a business's own objects stay under CRM / "More"). Forecasts is a
+desktop page; on a phone its menu entry opens the same address in the desktop layout.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

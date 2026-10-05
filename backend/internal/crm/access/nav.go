@@ -41,15 +41,27 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 		}
 		if e.Can(o.Key, "read") {
 			if o.Custom {
-				nav = append(nav, NavItem{Key: o.Key, Label: o.Label, Path: base + "/" + o.Route, Icon: o.Icon, Group: navGroup(o.Module), Available: true})
+				nav = append(nav, NavItem{Key: o.Key, Label: o.Label, Path: base + "/" + o.Route, Icon: o.Icon, Group: navGroup(o.Key), Available: true})
 				continue
 			}
-			nav = append(nav, NavItem{Key: o.Module, Label: o.Label, Path: base + "/" + o.Module, Icon: icons[o.Key], Group: "CRM", Available: true})
+			nav = append(nav, NavItem{Key: o.Module, Label: o.Label, Path: base + "/" + o.Module, Icon: icons[o.Key], Group: "Sales", Available: true})
 		}
+	}
+	// Forecasts are worked out from opportunities (D-112).
+	if e.Can("opportunities", "read") {
+		nav = append(nav, NavItem{Key: "forecasts", Label: "Forecasts", Path: base + "/forecasts", Icon: "trending-up", Group: "Sales", Available: true})
 	}
 	// Scanned business cards (D-98): for anyone who works with leads or contacts.
 	if e.Can("lead", "read") || e.Can("contact", "read") {
-		nav = append(nav, NavItem{Key: "cards", Label: "Business cards", Path: base + "/cards", Icon: "scan-line", Group: "CRM", Available: true})
+		nav = append(nav, NavItem{Key: "cards", Label: "Business cards", Path: base + "/cards", Icon: "scan-line", Group: "Sales", Available: true})
+	}
+	// Vendors are accounts of type Vendor or Supplier (D-114): the same records, a filtered list.
+	if e.Can("account", "read") {
+		nav = append(nav, NavItem{Key: "vendors", Label: "Vendors", Path: base + "/accounts?type=vendor", Icon: "truck", Group: "Purchasing", Available: true})
+	}
+	// Services are catalog items of type Service (D-114).
+	if e.Can("catalog_items", "read") {
+		nav = append(nav, NavItem{Key: "services", Label: "Services", Path: base + "/catalog_items?itemType=service", Icon: "wrench", Group: "Products", Available: true})
 	}
 	// A connected app's support tickets are Cases like in every other product (D-72).
 	// The connected app's own data (Business Card Snap): users with their access, and business listings.
@@ -97,15 +109,22 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	return nav
 }
 
-// navGroup is the sidebar section of an object, by its module.
-func navGroup(module string) string {
-	switch module {
-	case "finance":
-		return "Finance"
-	case "sales_docs", "catalog", "subscriptions":
-		return "Sales"
-	case "tickets", "knowledge":
-		return "Service"
+// navGroups: the sidebar section of each object (D-117). Anything not listed (a
+// business's own objects) goes under CRM.
+var navGroups = map[string]string{
+	"opportunities": "Sales", "tasks": "Sales", "events": "Sales", "notes": "Sales", "communications": "Sales",
+	"catalog_items": "Products", "price_books": "Products", "assets": "Products",
+	"quotes": "Sales operations", "sales_orders": "Sales operations", "invoices": "Sales operations", "contracts": "Sales operations",
+	"subscriptions": "Sales operations",
+	"cases":         "Service", "appointments": "Service", "entitlements": "Service", "sla_policies": "Service", "solutions": "Service",
+	"purchase_orders": "Purchasing",
+	"income":          "Finance", "expenses": "Finance", "payments": "Finance",
+}
+
+// navGroup is the sidebar section of an object.
+func navGroup(key string) string {
+	if g, ok := navGroups[key]; ok {
+		return g
 	}
 	return "CRM"
 }
@@ -113,7 +132,11 @@ func navGroup(module string) string {
 // IsRecordGroup reports whether a sidebar section lists record objects (an app's menu
 // may hide those; settings and analytics always stay).
 func IsRecordGroup(g string) bool {
-	return g == "CRM" || g == "App" || g == "Finance" || g == "Sales" || g == "Service"
+	switch g {
+	case "CRM", "App", "Sales", "Products", "Sales operations", "Service", "Purchasing", "Finance":
+		return true
+	}
+	return false
 }
 
 // DefaultMembership picks the membership a member lands in: the first customer

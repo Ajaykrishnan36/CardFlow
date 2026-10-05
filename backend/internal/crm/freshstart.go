@@ -52,6 +52,8 @@ var keptConfig = map[string]bool{
 	"membership_permission_sets": true, "object_definitions": true, "field_definitions": true, "layouts": true, "views": true,
 	"reports": true, "dashboards": true, "workflows": true, "mail_accounts": true, "sso_providers": true, "webhooks": true,
 	"api_keys": true, "invite_links": true, "assignment_state": true,
+	// The built-in relationship types (no workspace) are part of the product (D-111).
+	"relationship_types": true,
 }
 
 // keptWhole are tables this pass never deletes from directly (no customer data, or rows

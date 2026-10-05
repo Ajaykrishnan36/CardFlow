@@ -30,6 +30,8 @@ type Handler struct {
 	extensions []Extension
 	bus        *Bus
 	mailer     Mailer
+	// sweepWake pokes the time-based checks (SLA clocks) when a case changes.
+	sweepWake chan struct{}
 }
 
 // Mailer sends the CRM's own emails (record emails, campaigns, workflow emails).
@@ -73,6 +75,10 @@ func (h *Handler) Routes(r chi.Router) {
 		h.reportRoutes(r)
 		h.cardRoutes(r)
 		h.businessRoutes(r)
+		h.relationshipRoutes(r)
+		h.paymentRoutes(r)
+		h.forecastRoutes(r)
+		h.serviceRoutes(r)
 		h.mountRecords(r, "")
 		for _, ext := range h.extensions {
 			if ext.MemberRoutes != nil {

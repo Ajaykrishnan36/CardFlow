@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Building2, Check, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Plus, Search } from 'lucide-react';
 import type { Me, NavItem, WorkspaceContext } from '@crm/api/types';
 import { isOwnerSession, workspaceHomePath } from '@crm/auth/session';
@@ -43,6 +43,7 @@ interface SidebarProps {
 }
 
 export function SidebarContent({ me, navigation, loading, workspace, workspaceCode, collapsed, onNavigate, className, apiPrefix }: SidebarProps) {
+  const filteredPaths = (navigation ?? []).filter((n) => n.path.includes('?')).map((n) => n.path);
   const { t } = useTranslation();
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const setCommandOpen = useUI((s) => s.setCommandOpen);
@@ -123,7 +124,7 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
               <ul className="space-y-0.5">
                 {group.items.map((item) => (
                   <li key={item.key}>
-                    <SidebarLink item={item} collapsed={collapsed} onNavigate={onNavigate} />
+                    <SidebarLink item={item} collapsed={collapsed} onNavigate={onNavigate} filtered={filteredPaths} />
                   </li>
                 ))}
               </ul>
@@ -153,16 +154,24 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
   );
 }
 
-function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boolean; onNavigate?: () => void }) {
+function SidebarLink({ item, collapsed, onNavigate, filtered }: { item: NavItem; collapsed: boolean; onNavigate?: () => void; filtered: string[] }) {
   const { t } = useTranslation();
+  const location = useLocation();
   const Icon = navIcon(item.icon);
+  // "Vendors" is the accounts list through a fixed filter (D-117): it is the active entry
+  // only while the address carries that filter, and then "Accounts" is not.
+  const [path, query] = item.path.split('?');
+  const carries = (q: string) => [...new URLSearchParams(q)].every(([k, v]) => new URLSearchParams(location.search).get(k) === v);
+  const onPath = location.pathname === path || location.pathname.startsWith(path + '/');
+  const override = query ? onPath && location.pathname === path && carries(query) : onPath && location.pathname === path && filtered.some((f) => f.split('?')[0] === path && carries(f.split('?')[1])) ? false : undefined;
   const link = (
     <NavLink
       to={item.path}
       onClick={onNavigate}
       end={item.path.split('/').length <= 3}
-      className={({ isActive }) =>
-        cn(
+      className={({ isActive: routeActive }) => {
+        const isActive = override ?? routeActive;
+        return cn(
           'group flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] font-medium transition-colors',
           collapsed && 'mx-auto w-9 justify-center px-0',
           isActive
@@ -170,8 +179,8 @@ function SidebarLink({ item, collapsed, onNavigate }: { item: NavItem; collapsed
             : item.available
               ? 'text-foreground/80 hover:bg-muted hover:text-foreground'
               : 'text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground'
-        )
-      }
+        );
+      }}
     >
       <Icon className="size-4 shrink-0" aria-hidden />
       {!collapsed ? (

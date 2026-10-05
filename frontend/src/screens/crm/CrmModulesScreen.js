@@ -14,13 +14,13 @@ const SEARCHABLE = [
   { object: 'tasks', label: 'Tasks' },
   { object: 'cases', label: 'Cases' }
 ];
-const GROUP_ORDER = ['CRM', 'Service', 'Sales', 'Finance'];
+const GROUP_ORDER = ['Sales', 'Products', 'Sales operations', 'Service', 'Purchasing', 'Finance', 'CRM'];
 
 /**
  * My CRM: everything this person can work with in the open business, grouped like the
  * web sidebar, with one search across leads, contacts, accounts, deals, tasks and cases.
  */
-export function CrmModulesScreen({ onOpenList, onOpenRecord, onOpenSwitcher, onOpenCards, onOpenListing, onOpenTeam, onOpenBusinessProfile }) {
+export function CrmModulesScreen({ onOpenList, onOpenPath, onOpenRecord, onOpenSwitcher, onOpenCards, onOpenListing, onOpenTeam, onOpenBusinessProfile }) {
   const { active, activeCode, navigation, context, has } = useCrm();
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
@@ -105,17 +105,19 @@ export function CrmModulesScreen({ onOpenList, onOpenRecord, onOpenSwitcher, onO
         <>
           {groups.map((g) => (
             <View key={g.name}>
-              <SectionTitle>{g.name === 'CRM' ? 'Sales & relationships' : g.name}</SectionTitle>
+              <SectionTitle>{g.name === 'CRM' ? 'More' : g.name}</SectionTitle>
               <View style={styles.grid}>
                 {g.items.map((n) => {
-                  const object = n.path.split('/').pop();
-                  const Icon = iconFor(object);
+                  // A menu entry is an object's list, or the same list through a fixed filter (Vendors, Services).
+                  const object = n.path.split('?')[0].split('/').pop();
+                  const filtered = n.path.includes('?');
+                  const Icon = iconFor(filtered ? n.key : object);
                   return (
                     <TouchableOpacity
                       key={n.key}
                       style={[styles.module, shadows.sm]}
                       activeOpacity={0.8}
-                      onPress={() => (object === 'cards' ? onOpenCards() : onOpenList(object))}
+                      onPress={() => (object === 'cards' ? onOpenCards() : filtered || object === 'forecasts' ? onOpenPath(n.path) : onOpenList(object))}
                     >
                       <View style={styles.moduleIcon}>
                         <Icon size={18} color={colors.primary} />

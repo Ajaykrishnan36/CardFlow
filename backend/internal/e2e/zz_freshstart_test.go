@@ -79,6 +79,13 @@ func TestFreshStartKeepsOnlyTheOwnerAndOneBusiness(t *testing.T) {
 	if n := count(`SELECT count(*) FROM crm.object_definitions WHERE NOT is_standard`); n != 0 {
 		t.Fatalf("test objects left behind = %d", n)
 	}
+	// Built-in relationship types are part of the product, not customer data.
+	if n := count(`SELECT count(*) FROM crm.relationship_types WHERE workspace_id IS NULL`); n != 13 {
+		t.Fatalf("built-in relationship types after a fresh start = %d, want 13", n)
+	}
+	if n := count(`SELECT count(*) FROM crm.record_relationships r WHERE NOT EXISTS (SELECT 1 FROM crm.workspaces w WHERE w.id = r.workspace_id)`); n != 0 {
+		t.Fatalf("relationships of erased businesses left behind = %d", n)
+	}
 
 	// The kept person is still signed in and finds exactly their one business, intact.
 	list := call(t, "GET", crmAPI+"/businesses", ajay, nil)

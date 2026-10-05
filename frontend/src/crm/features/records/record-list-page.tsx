@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Download, Ellipsis, LayoutTemplate, Plus, Re
 import { isApiError } from '@crm/api/client';
 import { type BulkQuery } from '@crm/api/endpoints';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordListParams, RecordRow } from '@crm/api/types';
-import type { FilterGroup, SavedView, SortSpec, ViewDefinition, ViewKind } from '@crm/api/types-features';
+import type { FilterCondition, FilterGroup, SavedView, SortSpec, ViewDefinition, ViewKind } from '@crm/api/types-features';
 import { Badge, Card } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@crm/components/ui/menu';
@@ -26,6 +26,7 @@ import { isForbidden, RecordNoAccess } from './record-states';
 import { ALL_VIEW, BIN_VIEW, ViewDialog, ViewsBar } from './list/views-bar';
 import { ColumnsButton, DensityButton, FilterButton, SortButton } from './list/list-controls';
 import { cleanFilter, countConditions, withCondition } from './list/filter-utils';
+import { listPreset } from '../../../navigation/presets';
 import { RecordTable, rowHref, WorkspaceChip } from './list/record-table';
 import { KanbanBoard } from './list/kanban-board';
 import { CalendarView } from './list/calendar-view';
@@ -152,7 +153,14 @@ function RecordListView({ object }: { object: ObjectKey }) {
   }, [sp, canCreate, patchParams]);
 
   const byKey = useMemo(() => fieldIndex(meta), [meta]);
-  const filter = useMemo(() => cleanFilter(draft.filter, byKey), [draft.filter, byKey]);
+  const ownFilter = useMemo(() => cleanFilter(draft.filter, byKey), [draft.filter, byKey]);
+  // A menu entry such as Vendors is this list through a fixed filter carried in the address (D-117).
+  const presetQuery = sp.get('type') ?? sp.get('itemType') ?? '';
+  const preset = useMemo(() => listPreset(object, sp), [object, presetQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filter = useMemo<FilterGroup | undefined>(
+    () => (preset ? { op: 'and', filters: [preset.filter as unknown as FilterCondition, ...(ownFilter ? [ownFilter] : [])] } : ownFilter),
+    [preset, ownFilter]
+  );
   const sorts: SortSpec[] = draft.sorts ?? [];
   const columns = useMemo(
     () => (draft.columns?.length ? draft.columns : meta?.listColumns ?? []).filter((k) => k !== 'code').map((k) => byKey.get(k)).filter((f): f is FieldDef => Boolean(f)),
@@ -260,19 +268,32 @@ function RecordListView({ object }: { object: ObjectKey }) {
   return (
     <PageContainer wide>
       <PageHeader
-        title={meta ? meta.labelPlural : <Skeleton className="h-7 w-32" />}
+        title={meta ? preset?.label ?? meta.labelPlural : <Skeleton className="h-7 w-32" />}
         icon={
           <span className="grid size-10 place-items-center rounded-lg bg-primary-soft text-primary">
             <Icon className="size-5" aria-hidden />
           </span>
         }
-        description={meta ? subtitle : undefined}
+        description={
+          meta ? (
+            preset ? (
+              <>
+                {meta.labelPlural} of type {preset.singular}.{' '}
+                <Link to={listHref(scope, object)} className="font-medium text-primary hover:underline">
+                  Show all {meta.labelPlural.toLowerCase()}
+                </Link>
+              </>
+            ) : (
+              subtitle
+            )
+          ) : undefined
+        }
         actions={
           meta ? (
             <>
               {canCreate && !binMode ? (
-                <Button onClick={() => openNew()}>
-                  <Plus /> {t('records.list.new', { object: meta.labelSingular })}
+                <Button onClick={() => openNew(preset?.create)}>
+                  <Plus /> {t('records.list.new', { object: preset ? preset.singular : meta.labelSingular })}
                 </Button>
               ) : null}
               <Menu>

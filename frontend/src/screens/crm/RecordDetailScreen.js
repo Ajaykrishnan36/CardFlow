@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useCrm } from '../../context/CrmContext';
 import { crmApi, errorText, newIdempotencyKey } from '../../services/crmApi';
 import { Row, Panel, SectionTitle, Loading, ErrorBox, StatusPill, iconFor, money, humanize, guessTone } from './ui';
+import { EnterprisePanels } from './EnterprisePanels';
 
 const RELATED_OBJECTS = new Set(['leads', 'contacts', 'accounts']);
 const LINK_FIELD = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId', opportunities: 'opportunityId', cases: 'caseId' };
@@ -232,7 +233,8 @@ export function RecordDetailScreen({ object, id, onBack, onEdit, onOpenRecord, o
   const sections = (meta.layout?.sections || [])
     .map((s) => ({ title: s.title, id: s.id, rows: s.fields.map((k) => byKey[k]).filter(Boolean).map((f) => ({ f, text: display(f, record, currency) })).filter((r) => r.text) }))
     .filter((s) => s.rows.length);
-  const lists = (detail.related || []).filter((l) => l.object !== 'activities' && l.rows?.length);
+  // An invoice's payments have their own panel (with the balance and "Record payment").
+  const lists = (detail.related || []).filter((l) => l.object !== 'activities' && l.rows?.length && !(object === 'invoices' && l.object === 'payments'));
 
   return (
     <View style={styles.screen}>
@@ -349,6 +351,8 @@ export function RecordDetailScreen({ object, id, onBack, onEdit, onOpenRecord, o
             </Panel>
           </View>
         ))}
+
+        <EnterprisePanels object={object} record={record} onChanged={load} onOpenRecord={onOpenRecord} />
 
         {lists.map((l) => (
           <View key={l.key}>

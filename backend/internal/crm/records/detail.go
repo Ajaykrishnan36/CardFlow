@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/crm/platform"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
@@ -115,6 +116,33 @@ func (h *Handler) related(ctx context.Context, ws uuid.UUID, spec *objectSpec, r
 	linked, err := h.relatedObjects(ctx, ws.String(), spec.Key, id, func(o *objectSpec) bool { return sc == nil || sc.Can(o.Key, "read") })
 	if err != nil {
 		return nil, err
+	}
+	// Links from the relationship engine (D-111), one list per kind of link.
+	if sc0 := scopeFrom(ctx); sc0 != nil {
+		rid, _ := uuid.Parse(id)
+		var me uuid.UUID
+		if sess := identity.SessionFrom(ctx); sess != nil {
+			me = sess.IdentityID
+		}
+		rels, err := h.relationshipsOf(ctx, sc0, me, spec.Key, rid)
+		if err != nil {
+			return nil, err
+		}
+		order := []string{}
+		groups := map[string]*RelatedList{}
+		for _, rel := range rels {
+			key := "rel:" + rel.Type + ":" + rel.Direction + ":" + rel.Object
+			g, ok := groups[key]
+			if !ok {
+				g = &RelatedList{Key: key, Label: rel.Label, Object: rel.Object, Rows: []RelatedRow{}}
+				groups[key] = g
+				order = append(order, key)
+			}
+			g.Rows = append(g.Rows, RelatedRow{ID: rel.RecordID, Code: rel.Code, Title: rel.Title, Subtitle: rel.Note})
+		}
+		for _, key := range order {
+			out = append(out, *groups[key])
+		}
 	}
 	if cards, ok, err := h.relatedCards(ctx, ws, spec.Key, id); err != nil {
 		return nil, err

@@ -143,6 +143,8 @@ CRM settings:
   server whose `ENV` isn't `production` shows the code on screen instead of sending it.
   `OTP_PREVIEW_INSECURE=true` does the same anywhere — never leave it on for real users.
 - **Fresh start:** `CRM_FRESH_START` — see "Fresh start" below.
+- **Background sweeps** (SLA breaches, contract expiry, overdue invoices): on by default;
+  `CRM_SWEEPS=off` turns the loop off.
 
 ### Fresh start (erase all customer data)
 
@@ -197,8 +199,8 @@ backend/
                            email, workflows, reports, dashboards, API keys, webhooks, SSO, recycle bin
     connectors/cardflow/   Business Card Snap sync (app users, cards, tickets ↔ Cases)
     mail/, oauth/, shared/ email senders, OAuth providers, helpers
-    store/migrations/      CRM database migrations (0001 … 0016), applied at startup
-    docs/DECISIONS.md      every design decision, D-01 … D-87 — read this first
+    store/migrations/      CRM database migrations (0001 … 0021), applied at startup
+    docs/DECISIONS.md      every design decision, D-01 … D-117 — read this first
 frontend/
   src/crm/
     app.tsx                routes
@@ -262,6 +264,25 @@ curl -s https://cardflow-api-fsij.onrender.com/crm/login | grep -o 'bundle\.[a-f
 - **Plans** (Free / Pro / Business) belong to a business and are enforced on the server.
 - **Profile:** verified mobile, add and verify an email, set a password.
 
+**Enterprise model** (D-111 to D-117, Oct 2026; full description in `DATA_MODEL.md` §7):
+- **Relationships** between any two records of a business (never across businesses).
+- **Payments** as records, applied to invoices; an invoice's paid amount and balance are
+  worked out from them. Refunds are recorded, not sent to a payment gateway.
+- **Forecasts** by month, quarter or financial year, by person or team, with targets,
+  submission and manager approval (`/crm/w/<business>/forecasts`).
+- **Service:** SLA policies with working hours, SLA clocks on cases (pause, breach,
+  escalation), entitlements, assets, appointments.
+- **Contracts** with renewal and automatic Expiring / Expired.
+- **Vendors** (accounts of type vendor) and **Services** (catalog items of type service).
+- Code: `backend/internal/crm/records/{relationships,payments,forecast,sla,contracts,hooks}.go`,
+  migration `0021_enterprise_model.sql`; web `features/records/record-enterprise.tsx`,
+  `features/forecast/forecast-page.tsx`; phone `src/screens/crm/EnterprisePanels.js`.
+
+Not built from the enterprise brief: warranty-expiry automation for assets, default
+reports for the new objects (they are available in the report builder), a relationship
+picker on the phone layout (links show there, they are added on the desktop), forecast on the
+phone layout, links between leads and email campaigns (campaigns are not record objects).
+
 Not built yet from the unified plan: owner-console screens for plans and subscriptions
 (the API exists: `/platform/plans`, `/platform/subscriptions`), a plan page on the desktop
 CRM, push notifications, account export/delete, a separate "platform support" queue.
@@ -281,7 +302,7 @@ Earlier work (see DECISIONS.md for details):
 Gaps compared with Twenty (not built yet, roughly by priority):
 1. Default values for fields (dropdown default, checkbox default, currency and phone
    default per field).
-2. True many-to-many links, showing on both records.
+2. ~~True many-to-many links, showing on both records.~~ Done (D-111).
 3. Customisable sidebar: reorder, folders, hide items, custom links.
 4. Record page built from tabs and movable widgets (charts, embeds…).
 5. Dashboards with tabs, a drag grid, pie charts, text and embed widgets.

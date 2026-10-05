@@ -1,7 +1,7 @@
 # Data model
 
 How Ajay's CRM stores its data: every table, what it is for, and how the tables connect.
-Written from the database itself on 5 Oct 2026 (CRM migrations 0001–0020, app migrations
+Written from the database itself on 5 Oct 2026 (CRM migrations 0001–0021, app migrations
 001–015). Section 12 lists every column of every table.
 
 ## 1. The shape in one page
@@ -10,10 +10,10 @@ There is **one PostgreSQL database** with two schemas:
 
 | Schema | What lives there | Tables |
 |---|---|---|
-| `crm` | People and sign-in, businesses, roles and permissions, all CRM records, email, automation, reports, plans | 64 |
+| `crm` | People and sign-in, businesses, roles and permissions, all CRM records, email, automation, reports, plans, relationships, payments, forecasts, SLA clocks | 70 |
 | `public` | The card vault, the public directory (listings), app profiles, support tickets, app-store subscription events | 19 |
 
-Four ideas explain almost everything:
+Five ideas explain almost everything:
 
 1. **A person is an identity.** One row in `crm.identities` per person, whatever they sign
    in with (mobile code, email code, password, Google…). The app profile
@@ -28,6 +28,9 @@ Four ideas explain almost everything:
    other object — deals, tasks, meetings, cases, income, expenses, quotes, invoices, and any
    object a business invents — is a row in `crm.object_records`, described by a row in
    `crm.object_definitions`.
+5. **Any two records of one business can be linked** through `crm.record_relationships`
+   (a contact who works for a second account, the decision maker on a deal, the assets a
+   contract covers). A link never crosses businesses.
 
 ```mermaid
 erDiagram
@@ -52,6 +55,12 @@ erDiagram
     workspaces ||--o| businesses : "public listing"
     users ||--o{ saved_cards : "saved"
     saved_cards ||--o{ card_links : "linked to a record"
+    workspaces ||--o{ record_relationships : "owns"
+    relationship_types ||--o{ record_relationships : "kind of link"
+    object_records ||--o{ payment_allocations : "payment pays invoice"
+    object_records ||--o{ sla_timers : "case has clocks"
+    workspaces ||--o{ forecast_quotas : "targets"
+    workspaces ||--o{ forecast_submissions : "submitted forecasts"
 ```
 
 ## 2. Words on screen → tables
@@ -65,7 +74,14 @@ erDiagram
 | Permission set | `crm.permission_sets`, granted in `crm.membership_permission_sets` |
 | Lead / Account / Contact | `crm.leads` / `crm.accounts` / `crm.contacts` |
 | Opportunity (deal), Task, Calendar event, Note, Communication, Case | `crm.object_records` with `object_key` = `opportunities`, `tasks`, `events`, `notes`, `communications`, `cases` |
-| Income, Expense | `crm.object_records` with `object_key` = `income`, `expenses` |
+| Income, Expense, Payment | `crm.object_records` with `object_key` = `income`, `expenses`, `payments` |
+| A payment applied to an invoice | `crm.payment_allocations` |
+| Contract, Asset, Entitlement, SLA policy, Appointment | `crm.object_records` (`contracts`, `assets`, `entitlements`, `sla_policies`, `appointments`) |
+| Vendor | `crm.accounts` with `type` = `vendor` or `supplier` (the Vendors menu entry is a filtered account list) |
+| Service | `crm.object_records` (`catalog_items`) with `itemType` = `service` |
+| Relationship between two records | `crm.record_relationships`, its kind in `crm.relationship_types` |
+| Forecast target, submitted forecast | `crm.forecast_quotas`, `crm.forecast_submissions` (the forecast numbers themselves are sums over opportunities, not stored) |
+| SLA clock on a case | `crm.sla_timers` |
 | Catalog, Price book, Quote, Sales order, Invoice, Purchase order, Line item, Subscription | `crm.object_records` (`catalog_items`, `price_books`, `quotes`, `sales_orders`, `invoices`, `purchase_orders`, `line_items`, `subscriptions`) |
 | Knowledge base article | `crm.object_records` with `object_key` = `solutions` |
 | Custom object / custom field | `crm.object_definitions` (per business) / `crm.field_definitions` |
@@ -347,6 +363,10 @@ Every record table has the same backbone:
 `custom` — e.g. `custom->>'accountId'`. They are checked when saved (same business, record
 exists) but are not database foreign keys.
 
+**Links that are not a field** — a contact's second employer, the people involved in a deal,
+what a contract covers — are rows in `crm.record_relationships` (section 7, "Links between
+any two records").
+
 ## 7. Objects stored as data
 
 Each object below is one row in `crm.object_definitions` (shared by every business) and its
@@ -376,11 +396,76 @@ erDiagram
     opportunities ||--o{ income : "opportunityId"
     accounts ||--o{ expenses : "accountId"
     accounts ||--o{ subscriptions : "accountId"
+    invoices ||--o{ payments : "invoiceId (first invoice)"
+    accounts ||--o{ payments : "accountId"
+    accounts ||--o{ contracts : "accountId"
+    opportunities ||--o{ contracts : "opportunityId"
+    contracts ||--o{ entitlements : "contractId"
+    contracts ||--o{ invoices : "contractId"
+    contracts ||--o{ subscriptions : "contractId"
+    accounts ||--o{ assets : "accountId"
+    catalog_items ||--o{ assets : "itemId"
+    assets ||--o{ assets : "parentAssetId"
+    accounts ||--o{ entitlements : "accountId"
+    sla_policies ||--o{ entitlements : "slaPolicyId"
+    sla_policies ||--o{ cases : "slaPolicyId"
+    entitlements ||--o{ cases : "entitlementId"
+    assets ||--o{ cases : "assetId"
+    contracts ||--o{ cases : "contractId"
+    accounts ||--o{ appointments : "accountId"
+    contacts ||--o{ appointments : "contactId"
+    catalog_items ||--o{ appointments : "itemId (the service)"
+    accounts ||--o{ purchase_orders : "accountId (the vendor)"
+    purchase_orders ||--o{ expenses : "purchaseOrderId"
 ```
+
+#### Appointments — `appointments` (code `APT-…`, module `calendar`)
+
+Subject is the record's `name`. Statuses: Scheduled, Confirmed, In progress, Completed, Cancelled, No show, Rescheduled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `startsAt` — Starts (required) | datetime |  |
+| `endsAt` — Ends | datetime |  |
+| `timezone` — Time zone | text |  |
+| `contactId` — Contact | lookup | `contacts` |
+| `accountId` — Account | lookup | `accounts` |
+| `itemId` — Service | lookup | `catalog_items` |
+| `assignedTo` — Assigned to | lookup | `users` |
+| `location` — Location | text |  |
+| `meetingLink` — Meeting link | url |  |
+| `reminderMinutes` — Reminder | select |  |
+| `opportunityId` — Opportunity | lookup | `opportunities` |
+| `caseId` — Case | lookup | `cases` |
+| `notes` — Notes | textarea |  |
+| `cancellationReason` — Cancellation reason | text |  |
+| `rescheduledFrom` — Rescheduled from | lookup | `appointments` |
+
+#### Assets — `assets` (code `AST-…`, module `catalog`)
+
+Asset name is the record's `name`. Statuses: Active, Installed, Inactive, Under repair, Retired, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `accountId` — Account | lookup | `accounts` |
+| `contactId` — Contact | lookup | `contacts` |
+| `itemId` — Product or service | lookup | `catalog_items` |
+| `serialNumber` — Serial number | text |  |
+| `quantity` — Quantity | number |  |
+| `price` — Price | currency |  |
+| `purchaseDate` — Purchase date | date |  |
+| `installDate` — Installation date | date |  |
+| `warrantyStart` — Warranty starts | date |  |
+| `warrantyEnd` — Warranty ends | date |  |
+| `location` — Location | text |  |
+| `parentAssetId` — Part of | lookup | `assets` |
+| `contractId` — Contract | lookup | `contracts` |
+| `subscriptionId` — Subscription | lookup | `subscriptions` |
+| `description` — Description | textarea |  |
 
 #### Cases — `cases` (code `CS-…`, module `tickets`)
 
-Subject is the record's `name`. Statuses: New, Working, Escalated, Resolved, Closed.
+Subject is the record's `name`. Statuses: New, Working, Escalated, Resolved, Closed, Assigned, Pending customer.
 
 | Field | Type | Links to |
 |---|---|---|
@@ -394,6 +479,15 @@ Subject is the record's `name`. Statuses: New, Working, Escalated, Resolved, Clo
 | `slaDueAt` — Respond by | datetime |  |
 | `closedAt` — Closed on | datetime |  |
 | `solutionId` — Knowledge article | lookup | `solutions` |
+| `assetId` — Asset | lookup | `assets` |
+| `contractId` — Contract | lookup | `contracts` |
+| `entitlementId` — Entitlement | lookup | `entitlements` |
+| `itemId` — Product or service | lookup | `catalog_items` |
+| `slaPolicyId` — SLA policy | lookup | `sla_policies` |
+| `firstResponseDueAt` — First response by | datetime |  |
+| `firstRespondedAt` — First responded | datetime |  |
+| `slaBreached` — SLA breached | boolean |  |
+| `escalatedAt` — Escalated on | datetime |  |
 
 #### Catalog — `catalog_items` (code `ITM-…`, module `catalog`)
 
@@ -408,6 +502,9 @@ Item name is the record's `name`. Statuses: Active, Inactive.
 | `taxRate` — Tax rate | percent |  |
 | `description` — Description | textarea |  |
 | `cost` — Cost | currency |  |
+| `itemType` — Type | select |  |
+| `billingFrequency` — Billed | select |  |
+| `durationMinutes` — Duration (minutes) | number |  |
 
 #### Communications — `communications` (code `COM-…`, module `communications`)
 
@@ -425,6 +522,48 @@ Subject is the record's `name`. Statuses: Logged, Sent, Received, Failed.
 | `durationMinutes` — Duration (minutes) | number |  |
 | `opportunityId` — Opportunity | lookup | `opportunities` |
 | `caseId` — Case | lookup | `cases` |
+
+#### Contracts — `contracts` (code `CON-…`, module `sales_docs`)
+
+Contract name is the record's `name`. Statuses: Draft, Active, Expiring, Renewed, Expired, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `accountId` — Account | lookup | `accounts` |
+| `contactId` — Contact | lookup | `contacts` |
+| `startDate` — Start date (required) | date |  |
+| `endDate` — End date (required) | date |  |
+| `renewalDate` — Renewal date | date |  |
+| `contractValue` — Contract value | currency |  |
+| `currency` — Currency | text |  |
+| `autoRenew` — Renews automatically | boolean |  |
+| `renewalNoticeDays` — Renewal notice (days) | number |  |
+| `opportunityId` — Opportunity | lookup | `opportunities` |
+| `quoteId` — Quote | lookup | `quotes` |
+| `orderId` — Sales order | lookup | `sales_orders` |
+| `subscriptionId` — Subscription | lookup | `subscriptions` |
+| `terms` — Terms | textarea |  |
+| `description` — Description | textarea |  |
+
+#### Entitlements — `entitlements` (code `ENT-…`, module `tickets`)
+
+Entitlement name is the record's `name`. Statuses: Active, Inactive, Expired.
+
+| Field | Type | Links to |
+|---|---|---|
+| `accountId` — Account | lookup | `accounts` |
+| `contactId` — Contact | lookup | `contacts` |
+| `contractId` — Contract | lookup | `contracts` |
+| `slaPolicyId` — SLA policy | lookup | `sla_policies` |
+| `supportLevel` — Support level | select |  |
+| `startDate` — Start date | date |  |
+| `endDate` — End date | date |  |
+| `itemId` — Product or service | lookup | `catalog_items` |
+| `assetId` — Asset | lookup | `assets` |
+| `supportHours` — Support hours | text |  |
+| `channels` — Channels | multiselect |  |
+| `casesIncluded` — Cases included | number |  |
+| `description` — Description | textarea |  |
 
 #### Calendar events — `events` (code `EVT-…`, module `calendar`)
 
@@ -461,6 +600,7 @@ Title is the record's `name`. Statuses: Paid, Pending, Cancelled.
 | `reference` — Reference | text |  |
 | `recurring` — Repeats | select |  |
 | `description` — Notes | textarea |  |
+| `purchaseOrderId` — Purchase order | lookup | `purchase_orders` |
 
 #### Income — `income` (code `INC-…`, module `finance`)
 
@@ -495,6 +635,10 @@ Invoice name is the record's `name`. Statuses: Draft, Sent, Partially paid, Paid
 | `total` — Total | currency |  |
 | `amountPaid` — Amount paid | currency |  |
 | `description` — Notes | textarea |  |
+| `balanceDue` — Balance due | currency |  |
+| `contractId` — Contract | lookup | `contracts` |
+| `subscriptionId` — Subscription | lookup | `subscriptions` |
+| `opportunityId` — Opportunity | lookup | `opportunities` |
 
 #### Line items — `line_items` (code `LI-…`, module `sales_docs`)
 
@@ -512,6 +656,7 @@ Item is the record's `name`. Statuses: —.
 | `orderId` — Sales order | lookup | `sales_orders` |
 | `invoiceId` — Invoice | lookup | `invoices` |
 | `priceBookId` — Price book | lookup | `price_books` |
+| `contractId` — Contract | lookup | `contracts` |
 
 #### Notes — `notes` (code `NTE-…`, module `notes`)
 
@@ -544,6 +689,28 @@ Opportunity name is the record's `name`. Statuses: Prospecting, Qualification, P
 | `forecastCategory` — Forecast category | select |  |
 | `lostReason` — Lost reason | text |  |
 | `priceBookId` — Price book | lookup | `price_books` |
+| `territory` — Territory | text |  |
+
+#### Payments — `payments` (code `PAY-…`, module `finance`)
+
+Payment is the record's `name`. Statuses: Pending, Authorized, Paid, Failed, Partially refunded, Refunded, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `amount` — Amount (required) | currency |  |
+| `paymentDate` — Payment date (required) | date |  |
+| `paymentMethod` — Payment method | select |  |
+| `reference` — Reference number | text |  |
+| `invoiceId` — Invoice | lookup | `invoices` |
+| `orderId` — Sales order | lookup | `sales_orders` |
+| `accountId` — Account | lookup | `accounts` |
+| `contactId` — Contact | lookup | `contacts` |
+| `currency` — Currency | text |  |
+| `externalId` — External transaction ID | text |  |
+| `refundedAmount` — Refunded | currency |  |
+| `allocatedAmount` — Applied to invoices | currency |  |
+| `unappliedAmount` — Not yet applied | currency |  |
+| `notes` — Notes | textarea |  |
 
 #### Price books — `price_books` (code `PB-…`, module `sales_docs`)
 
@@ -567,6 +734,7 @@ Order name is the record's `name`. Statuses: Draft, Ordered, Received, Cancelled
 | `expectedDate` — Expected on | date |  |
 | `total` — Total | currency |  |
 | `description` — Notes | textarea |  |
+| `contractId` — Contract | lookup | `contracts` |
 
 #### Quotes — `quotes` (code `QT-…`, module `sales_docs`)
 
@@ -604,6 +772,24 @@ Order name is the record's `name`. Statuses: Draft, Confirmed, Shipped, Delivere
 | `total` — Total | currency |  |
 | `description` — Notes | textarea |  |
 
+#### SLA policies — `sla_policies` (code `SLA-…`, module `tickets`)
+
+Policy name is the record's `name`. Statuses: Active, Inactive.
+
+| Field | Type | Links to |
+|---|---|---|
+| `priority` — Applies to priority | select |  |
+| `firstResponseMinutes` — First response within (minutes) (required) | number |  |
+| `resolutionMinutes` — Resolution within (minutes) (required) | number |  |
+| `businessHoursOnly` — Count business hours only | boolean |  |
+| `businessStart` — Business day starts | text |  |
+| `businessEnd` — Business day ends | text |  |
+| `workDays` — Working days | multiselect |  |
+| `holidays` — Holidays | textarea |  |
+| `autoEscalate` — Escalate the case when breached | boolean |  |
+| `isDefault` — Use when no entitlement applies | boolean |  |
+| `description` — Description | textarea |  |
+
 #### Knowledge base — `solutions` (code `KB-…`, module `knowledge`)
 
 Title is the record's `name`. Statuses: Draft, Published, Archived.
@@ -629,6 +815,8 @@ Subscription name is the record's `name`. Statuses: Trial, Active, Past due, Can
 | `endDate` — End date | date |  |
 | `autoRenew` — Renews automatically | boolean |  |
 | `description` — Notes | textarea |  |
+| `contractId` — Contract | lookup | `contracts` |
+| `itemId` — Product or service | lookup | `catalog_items` |
 
 #### Tasks — `tasks` (code `TSK-…`, module `tasks`)
 
@@ -646,12 +834,172 @@ Subject is the record's `name`. Statuses: Not started, In progress, Waiting on s
 | `recurrence` — Repeats | select |  |
 | `reminderAt` — Remind me | datetime |  |
 | `caseId` — Case | lookup | `cases` |
+| `contractId` — Contract | lookup | `contracts` |
+| `assetId` — Asset | lookup | `assets` |
 
 
 A business can add **its own objects** (a row in `crm.object_definitions` with its
 `workspace_id`) and **its own fields** on any object (`crm.field_definitions`). They behave
 like the standard ones everywhere: lists, forms, permissions, reports, the API and the phone
 layout.
+
+### The enterprise model in one diagram
+
+The customer's journey from account to cash, and the service side that hangs off it. Boxes
+are objects (records); the three tables drawn with columns are real tables.
+
+```mermaid
+erDiagram
+    ACCOUNT ||--o{ CONTACT : "employs"
+    ACCOUNT ||--o{ OPPORTUNITY : "buys"
+    ACCOUNT ||--o{ CONTRACT : "signs"
+    ACCOUNT ||--o{ ASSET : "owns"
+    ACCOUNT ||--o{ CASE : "raises"
+    ACCOUNT ||--o{ APPOINTMENT : "books"
+    ACCOUNT ||--o{ PURCHASE_ORDER : "supplies (vendor)"
+    OPPORTUNITY ||--o{ QUOTE : "quoted as"
+    QUOTE ||--o{ SALES_ORDER : "ordered as"
+    SALES_ORDER ||--o{ INVOICE : "billed as"
+    INVOICE ||--o{ PAYMENT_ALLOCATION : "paid by"
+    PAYMENT ||--o{ PAYMENT_ALLOCATION : "applied to"
+    CONTRACT ||--o{ ENTITLEMENT : "grants"
+    CONTRACT ||--o{ INVOICE : "billed under"
+    CONTRACT ||--o| CONTRACT : "renewal of"
+    ENTITLEMENT }o--|| SLA_POLICY : "promises"
+    CASE }o--o| ENTITLEMENT : "handled under"
+    CASE }o--o| SLA_POLICY : "timed by"
+    CASE ||--o{ SLA_TIMER : "has clocks"
+    CASE }o--o| ASSET : "about"
+    PRODUCT_OR_SERVICE ||--o{ ASSET : "sold as"
+    PRODUCT_OR_SERVICE ||--o{ APPOINTMENT : "service booked"
+    PURCHASE_ORDER ||--o{ EXPENSE : "paid as"
+    OPPORTUNITY ||--o{ FORECAST : "summed into (not stored)"
+    FORECAST_QUOTA ||--o{ FORECAST : "target for"
+    RECORD_RELATIONSHIP }o--|| RELATIONSHIP_TYPE : "is a"
+    PAYMENT_ALLOCATION {
+        uuid payment_id FK "object_records (payments)"
+        uuid invoice_id FK "object_records (invoices)"
+        numeric amount "numeric(16,2), > 0"
+    }
+    RECORD_RELATIONSHIP {
+        uuid workspace_id FK
+        text type_key "works_for, decision_maker_for, covers…"
+        text source_object
+        uuid source_id
+        text target_object
+        uuid target_id
+    }
+    SLA_TIMER {
+        uuid case_id FK
+        text milestone "first_response | resolution"
+        timestamptz due_at
+        timestamptz paused_at
+        timestamptz completed_at
+        timestamptz breached_at
+    }
+```
+
+### Links between any two records
+
+`crm.relationship_types` lists the kinds of link. Thirteen are built in (`workspace_id` is
+null): related to, works for, decision maker for, influencer for, contact for, attendee,
+partner of, competitor on, supplies, includes, covers, renewal of, owns. A business can add its
+own. A type may fix the object at either end (works for: contact → account) and says how many
+each side may have (`cardinality`; e.g. an asset has one owner).
+
+`crm.record_relationships` holds the links: business, type, the record it starts from
+(`source_object`, `source_id`) and the record it points to (`target_object`, `target_id`).
+The record page shows a link from both ends, with the inverse wording on the far side
+("Decision maker for" ↔ "Decision maker").
+
+Rules: both records must belong to the business in the URL and be visible to the person
+making the link — a record of another business is "not found", even for someone who is a
+member of both. A record can't be linked to itself or twice the same way. Destroying a record
+removes its links.
+
+### Payments and invoices
+
+A **payment** is a record (`payments`). What it pays is in `crm.payment_allocations`: one
+row per (payment, invoice) with an amount. So one invoice can be paid by many payments and
+one payment can pay many invoices.
+
+- Naming an invoice on a payment applies as much of it as the invoice still needs; the rest
+  stays on the payment as `unappliedAmount` and can be applied to another invoice.
+- Only payments whose status is Paid or Partially refunded count; a refund lowers what each
+  invoice received, proportionally.
+- An invoice's `amountPaid`, `balanceDue` and status (Sent → Partially paid → Paid) are
+  **worked out from its allocations** in the same transaction as the payment change. Typing a
+  paid amount on an invoice that has payments does not stick.
+- Amounts in `payment_allocations` are `numeric(16,2)` and all sums are done in SQL as
+  numeric. An invoice that had an `amountPaid` typed in before payments existed keeps it until
+  its first payment is recorded (one opening payment is created for it by the upgrade).
+
+### Forecasts
+
+Nothing about a forecast's numbers is stored. For a period (a month `2026-10`, a quarter
+`2026-Q3`, a financial year `FY2026`; the financial year's first month is
+`workspaces.profile.fiscalStartMonth`, April by default) the server sums the opportunities
+whose `closeDate` falls inside it:
+
+| Number | Opportunities counted |
+|---|---|
+| Closed won | status Closed won |
+| Commit / Best case / Pipeline | open, by the deal's `forecastCategory` (empty = pipeline) |
+| Omitted, Lost | category Omitted / status Closed lost — shown, never added in |
+| Forecast | Closed won + Commit |
+| Weighted | open amount × `probability` |
+
+Rows are per owner or per team; totals are computed once over the deals, so someone in two
+teams appears in both team rows without the total counting their deals twice. A person with
+row scope "own" gets only their own deals and those of the roles below them.
+
+`crm.forecast_quotas` holds targets (company, team or person, per period).
+`crm.forecast_submissions` holds what a person submitted for a period — a snapshot of their
+numbers plus the amount they stand behind — and the manager's decision (`status`,
+`override_amount`, `manager_comment`). Setting targets and approving need the capability
+`forecast.manage`.
+
+### Service levels (SLA)
+
+An **SLA policy** (`sla_policies`) says how fast a case must get a first response and a
+resolution, for one priority or for any, round the clock or inside working hours (start, end,
+work days, holidays).
+
+When a case is created the policy is chosen in this order: the policy on the case → the
+policy of the case's entitlement → an active entitlement of the case's contract or account →
+the policy for the case's priority → the default policy. Two rows are written to
+`crm.sla_timers` (first response, resolution) with their due times; the case carries
+`firstResponseDueAt` and `slaDueAt`.
+
+- Leaving **New** completes the first-response clock (`firstRespondedAt`).
+- **Pending** (waiting for the customer) pauses the clocks; resuming moves the due time by the
+  working time waited.
+- **Resolved / Closed** completes them; reopening restarts the resolution clock.
+- A background sweep warns the owner at 80% of the time, marks a clock that runs out as
+  breached (`slaBreached` on the case, a timeline entry, a notification) and, if the policy
+  says so, moves the case to Escalated.
+
+### Contracts, assets, entitlements, appointments
+
+- **Contract** — term (`startDate`, `endDate`), value, renewal notice. "Renew" creates the
+  next term as a new contract, marks the old one Renewed and links the two (`renewal_of`).
+  The sweep marks an active contract **Expiring** inside its notice period (and creates one
+  renewal task for its owner) and **Expired** after its end date.
+- **Asset** — something a customer owns: product, serial number, warranty dates, location,
+  parent asset (hierarchy), the contract that covers it.
+- **Entitlement** — the support a customer is owed: account, contract, SLA policy, level,
+  dates, included cases.
+- **Appointment** — a booked service visit or meeting with its own statuses (scheduled →
+  confirmed → completed / cancelled / no-show). Calendar events stay what they were: entries
+  on a calendar.
+
+### Vendors and services
+
+Not new tables. A **vendor** is an account whose `type` is Vendor or Supplier; its purchase
+orders and expenses show on its page. A **service** is a catalog item whose `itemType` is
+Service (with a billing frequency and a duration). The Vendors and Services menu entries
+open the same lists through a fixed filter (`/accounts?type=vendor`,
+`/catalog_items?itemType=service`).
 
 ## 8. Timeline, email, automation, reports
 
@@ -762,6 +1110,11 @@ CRM records.
   tokens are stored as hashes; mailbox, SSO and webhook secrets are encrypted
   (`*_enc` columns, key in `CRM_ENCRYPTION_KEY_BASE64`).
 - **Audit and events are written with the change**, in the same transaction.
+- **Derived values are derived in the same transaction.** An invoice's paid amount and
+  balance, a payment's applied and unapplied amount, and a case's SLA due times are written
+  by the server when the record they depend on changes — never by the browser.
+- **Money is numeric.** Columns that hold money are `numeric`; sums over field values are
+  cast to numeric in SQL.
 - **Plan limits** are checked on the server where records, members and card scans are created.
 - **Migrations only add.** The one deliberate exception is the fresh start
   (`CRM_FRESH_START`, see HANDOVER.md), which erases customer data on purpose.
@@ -998,7 +1351,7 @@ A **business** (the tenant). Every customer record carries its `id` as `workspac
 | `status` | text | yes | default 'draft' |
 | `timezone` | text | yes | default 'Asia/Kolkata' |
 | `locale` | text | yes | default 'en' |
-| `currency` | text | yes | default 'INR'::bpchar |
+| `currency` | character(3) | yes | default 'INR'::bpchar |
 | `branding` | jsonb | yes | default '{}' |
 | `custom_domain` | text | no |  |
 | `domain_verified_at` | timestamptz | no |  |
@@ -1076,9 +1429,9 @@ Price plans (Free, Pro, Business) with their limits (`members`, `records`, `card
 | `key` | text | yes | primary key |
 | `name` | text | yes |  |
 | `description` | text | yes | default '' |
-| `price_monthly` | numeric | yes | default 0 |
-| `price_yearly` | numeric | yes | default 0 |
-| `currency` | text | yes | default 'INR'::bpchar |
+| `price_monthly` | numeric(12,2) | yes | default 0 |
+| `price_yearly` | numeric(12,2) | yes | default 0 |
+| `currency` | character(3) | yes | default 'INR'::bpchar |
 | `limits` | jsonb | yes | default '{}' |
 | `features` | jsonb | yes | default '[]' |
 | `is_default` | boolean | yes | default false |
@@ -1290,7 +1643,7 @@ A person or company that might buy. Has its own status flow (new → working →
 | `status` | text | yes | default 'new' |
 | `rating` | text | no |  |
 | `lost_reason` | text | no |  |
-| `annual_revenue` | numeric | no |  |
+| `annual_revenue` | numeric(18,2) | no |  |
 | `employees` | integer | no |  |
 | `street` | text | no |  |
 | `city` | text | no |  |
@@ -1339,7 +1692,7 @@ A company or individual customer. `parent_account_id` builds account hierarchies
 | `website` | text | no |  |
 | `email` | text | no |  |
 | `phone` | text | no |  |
-| `annual_revenue` | numeric | no |  |
+| `annual_revenue` | numeric(18,2) | no |  |
 | `employees` | integer | no |  |
 | `billing_street` | text | no |  |
 | `billing_city` | text | no |  |
@@ -1566,6 +1919,135 @@ Round-robin position for automatic record assignment.
 | `workspace_id` | uuid | yes | part of the primary key; the business (tenant) — → `crm.workspaces` |
 | `key` | text | yes | part of the primary key |
 | `last_index` | integer | yes | default '-1'::integer |
+
+### Relationships, payments, forecasts and SLA
+
+#### `crm.relationship_types`
+
+The kinds of link two records can have. Rows with no `workspace_id` are built in and shared; a business adds its own. `source_object` / `target_object` fix what may be at each end (empty = any object); `cardinality` says how many links each side may have.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | no | → `crm.workspaces`, deleted with it |
+| `key` | text | yes |  |
+| `label` | text | yes |  |
+| `inverse_label` | text | yes |  |
+| `source_object` | text | no |  |
+| `target_object` | text | no |  |
+| `cardinality` | text | yes | default 'many_to_many' |
+| `is_system` | boolean | yes | default false |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+| `updated_at` | timestamptz | yes |  |
+
+#### `crm.record_relationships`
+
+A link between two records of one business: its type, where it starts (`source_object`, `source_id`) and where it points (`target_object`, `target_id`). Both ends are checked to be in the same business when the link is made.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `type_key` | text | yes |  |
+| `source_object` | text | yes |  |
+| `source_id` | uuid | yes |  |
+| `target_object` | text | yes |  |
+| `target_id` | uuid | yes |  |
+| `note` | text | yes | default '' |
+| `metadata` | jsonb | yes | default '{}' |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+| `updated_at` | timestamptz | yes |  |
+
+Unique: (`workspace_id`, `type_key`, `source_object`, `source_id`, `target_object`, `target_id`)
+
+#### `crm.payment_allocations`
+
+How much of a payment pays an invoice. Both ids point at `crm.object_records` (a `payments` record and an `invoices` record). An invoice's paid amount is the sum of its rows here, counted for payments that have actually arrived.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `payment_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `invoice_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `amount` | numeric(16,2) | yes |  |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Unique: (`payment_id`, `invoice_id`)
+
+#### `crm.forecast_quotas`
+
+Sales targets per period (`period_key`: `2026-10`, `2026-Q3`, `FY2026`) for the whole business, a team or a person.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `period_key` | text | yes |  |
+| `scope` | text | yes |  |
+| `owner_id` | uuid | no | → `crm.identities`, deleted with it |
+| `team_id` | uuid | no | → `crm.teams`, deleted with it |
+| `pipeline` | text | yes | default '' |
+| `amount` | numeric(16,2) | yes |  |
+| `created_by` | uuid | no | → `crm.identities` |
+| `updated_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+| `updated_at` | timestamptz | yes |  |
+
+#### `crm.forecast_submissions`
+
+A person's submitted forecast for a period: a snapshot of their numbers at that moment, the amount they stand behind, and the manager's decision (approved / rejected, optional override).
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `period_key` | text | yes |  |
+| `owner_id` | uuid | yes | → `crm.identities`, deleted with it |
+| `pipeline` | text | yes | default '' |
+| `closed_won` | numeric(16,2) | yes | default 0 |
+| `commit_amount` | numeric(16,2) | yes | default 0 |
+| `best_case` | numeric(16,2) | yes | default 0 |
+| `pipeline_amount` | numeric(16,2) | yes | default 0 |
+| `forecast_amount` | numeric(16,2) | yes | default 0 |
+| `quota` | numeric(16,2) | no |  |
+| `comment` | text | yes | default '' |
+| `status` | text | yes | default 'submitted' |
+| `override_amount` | numeric(16,2) | no |  |
+| `manager_comment` | text | yes | default '' |
+| `submitted_at` | timestamptz | yes |  |
+| `approved_at` | timestamptz | no |  |
+| `approved_by` | uuid | no | → `crm.identities` |
+
+Unique: (`workspace_id`, `period_key`, `owner_id`, `pipeline`)
+
+#### `crm.sla_timers`
+
+The SLA clocks of a case: one row per milestone (first response, resolution) with target, due time, pause, completion and breach times. `hours` is a copy of the policy's working hours at the time the clock started.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `case_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `policy_id` | uuid | no | → `crm.object_records`, cleared if it is deleted |
+| `milestone` | text | yes |  |
+| `target_minutes` | integer | yes |  |
+| `hours` | jsonb | yes | default '{}' |
+| `started_at` | timestamptz | yes |  |
+| `due_at` | timestamptz | yes |  |
+| `paused_at` | timestamptz | no |  |
+| `paused_seconds` | integer | yes | default 0 |
+| `completed_at` | timestamptz | no |  |
+| `warned_at` | timestamptz | no |  |
+| `breached_at` | timestamptz | no |  |
+| `escalated_at` | timestamptz | no |  |
+| `created_at` | timestamptz | yes |  |
+
+Unique: (`case_id`, `milestone`)
 
 ### Timeline, files, notifications and audit
 
@@ -2014,13 +2496,13 @@ The app profile of a person (cards, listings, premium). Linked to the login by `
 | Column | Type | Required | Notes |
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
-| `phone` | text | yes |  |
-| `name` | text | no |  |
-| `email` | text | no |  |
-| `photo_url` | text | no |  |
-| `city` | text | no |  |
-| `state` | text | no |  |
-| `country` | text | no | default 'IN' |
+| `phone` | varchar(20) | yes |  |
+| `name` | varchar(100) | no |  |
+| `email` | varchar(255) | no |  |
+| `photo_url` | varchar(500) | no |  |
+| `city` | varchar(100) | no |  |
+| `state` | varchar(100) | no |  |
+| `country` | varchar(10) | no | default 'IN' |
 | `role` | user_role | yes | default 'user'::user_role |
 | `plan` | subscription_plan | yes | default 'free'::subscription_plan |
 | `free_scans_remaining` | smallint | yes | default 30 |
@@ -2031,11 +2513,11 @@ The app profile of a person (cards, listings, premium). Linked to the login by `
 | `last_login_at` | timestamptz | no |  |
 | `deleted_at` | timestamptz | no |  |
 | `is_subscribed` | boolean | yes | default false |
-| `subscription_plan_id` | text | no |  |
+| `subscription_plan_id` | varchar(120) | no |  |
 | `subscription_expires_at` | timestamptz | no |  |
-| `subscription_status` | text | yes | default 'FREE' |
-| `subscription_source` | text | no |  |
-| `subscription_store` | text | no |  |
+| `subscription_status` | varchar(20) | yes | default 'FREE' |
+| `subscription_source` | varchar(20) | no |  |
+| `subscription_store` | varchar(30) | no |  |
 | `subscription_will_renew` | boolean | yes | default false |
 | `subscription_management_url` | text | no |  |
 | `subscription_event_at` | timestamptz | no |  |
@@ -2052,26 +2534,26 @@ A scanned or saved business card (the card vault). `identity_id` = who saved it,
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `user_id` | uuid | no | → `public.users`, deleted with it |
-| `person_name` | text | no |  |
-| `designation` | text | no |  |
-| `company` | text | no |  |
-| `website` | text | no |  |
+| `person_name` | varchar(150) | no |  |
+| `designation` | varchar(150) | no |  |
+| `company` | varchar(200) | no |  |
+| `website` | varchar(255) | no |  |
 | `notes` | text | no |  |
 | `met_context` | text | no |  |
 | `private_rating` | smallint | no |  |
 | `contact_type` | contact_type | yes | default 'business'::contact_type |
 | `extract_status` | extract_status | yes | default 'extracted'::extract_status |
-| `gstin` | text | no |  |
+| `gstin` | character(15) | no |  |
 | `latitude` | double precision | no |  |
 | `longitude` | double precision | no |  |
-| `source` | text | no | default 'SCANNED' |
+| `source` | varchar(30) | no | default 'SCANNED' |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 | `deleted_at` | timestamptz | no |  |
 | `linked_business_id` | uuid | no | → `public.businesses` |
 | `identity_id` | uuid | no | → `crm.identities` |
 | `workspace_id` | uuid | no | → `crm.workspaces` |
-| `event_tag` | text | no |  |
+| `event_tag` | varchar(100) | no |  |
 
 #### `public.saved_card_phones`
 
@@ -2081,9 +2563,9 @@ Phone numbers read from a card.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `saved_card_id` | uuid | yes | → `public.saved_cards`, deleted with it |
-| `raw_phone` | text | yes |  |
-| `phone_e164` | text | no |  |
-| `phone_type` | text | no | default 'work' |
+| `raw_phone` | varchar(50) | yes |  |
+| `phone_e164` | varchar(20) | no |  |
+| `phone_type` | varchar(30) | no | default 'work' |
 | `is_whatsapp` | boolean | yes | default false |
 | `created_at` | timestamptz | yes |  |
 
@@ -2095,7 +2577,7 @@ Email addresses read from a card.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `saved_card_id` | uuid | yes | → `public.saved_cards`, deleted with it |
-| `email` | text | yes |  |
+| `email` | varchar(255) | yes |  |
 | `created_at` | timestamptz | yes |  |
 
 #### `public.saved_card_addresses`
@@ -2119,12 +2601,12 @@ The photos of a card (front / back).
 | `id` | uuid | yes | primary key |
 | `saved_card_id` | uuid | yes | → `public.saved_cards`, deleted with it |
 | `side` | card_side | yes | default 'front'::card_side |
-| `object_key` | text | yes | default '' |
+| `object_key` | varchar(255) | yes | default '' |
 | `width` | integer | no |  |
 | `height` | integer | no |  |
 | `bytes` | integer | no |  |
 | `image_data` | bytea | no |  |
-| `content_type` | text | no | default 'image/jpeg' |
+| `content_type` | varchar(50) | no | default 'image/jpeg' |
 | `created_at` | timestamptz | yes |  |
 
 #### `public.saved_card_tags`
@@ -2144,7 +2626,7 @@ A person's tags for their cards.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `user_id` | uuid | no | → `public.users`, deleted with it |
-| `name` | text | yes |  |
+| `name` | varchar(50) | yes |  |
 | `kind` | tag_kind | yes | default 'custom'::tag_kind |
 | `created_at` | timestamptz | yes |  |
 
@@ -2158,26 +2640,26 @@ A **public listing** in the directory. `workspace_id` links it to the business (
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `owner_user_id` | uuid | no | → `public.users` |
-| `name` | text | yes |  |
-| `slug` | text | yes |  |
+| `name` | varchar(200) | yes |  |
+| `slug` | varchar(250) | yes |  |
 | `description` | text | no |  |
 | `primary_category_id` | uuid | yes | → `public.categories` |
-| `logo_url` | text | no |  |
-| `website` | text | no |  |
-| `email` | text | no |  |
-| `address_line1` | text | yes |  |
-| `address_line2` | text | no |  |
-| `locality` | text | no |  |
-| `city` | text | yes |  |
-| `district` | text | no |  |
-| `state` | text | yes |  |
-| `pincode` | text | yes |  |
-| `country` | text | no | default 'IN' |
+| `logo_url` | varchar(500) | no |  |
+| `website` | varchar(255) | no |  |
+| `email` | varchar(255) | no |  |
+| `address_line1` | varchar(255) | yes |  |
+| `address_line2` | varchar(255) | no |  |
+| `locality` | varchar(150) | no |  |
+| `city` | varchar(100) | yes |  |
+| `district` | varchar(100) | no |  |
+| `state` | varchar(100) | yes |  |
+| `pincode` | varchar(10) | yes |  |
+| `country` | varchar(10) | no | default 'IN' |
 | `latitude` | double precision | yes | default 11.0168 |
 | `longitude` | double precision | yes | default 76.9558 |
 | `service_area_km` | smallint | no | default 0 |
 | `year_established` | smallint | no |  |
-| `gstin` | text | no |  |
+| `gstin` | character(15) | no |  |
 | `status` | business_status | yes | default 'draft'::business_status |
 | `verification` | verification_type | yes | default 'pending'::verification_type |
 | `listing` | listing_visibility | yes |  |
@@ -2186,10 +2668,10 @@ A **public listing** in the directory. `workspace_id` links it to the business (
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 | `deleted_at` | timestamptz | no |  |
-| `source` | text | yes | default 'owner' |
-| `contact_name` | text | no |  |
-| `contact_designation` | text | no |  |
-| `contact_phone` | text | no |  |
+| `source` | varchar(20) | yes | default 'owner' |
+| `contact_name` | varchar(150) | no |  |
+| `contact_designation` | varchar(150) | no |  |
+| `contact_phone` | varchar(20) | no |  |
 | `created_by_user_id` | uuid | no | → `public.users`, cleared if it is deleted |
 | `claimed_at` | timestamptz | no |  |
 | `workspace_id` | uuid | no | → `crm.workspaces` |
@@ -2204,8 +2686,8 @@ Phone numbers of a listing.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `business_id` | uuid | yes | → `public.businesses`, deleted with it |
-| `phone` | text | yes |  |
-| `label` | text | no | default 'Main' |
+| `phone` | varchar(20) | yes |  |
+| `label` | varchar(50) | no | default 'Main' |
 | `is_whatsapp` | boolean | yes | default false |
 | `otp_verified` | boolean | yes | default false |
 | `created_at` | timestamptz | yes |  |
@@ -2218,7 +2700,7 @@ Products and services of a listing.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `business_id` | uuid | yes | → `public.businesses`, deleted with it |
-| `name` | text | yes |  |
+| `name` | varchar(100) | yes |  |
 | `created_at` | timestamptz | yes |  |
 
 #### `public.business_card_images`
@@ -2229,9 +2711,9 @@ The original card images of a listing.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `business_id` | uuid | yes | → `public.businesses`, deleted with it |
-| `side` | text | yes | default 'front' |
+| `side` | varchar(10) | yes | default 'front' |
 | `image_data` | bytea | no |  |
-| `content_type` | text | no | default 'image/jpeg' |
+| `content_type` | varchar(80) | no | default 'image/jpeg' |
 | `created_at` | timestamptz | yes |  |
 
 Unique: (`business_id`, `side`)
@@ -2244,10 +2726,10 @@ The generated digital card of a listing: template, colour, QR slug.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `business_id` | uuid | yes | → `public.businesses`, deleted with it |
-| `template` | text | yes | default 'clean' |
-| `brand_color` | text | yes | default '#32145F' |
-| `qr_slug` | text | yes |  |
-| `rendered_image_url` | text | no |  |
+| `template` | varchar(50) | yes | default 'clean' |
+| `brand_color` | varchar(10) | yes | default '#32145F' |
+| `qr_slug` | varchar(100) | yes |  |
+| `rendered_image_url` | varchar(500) | no |  |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
@@ -2261,9 +2743,9 @@ Directory categories (reference data).
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `parent_id` | uuid | no | → `public.categories`, deleted with it |
-| `name` | text | yes |  |
-| `slug` | text | yes |  |
-| `icon` | text | no |  |
+| `name` | varchar(100) | yes |  |
+| `slug` | varchar(100) | yes |  |
+| `icon` | varchar(100) | no |  |
 | `sort_order` | smallint | yes | default 0 |
 | `is_active` | boolean | yes | default true |
 | `created_at` | timestamptz | yes |  |
@@ -2276,18 +2758,18 @@ Support requests from app users to the platform.
 
 | Column | Type | Required | Notes |
 |---|---|---|---|
-| `id` | text | yes | primary key |
+| `id` | varchar(20) | yes | primary key |
 | `user_id` | uuid | no | → `public.users`, cleared if it is deleted |
-| `user_name` | text | yes | default '' |
-| `user_phone` | text | yes | default '' |
-| `user_role` | text | yes | default 'user' |
-| `category` | text | yes | default 'general' |
-| `subject` | text | yes |  |
+| `user_name` | varchar(150) | yes | default '' |
+| `user_phone` | varchar(20) | yes | default '' |
+| `user_role` | varchar(20) | yes | default 'user' |
+| `category` | varchar(40) | yes | default 'general' |
+| `subject` | varchar(200) | yes |  |
 | `message` | text | yes |  |
-| `status` | text | yes | default 'open' |
+| `status` | varchar(20) | yes | default 'open' |
 | `admin_reply` | text | no |  |
 | `replied_at` | timestamptz | no |  |
-| `replied_by` | text | no |  |
+| `replied_by` | varchar(150) | no |  |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
@@ -2298,10 +2780,10 @@ The conversation on a support ticket.
 | Column | Type | Required | Notes |
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
-| `ticket_id` | text | yes | → `public.support_tickets`, deleted with it |
-| `sender` | text | yes |  |
-| `author_name` | text | yes | default '' |
-| `author_role` | text | yes | default '' |
+| `ticket_id` | varchar(20) | yes | → `public.support_tickets`, deleted with it |
+| `sender` | varchar(10) | yes |  |
+| `author_name` | varchar(150) | yes | default '' |
+| `author_role` | varchar(60) | yes | default '' |
 | `body` | text | yes |  |
 | `created_at` | timestamptz | yes |  |
 
@@ -2313,7 +2795,7 @@ A person's backed-up phone contacts.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `user_id` | uuid | yes | → `public.users`, deleted with it |
-| `name` | text | yes | default '' |
+| `name` | varchar(200) | yes | default '' |
 | `phones` | jsonb | yes | default '[]' |
 | `emails` | jsonb | yes | default '[]' |
 | `created_at` | timestamptz | yes |  |
@@ -2326,11 +2808,11 @@ Older direct payments for the app's premium plan.
 |---|---|---|---|
 | `id` | uuid | yes | primary key |
 | `user_id` | uuid | yes | → `public.users`, deleted with it |
-| `plan_id` | text | yes |  |
+| `plan_id` | varchar(20) | yes |  |
 | `amount_paise` | integer | yes |  |
-| `razorpay_order_id` | text | yes |  |
-| `razorpay_payment_id` | text | no |  |
-| `status` | text | yes | default 'created' |
+| `razorpay_order_id` | varchar(64) | yes |  |
+| `razorpay_payment_id` | varchar(64) | no |  |
+| `status` | varchar(20) | yes | default 'created' |
 | `created_at` | timestamptz | yes |  |
 | `paid_at` | timestamptz | no |  |
 
@@ -2342,21 +2824,21 @@ App-store subscription events received from RevenueCat.
 
 | Column | Type | Required | Notes |
 |---|---|---|---|
-| `event_id` | text | yes | primary key |
-| `event_type` | text | yes |  |
-| `app_user_id` | text | no |  |
+| `event_id` | varchar(100) | yes | primary key |
+| `event_type` | varchar(40) | yes |  |
+| `app_user_id` | varchar(200) | no |  |
 | `user_id` | uuid | no | → `public.users`, cleared if it is deleted |
-| `product_id` | text | no |  |
+| `product_id` | varchar(120) | no |  |
 | `entitlement_ids` | text[] | no |  |
-| `store` | text | no |  |
-| `environment` | text | no |  |
-| `price` | numeric | no |  |
-| `currency` | text | no |  |
-| `transaction_id` | text | no |  |
+| `store` | varchar(30) | no |  |
+| `environment` | varchar(20) | no |  |
+| `price` | numeric(12,4) | no |  |
+| `currency` | varchar(10) | no |  |
+| `transaction_id` | varchar(200) | no |  |
 | `event_at` | timestamptz | no |  |
 | `expires_at` | timestamptz | no |  |
 | `payload` | jsonb | yes |  |
-| `status` | text | yes | default 'received' |
+| `status` | varchar(20) | yes | default 'received' |
 | `error` | text | no |  |
 | `attempts` | integer | yes | default 0 |
 | `received_at` | timestamptz | yes |  |

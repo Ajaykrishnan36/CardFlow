@@ -18,6 +18,7 @@ import { WorkflowEditorPage, WorkflowsPage } from './features/tools/workflows-pa
 import { CampaignEditorPage, CampaignsPage } from './features/tools/campaigns-page';
 import { MailboxesPage } from './features/tools/mailboxes-page';
 import { TeamsPage } from './features/tools/teams-page';
+import { ForecastPage } from './features/forecast/forecast-page';
 import { SsoPage } from './features/tools/sso-page';
 import { DeveloperPage } from './features/tools/developer-page';
 import { SignupPage } from './features/auth/signup-page';
@@ -158,6 +159,7 @@ function AppRoutes() {
               <Route path="settings/access" element={<WorkspaceAccessPage />} />
               <Route path="settings/business" element={<BusinessProfilePage />} />
               <Route path="cards" element={<CardsPage />} />
+              <Route path="forecasts" element={<ForecastPage />} />
               {/* App support tickets are Cases now (D-72); old links still work. */}
               <Route path="support" element={<Navigate to="../cases" relative="path" replace />} />
               <Route path="support/:id" element={<TicketToCase />} />

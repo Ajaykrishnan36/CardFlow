@@ -78,7 +78,8 @@ var (
 	prefixRe      = regexp.MustCompile(`^[A-Z][A-Z0-9]{1,5}$`)
 	reservedKeys  = map[string]bool{"leads": true, "accounts": true, "contacts": true, "users": true, "products": true, "workspaces": true,
 		"activities": true, "tickets": true, "meta": true, "objects": true, "support": true, "home": true, "settings": true, "setup": true,
-		"dashboard": true, "context": true, "admin": true, "app": true, "businesses": true, "business": true, "cards": true}
+		"dashboard": true, "context": true, "admin": true, "app": true, "businesses": true, "business": true, "cards": true,
+		"forecast": true, "forecasts": true, "relationships": true, "finance": true, "vendors": true, "services": true, "menu": true, "listing": true}
 	reservedFields = map[string]bool{"id": true, "name": true, "status": true, "code": true, "ownerId": true, "createdAt": true,
 		"createdBy": true, "updatedAt": true, "updatedBy": true, "version": true, "custom": true, "title": true}
 	reservedPrefixes = map[string]bool{"L": true, "A": true, "C": true}
@@ -251,7 +252,205 @@ func standardObjects() []ObjectDefinition {
 			ObjectBody: ObjectBody{NameLabel: "Title", StatusLabel: "Status", Statuses: []StatusOption{
 				st("draft", "Draft", "neutral"), st("published", "Published", "success"), st("archived", "Archived", "neutral")},
 				Fields: []ObjectField{of("category", "Category", "text"), ofReq(of("body", "Answer", "richtext")), of("keywords", "Keywords", "text")}}},
+
+		// ---- enterprise model (D-111…D-116) ----
+		// Money received against invoices. The invoice's paid amount and balance are
+		// worked out from these records (crm.payment_allocations), never typed in.
+		{Key: "payments", Module: "finance", Singular: "Payment", Plural: "Payments", Icon: "banknote", Prefix: "PAY",
+			Description: "Money received from customers, applied to one or more invoices.",
+			ObjectBody: ObjectBody{NameLabel: "Payment", StatusLabel: "Status", Statuses: []StatusOption{
+				st("pending", "Pending", "warning"), st("authorized", "Authorized", "primary"), st("paid", "Paid", "success"),
+				st("failed", "Failed", "danger"), st("partially_refunded", "Partially refunded", "warning"), st("refunded", "Refunded", "neutral"),
+				st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofReq(of("amount", "Amount", "currency")), ofReq(of("paymentDate", "Payment date", "date")),
+					ofSelect("paymentMethod", "Payment method", paymentMethods), of("reference", "Reference number", "text"),
+					ofLookup("invoiceId", "Invoice", "invoices"), ofLookup("orderId", "Sales order", "sales_orders"),
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
+					of("currency", "Currency", "text"), of("externalId", "External transaction ID", "text"),
+					of("refundedAmount", "Refunded", "currency"), of("allocatedAmount", "Applied to invoices", "currency"),
+					of("unappliedAmount", "Not yet applied", "currency"), of("notes", "Notes", "textarea")}}},
+		{Key: "contracts", Module: "sales_docs", Singular: "Contract", Plural: "Contracts", Icon: "file-text", Prefix: "CON",
+			Description: "Agreements with customers and vendors: term, value and renewal.",
+			ObjectBody: ObjectBody{NameLabel: "Contract name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("active", "Active", "success"), st("expiring", "Expiring", "warning"),
+				st("renewed", "Renewed", "primary"), st("expired", "Expired", "danger"), st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
+					ofReq(of("startDate", "Start date", "date")), ofReq(of("endDate", "End date", "date")), of("renewalDate", "Renewal date", "date"),
+					of("contractValue", "Contract value", "currency"), of("currency", "Currency", "text"),
+					of("autoRenew", "Renews automatically", "boolean"), of("renewalNoticeDays", "Renewal notice (days)", "number"),
+					ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("quoteId", "Quote", "quotes"),
+					ofLookup("orderId", "Sales order", "sales_orders"), ofLookup("subscriptionId", "Subscription", "subscriptions"),
+					of("terms", "Terms", "textarea"), of("description", "Description", "textarea")}}},
+		{Key: "assets", Module: "catalog", Singular: "Asset", Plural: "Assets", Icon: "box", Prefix: "AST",
+			Description: "What a customer owns or has installed: the product, serial number and warranty.",
+			ObjectBody: ObjectBody{NameLabel: "Asset name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("active", "Active", "success"), st("installed", "Installed", "primary"), st("inactive", "Inactive", "neutral"),
+				st("under_repair", "Under repair", "warning"), st("retired", "Retired", "neutral"), st("cancelled", "Cancelled", "danger")},
+				Fields: []ObjectField{
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
+					ofLookup("itemId", "Product or service", "catalog_items"), of("serialNumber", "Serial number", "text"),
+					of("quantity", "Quantity", "number"), of("price", "Price", "currency"),
+					of("purchaseDate", "Purchase date", "date"), of("installDate", "Installation date", "date"),
+					of("warrantyStart", "Warranty starts", "date"), of("warrantyEnd", "Warranty ends", "date"),
+					of("location", "Location", "text"), ofLookup("parentAssetId", "Part of", "assets"),
+					ofLookup("contractId", "Contract", "contracts"), ofLookup("subscriptionId", "Subscription", "subscriptions"),
+					of("description", "Description", "textarea")}}},
+		{Key: "sla_policies", Module: "tickets", Singular: "SLA policy", Plural: "SLA policies", Icon: "zap", Prefix: "SLA",
+			Description: "How fast cases must be answered and solved, by priority.",
+			ObjectBody: ObjectBody{NameLabel: "Policy name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("active", "Active", "success"), st("inactive", "Inactive", "neutral")},
+				Fields: []ObjectField{
+					ofSelect("priority", "Applies to priority", opts("any", "Any priority", "critical", "Critical", "high", "High", "medium", "Medium", "low", "Low")),
+					ofReq(of("firstResponseMinutes", "First response within (minutes)", "number")),
+					ofReq(of("resolutionMinutes", "Resolution within (minutes)", "number")),
+					{Key: "businessHoursOnly", Label: "Count business hours only", Type: "boolean", HelpText: "Off = the clock runs day and night."},
+					{Key: "businessStart", Label: "Business day starts", Type: "text", HelpText: "24-hour time, e.g. 09:00"},
+					{Key: "businessEnd", Label: "Business day ends", Type: "text", HelpText: "24-hour time, e.g. 18:00"},
+					{Key: "workDays", Label: "Working days", Type: "multiselect", Options: opts("mon", "Monday", "tue", "Tuesday", "wed", "Wednesday", "thu", "Thursday", "fri", "Friday", "sat", "Saturday", "sun", "Sunday")},
+					{Key: "holidays", Label: "Holidays", Type: "textarea", HelpText: "Dates the clock doesn't run, one per line or comma-separated: 2026-12-25"},
+					{Key: "autoEscalate", Label: "Escalate the case when breached", Type: "boolean"},
+					{Key: "isDefault", Label: "Use when no entitlement applies", Type: "boolean"},
+					of("description", "Description", "textarea")}}},
+		{Key: "entitlements", Module: "tickets", Singular: "Entitlement", Plural: "Entitlements", Icon: "ticket", Prefix: "ENT",
+			Description: "The support a customer is entitled to: level, hours and the SLA that applies.",
+			ObjectBody: ObjectBody{NameLabel: "Entitlement name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("active", "Active", "success"), st("inactive", "Inactive", "neutral"), st("expired", "Expired", "danger")},
+				Fields: []ObjectField{
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"),
+					ofLookup("contractId", "Contract", "contracts"), ofLookup("slaPolicyId", "SLA policy", "sla_policies"),
+					ofSelect("supportLevel", "Support level", opts("basic", "Basic", "premium", "Premium", "enterprise", "24x7 Enterprise")),
+					of("startDate", "Start date", "date"), of("endDate", "End date", "date"),
+					ofLookup("itemId", "Product or service", "catalog_items"), ofLookup("assetId", "Asset", "assets"),
+					of("supportHours", "Support hours", "text"),
+					{Key: "channels", Label: "Channels", Type: "multiselect", Options: opts("email", "Email", "phone", "Phone", "chat", "Chat", "web", "Web", "onsite", "On site")},
+					of("casesIncluded", "Cases included", "number"), of("description", "Description", "textarea")}}},
+		// Customer-facing bookings for a service. General scheduling stays in Calendar events.
+		{Key: "appointments", Module: "calendar", Singular: "Appointment", Plural: "Appointments", Icon: "calendar", Prefix: "APT",
+			Description: "Bookings with customers for a service: who, when, where and how it went.",
+			ObjectBody: ObjectBody{NameLabel: "Subject", StatusLabel: "Status", Statuses: []StatusOption{
+				st("scheduled", "Scheduled", "primary"), st("confirmed", "Confirmed", "primary"), st("in_progress", "In progress", "warning"),
+				st("completed", "Completed", "success"), st("cancelled", "Cancelled", "danger"), st("no_show", "No show", "danger"),
+				st("rescheduled", "Rescheduled", "neutral")},
+				Fields: []ObjectField{
+					ofReq(of("startsAt", "Starts", "datetime")), of("endsAt", "Ends", "datetime"), of("timezone", "Time zone", "text"),
+					ofLookup("contactId", "Contact", "contacts"), ofLookup("accountId", "Account", "accounts"),
+					ofLookup("itemId", "Service", "catalog_items"), ofLookup("assignedTo", "Assigned to", "users"),
+					of("location", "Location", "text"), of("meetingLink", "Meeting link", "url"),
+					ofSelect("reminderMinutes", "Reminder", opts("0", "At start", "10", "10 minutes before", "30", "30 minutes before", "60", "1 hour before", "1440", "1 day before")),
+					ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("caseId", "Case", "cases"),
+					of("notes", "Notes", "textarea"), of("cancellationReason", "Cancellation reason", "text"),
+					ofLookup("rescheduledFrom", "Rescheduled from", "appointments")}}},
 	}
+}
+
+// standardUpgrades (D-111…D-116) add fields, statuses and choices to standard objects that
+// already exist in a database. Nothing existing is renamed or removed.
+type objectUpgrade struct {
+	fields   []ObjectField
+	statuses []StatusOption
+	options  map[string][]Option // field key → choices to add
+}
+
+func standardUpgrades() map[string]objectUpgrade {
+	return map[string]objectUpgrade{
+		"catalog_items": {fields: []ObjectField{
+			ofSelect("itemType", "Type", opts("product", "Product", "service", "Service")),
+			ofSelect("billingFrequency", "Billed", opts("one_time", "One time", "hourly", "Hourly", "monthly", "Monthly", "quarterly", "Quarterly", "yearly", "Yearly")),
+			of("durationMinutes", "Duration (minutes)", "number"),
+		}},
+		"cases": {
+			fields: []ObjectField{
+				ofLookup("assetId", "Asset", "assets"), ofLookup("contractId", "Contract", "contracts"),
+				ofLookup("entitlementId", "Entitlement", "entitlements"), ofLookup("itemId", "Product or service", "catalog_items"),
+				ofLookup("slaPolicyId", "SLA policy", "sla_policies"),
+				of("firstResponseDueAt", "First response by", "datetime"), of("firstRespondedAt", "First responded", "datetime"),
+				of("slaBreached", "SLA breached", "boolean"), of("escalatedAt", "Escalated on", "datetime"),
+			},
+			statuses: []StatusOption{st("assigned", "Assigned", "primary"), st("pending", "Pending customer", "neutral")},
+			options:  map[string][]Option{"priority": opts("critical", "Critical")},
+		},
+		"invoices": {fields: []ObjectField{
+			of("balanceDue", "Balance due", "currency"), ofLookup("contractId", "Contract", "contracts"),
+			ofLookup("subscriptionId", "Subscription", "subscriptions"), ofLookup("opportunityId", "Opportunity", "opportunities"),
+		}},
+		"subscriptions":   {fields: []ObjectField{ofLookup("contractId", "Contract", "contracts"), ofLookup("itemId", "Product or service", "catalog_items")}},
+		"tasks":           {fields: []ObjectField{ofLookup("contractId", "Contract", "contracts"), ofLookup("assetId", "Asset", "assets")}},
+		"opportunities":   {fields: []ObjectField{of("territory", "Territory", "text")}},
+		"expenses":        {fields: []ObjectField{ofLookup("purchaseOrderId", "Purchase order", "purchase_orders")}},
+		"purchase_orders": {fields: []ObjectField{ofLookup("contractId", "Contract", "contracts")}},
+		"line_items":      {fields: []ObjectField{ofLookup("contractId", "Contract", "contracts")}},
+	}
+}
+
+// upgradeStandardObjects applies standardUpgrades once (marker in crm.connector_state).
+func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
+	const marker = "objects:enterprise-v1"
+	var done bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.connector_state WHERE key = $1)`, marker).Scan(&done); err != nil || done {
+		return err
+	}
+	for key, up := range standardUpgrades() {
+		var raw []byte
+		err := tx.QueryRow(ctx, `SELECT definition FROM crm.object_definitions WHERE key = $1 AND is_standard`, key).Scan(&raw)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		var stored ObjectBody
+		if json.Unmarshal(raw, &stored) != nil {
+			continue
+		}
+		changed := false
+		have := map[string]int{}
+		for i, f := range stored.Fields {
+			have[f.Key] = i
+		}
+		for _, f := range up.fields {
+			if _, ok := have[f.Key]; !ok {
+				stored.Fields = append(stored.Fields, f)
+				changed = true
+			}
+		}
+		for field, add := range up.options {
+			i, ok := have[field]
+			if !ok {
+				continue
+			}
+			known := map[string]bool{}
+			for _, o := range stored.Fields[i].Options {
+				known[o.Value] = true
+			}
+			for _, o := range add {
+				if !known[o.Value] {
+					// Critical sorts first: a new top choice goes to the front.
+					stored.Fields[i].Options = append([]Option{o}, stored.Fields[i].Options...)
+					changed = true
+				}
+			}
+		}
+		knownStatus := map[string]bool{}
+		for _, s := range stored.Statuses {
+			knownStatus[s.Value] = true
+		}
+		for _, s := range up.statuses {
+			if !knownStatus[s.Value] {
+				stored.Statuses = append(stored.Statuses, s)
+				changed = true
+			}
+		}
+		if changed {
+			out, _ := json.Marshal(stored)
+			if _, err := tx.Exec(ctx, `UPDATE crm.object_definitions SET definition = $2, updated_at = now() WHERE key = $1`, key, out); err != nil {
+				return err
+			}
+		}
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO crm.connector_state (key, value) VALUES ($1, '{"done":true}') ON CONFLICT (key) DO NOTHING`, marker)
+	return err
 }
 
 // standardFieldAdditions are fields added to standard objects after they first shipped
@@ -464,6 +663,9 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 			}
 		}
 		if err := addStandardFields(ctx, tx); err != nil {
+			return err
+		}
+		if err := upgradeStandardObjects(ctx, tx); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT key FROM crm.object_definitions`)

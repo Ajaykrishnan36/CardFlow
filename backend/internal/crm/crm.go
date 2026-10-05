@@ -176,11 +176,24 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	}
 	// Events, webhooks, workflows, campaigns and mailbox sync (D-55): sleeps until there's work.
 	m.records.StartWorker(context.Background())
+	// Time-based checks (D-115, D-116): SLA clocks, contracts running out, invoices past due.
+	if os.Getenv("CRM_SWEEPS") != "off" {
+		m.records.StartSweeps(context.Background())
+	}
+	// Invoices marked paid before payments existed get a payment record (once).
+	go m.records.BackfillOpeningPayments(context.Background())
 	slog.Info("CRM module ready", "env", cfg.AppEnv, "base_url", cfg.BaseURL)
 	return m
 }
 
 // Identity is the unified identity service, or nil while the CRM is disabled.
+// Sweep runs one pass of the time-based checks now (tests, and an operator who doesn't want to wait).
+func (m *Module) Sweep(ctx context.Context) {
+	if m.records != nil {
+		m.records.Sweep(ctx)
+	}
+}
+
 func (m *Module) Identity() *identity.Service {
 	if m == nil || m.disabledReason != "" {
 		return nil

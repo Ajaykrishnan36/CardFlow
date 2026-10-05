@@ -1,5 +1,10 @@
 import {
   ScanLine,
+  TrendingUp,
+  FileSignature,
+  HardDrive,
+  Timer,
+  CalendarClock,
   BarChart3,
   LayoutGrid,
   Banknote,
@@ -115,7 +120,12 @@ const icons: Record<string, LucideIcon> = {
   book: Book,
   zap: Zap,
   'bar-chart-3': BarChart3,
-  'layout-grid': LayoutGrid
+  'layout-grid': LayoutGrid,
+  'trending-up': TrendingUp,
+  'file-signature': FileSignature,
+  'hard-drive': HardDrive,
+  timer: Timer,
+  'calendar-clock': CalendarClock
 };
 
 export function navIcon(key: string): LucideIcon {

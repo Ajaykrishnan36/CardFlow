@@ -26,7 +26,7 @@ function subtitleOf(row, meta, currency) {
 }
 
 /** One list for every object: search, status filter, paging, pull to refresh, create. */
-export function RecordListScreen({ object, initialQuery = '', onBack, onOpenRecord, onCreate }) {
+export function RecordListScreen({ object, initialQuery = '', preset = null, onBack, onOpenRecord, onCreate }) {
   const { activeCode, can, currency } = useCrm();
   const [meta, setMeta] = useState(null);
   const [rows, setRows] = useState([]);
@@ -51,7 +51,10 @@ export function RecordListScreen({ object, initialQuery = '', onBack, onOpenReco
       const mine = ++seq.current;
       if (offset === 0) setState((s) => (s === 'ready' ? s : 'loading'));
       try {
-        const res = await crmApi.list(activeCode, object, { q: q.trim() || undefined, status: status || undefined, limit: PAGE, offset });
+        const res = await crmApi.list(activeCode, object, {
+          q: q.trim() || undefined, status: status || undefined, limit: PAGE, offset,
+          filter: preset ? JSON.stringify({ op: 'and', filters: [preset.filter] }) : undefined
+        });
         if (mine !== seq.current) return;
         setRows((prev) => (offset === 0 ? res.data || [] : [...prev, ...(res.data || [])]));
         setTotal(res.total || 0);
@@ -63,7 +66,7 @@ export function RecordListScreen({ object, initialQuery = '', onBack, onOpenReco
         setState('error');
       }
     },
-    [activeCode, object, q, status]
+    [activeCode, object, q, status, preset]
   );
 
   useEffect(() => {
@@ -90,7 +93,7 @@ export function RecordListScreen({ object, initialQuery = '', onBack, onOpenReco
           <ArrowLeft size={20} color={colors.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{meta?.labelPlural || humanize(object)}</Text>
+          <Text style={styles.title}>{preset?.label || meta?.labelPlural || humanize(object)}</Text>
           {state === 'ready' ? <Text style={styles.count}>{total} {total === 1 ? 'record' : 'records'}</Text> : null}
         </View>
         {can(object, 'create') ? (

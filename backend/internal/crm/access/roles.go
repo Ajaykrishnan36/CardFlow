@@ -157,6 +157,8 @@ const (
 	CapDeveloper     = "developer.manage"
 	CapEmailSend     = "email.send"
 	CapCampaigns     = "campaigns.manage"
+	// CapForecast: set sales targets and approve or override the team's forecasts (D-112).
+	CapForecast = "forecast.manage"
 )
 
 var CapabilityCatalog = []CatalogEntry{
@@ -168,6 +170,7 @@ var CapabilityCatalog = []CatalogEntry{
 	{Key: CapDeveloper, Label: "Manage API keys & webhooks", Description: "Create API keys and webhooks for this workspace (needs API access in the product's setup)."},
 	{Key: CapEmailSend, Label: "Send email", Description: "Send emails from records, from a connected mailbox or the CRM's address."},
 	{Key: CapCampaigns, Label: "Manage email campaigns", Description: "Send one email to many contacts at once."},
+	{Key: CapForecast, Label: "Manage forecasts", Description: "Set sales targets for people and teams, and approve or adjust submitted forecasts."},
 	{Key: CapMembersManage, Label: "Manage users",
 		Description: "Invite users and change their access in this workspace — never beyond their own access."},
 }

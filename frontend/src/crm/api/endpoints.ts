@@ -650,3 +650,152 @@ export const cardsApi = {
   unlink: (code: string, cardId: string, linkId: string) => api<void>(`/w/${enc(code)}/cards/${enc(cardId)}/links/${enc(linkId)}`, { method: 'DELETE' }),
   imageUrl: (code: string, id: string, side: 'front' | 'back' = 'front') => `${API_BASE}/w/${enc(code)}/cards/${enc(id)}/image${side === 'back' ? '?side=back' : ''}`
 };
+
+// ---- Enterprise model (D-111…D-117): relationships, payments, SLA, contracts, forecasts ----
+
+export interface RelationshipType {
+  key: string;
+  label: string;
+  inverseLabel: string;
+  sourceObject?: string;
+  targetObject?: string;
+  cardinality: 'one_to_one' | 'one_to_many' | 'many_to_one' | 'many_to_many';
+  system: boolean;
+}
+
+export interface RecordRelationship {
+  id: string;
+  type: string;
+  label: string;
+  direction: 'in' | 'out';
+  object: string;
+  recordId: string;
+  code: string;
+  title: string;
+  note?: string;
+  createdAt: string;
+}
+
+export interface PaymentAllocation {
+  id: string;
+  invoiceId: string;
+  invoice: string;
+  invoiceCode: string;
+  amount: number;
+  createdAt: string;
+}
+
+export interface InvoiceLedger {
+  total: number;
+  paid: number;
+  balance: number;
+  status: string;
+  currency: string;
+  invoice: string;
+  canRecordPayment: boolean;
+  canSeePayments: boolean;
+  payments: Array<{ id: string; code: string; name: string; status: string; date: string; method: string; amount: number; applied: number; refunded: number; counts: boolean }>;
+}
+
+export interface SlaTimer {
+  milestone: 'first_response' | 'resolution';
+  targetMinutes: number;
+  startedAt: string;
+  dueAt: string;
+  pausedAt?: string;
+  completedAt?: string;
+  breachedAt?: string;
+  state: 'running' | 'paused' | 'met' | 'breached' | 'missed';
+  elapsedMinutes: number;
+  remainingMinutes: number;
+  businessHours: boolean;
+}
+
+export interface ForecastPeriod {
+  key: string;
+  kind: 'month' | 'quarter' | 'year';
+  label: string;
+  from: string;
+  to: string;
+}
+
+export interface ForecastNumbers {
+  quota: number;
+  closed: number;
+  commit: number;
+  bestCase: number;
+  pipeline: number;
+  omitted: number;
+  lost: number;
+  weighted: number;
+  forecast: number;
+  bestCaseTotal: number;
+  openPipeline: number;
+  gap: number;
+  attainment: number;
+  coverage: number;
+  openDeals: number;
+  wonDeals: number;
+}
+
+export interface ForecastSubmission {
+  id: string;
+  status: 'submitted' | 'approved' | 'rejected';
+  forecastAmount: number;
+  comment?: string;
+  overrideAmount?: number;
+  managerComment?: string;
+  submittedAt: string;
+  approvedAt?: string;
+}
+
+export interface ForecastRow extends ForecastNumbers {
+  id: string;
+  name: string;
+  members?: number;
+  submission?: ForecastSubmission;
+}
+
+export interface Forecast {
+  period: ForecastPeriod;
+  groupBy: 'owner' | 'team';
+  pipeline: string;
+  currency: string;
+  totals: ForecastNumbers;
+  rows: ForecastRow[];
+  canManage: boolean;
+  me: string;
+  scope: 'company' | 'team';
+}
+
+export function enterpriseApi(code: string) {
+  const base = `/w/${enc(code)}`;
+  return {
+    relationshipTypes: () => api<{ data: RelationshipType[] }>(`${base}/relationship-types`).then((r) => r.data),
+    relationships: (object: string, id: string) => api<{ data: RecordRelationship[]; canEdit: boolean }>(`${base}/crm/${enc(object)}/${enc(id)}/relationships`),
+    addRelationship: (object: string, id: string, body: { type: string; targetObject: string; targetId: string; note?: string }) =>
+      api<{ data: RecordRelationship[] }>(`${base}/crm/${enc(object)}/${enc(id)}/relationships`, { method: 'POST', body }),
+    removeRelationship: (relationshipId: string) => api<void>(`${base}/relationships/${enc(relationshipId)}`, { method: 'DELETE' }),
+
+    invoiceLedger: (invoiceId: string) => api<InvoiceLedger>(`${base}/invoices/${enc(invoiceId)}/payments`),
+    allocations: (paymentId: string) => api<{ data: PaymentAllocation[] }>(`${base}/payments/${enc(paymentId)}/allocations`).then((r) => r.data),
+    allocate: (paymentId: string, body: { invoiceId: string; amount: number }) =>
+      api<{ data: PaymentAllocation[] }>(`${base}/payments/${enc(paymentId)}/allocations`, { method: 'POST', body }),
+    unallocate: (paymentId: string, allocationId: string) => api<void>(`${base}/payments/${enc(paymentId)}/allocations/${enc(allocationId)}`, { method: 'DELETE' }),
+    refund: (paymentId: string, body: { amount: number; reason?: string }) => api<unknown>(`${base}/payments/${enc(paymentId)}/refund`, { method: 'POST', body }),
+
+    caseSla: (caseId: string) => api<{ policy?: { id: string; label: string }; timers: SlaTimer[] }>(`${base}/cases/${enc(caseId)}/sla`),
+    renewContract: (contractId: string, body: { startDate?: string; endDate?: string; contractValue?: number }) =>
+      api<{ id: string }>(`${base}/contracts/${enc(contractId)}/renew`, { method: 'POST', body }),
+
+    forecastPeriods: () => api<{ data: ForecastPeriod[]; current: { month: string; quarter: string; year: string }; fiscalStartMonth: number }>(`${base}/forecast/periods`),
+    forecast: (params: { period: string; groupBy?: string }) => api<Forecast>(`${base}/forecast${qs(params)}`),
+    setQuota: (body: { periodKey: string; scope: 'company' | 'team' | 'user'; ownerId?: string; teamId?: string; amount: number }) =>
+      api<{ ok: boolean }>(`${base}/forecast/quotas`, { method: 'PUT', body }),
+    submitForecast: (body: { periodKey: string; forecastAmount?: number; comment?: string }) =>
+      api<{ id: string; forecastAmount: number }>(`${base}/forecast/submit`, { method: 'POST', body }),
+    reviewForecast: (submissionId: string, body: { status: 'approved' | 'rejected'; overrideAmount?: number; comment?: string }) =>
+      api<{ ok: boolean }>(`${base}/forecast/submissions/${enc(submissionId)}/review`, { method: 'POST', body }),
+    setFiscalStart: (fiscalStartMonth: number) => api<{ fiscalStartMonth: number }>(`${base}/forecast/settings`, { method: 'PUT', body: { fiscalStartMonth } })
+  };
+}

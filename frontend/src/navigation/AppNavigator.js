@@ -162,6 +162,7 @@ export function AppNavigator() {
           <CrmModulesScreen
             onOpenSwitcher={() => setSwitcherOpen(true)}
             onOpenList={openList}
+            onOpenPath={(path) => go(path)}
             onOpenRecord={openRecord}
             onOpenCards={() => go(paths.cards(code))}
             onOpenListing={() => go(paths.myBusiness(code))}
@@ -176,9 +177,10 @@ export function AppNavigator() {
       screen = (
         <BusinessGate>
           <RecordListScreen
-            key={`${route.code}-${route.object}`}
+            key={`${route.code}-${route.object}-${route.preset?.value || ''}`}
             object={route.object}
             initialQuery={route.q}
+            preset={route.preset}
             onBack={() => back(menuPath)}
             onOpenRecord={openRecord}
             onCreate={(object) => openCreate(object)}

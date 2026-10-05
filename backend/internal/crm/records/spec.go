@@ -229,7 +229,7 @@ var accountSpec = objectSpec{
 	Fields: withSystem(
 		req(text("name", "Account name", "name")),
 		sel("kind", "Account kind", "kind", opts("business", "Business", "individual", "Individual")),
-		sel("type", "Type", "type", opts("prospect", "Prospect", "customer", "Customer", "partner", "Partner", "reseller", "Reseller", "vendor", "Vendor", "other", "Other")),
+		sel("type", "Type", "type", opts("prospect", "Prospect", "customer", "Customer", "vendor", "Vendor", "supplier", "Supplier", "partner", "Partner", "reseller", "Reseller", "distributor", "Distributor", "competitor", "Competitor", "other", "Other")),
 		sel("lifecycle", "Lifecycle stage", "lifecycle", statusOptions(accountLifecycle)),
 		sel("industry", "Industry", "industry", industries),
 		sel("rating", "Rating", "rating", ratings),

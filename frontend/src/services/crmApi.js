@@ -52,6 +52,9 @@ export const crmApi = {
   update: (code, object, id, values, expectedVersion) =>
     crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}`, { method: 'PATCH', body: { values, expectedVersion } }),
   remove: (code, object, id) => crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  invoiceLedger: (code, id) => crm(`${w(code)}/invoices/${encodeURIComponent(id)}/payments`),
+  caseSla: (code, id) => crm(`${w(code)}/cases/${encodeURIComponent(id)}/sla`),
+  renewContract: (code, id, body) => crm(`${w(code)}/contracts/${encodeURIComponent(id)}/renew`, { method: 'POST', body }),
   lookup: (code, target, q = '') => crm(`${w(code)}/lookup/${target}${qs({ q })}`).then((r) => r.data || []),
   timeline: (code, object, id) => crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}/timeline${qs({ limit: 30 })}`).then((r) => r.data || []),
   addNote: (code, object, id, body, kind = 'note') => crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}/notes`, { method: 'POST', body: { body, kind } }),

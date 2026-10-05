@@ -156,7 +156,7 @@ func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 		Source: a.Source, Record: rowSnapshot(row), Title: row.Title, WorkflowID: a.WorkflowID, Depth: a.Depth}); err != nil {
 		return nil, err
 	}
-	return row, nil
+	return h.afterSave(ctx, tx, ws, spec, a, "create", nil, row)
 }
 
 // fieldChange is one line of a record's history.
@@ -254,7 +254,7 @@ func (h *Handler) updateValues(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 		Record: rowSnapshot(after), Previous: previous, Changed: changed, Title: after.Title, WorkflowID: a.WorkflowID, Depth: a.Depth}); err != nil {
 		return nil, err
 	}
-	return after, nil
+	return h.afterSave(ctx, tx, ws, spec, a, "update", current, after)
 }
 
 // deleteRecord moves a record to the recycle bin.
@@ -277,8 +277,12 @@ func (h *Handler) deleteRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 	if err := shared.WriteAudit(ctx, tx, a.audit(ws, "record.deleted", entityName(spec), &id, nil, nil)); err != nil {
 		return err
 	}
-	return emitEvent(ctx, tx, Event{Type: "record.deleted", WorkspaceID: ws, Object: spec.Key, RecordID: id, ActorID: a.ID, Source: a.Source,
-		Record: rowSnapshot(row), Title: row.Title, WorkflowID: a.WorkflowID, Depth: a.Depth})
+	if err := emitEvent(ctx, tx, Event{Type: "record.deleted", WorkspaceID: ws, Object: spec.Key, RecordID: id, ActorID: a.ID, Source: a.Source,
+		Record: rowSnapshot(row), Title: row.Title, WorkflowID: a.WorkflowID, Depth: a.Depth}); err != nil {
+		return err
+	}
+	_, err = h.afterSave(ctx, tx, ws, spec, a, "delete", row, row)
+	return err
 }
 
 // restoreRecord brings a record back from the recycle bin.
@@ -301,8 +305,11 @@ func (h *Handler) restoreRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, sp
 	if err := shared.WriteAudit(ctx, tx, a.audit(ws, "record.restored", entityName(spec), &id, nil, nil)); err != nil {
 		return nil, err
 	}
-	return row, emitEvent(ctx, tx, Event{Type: "record.restored", WorkspaceID: ws, Object: spec.Key, RecordID: id, ActorID: a.ID, Source: a.Source,
-		Record: rowSnapshot(row), Title: row.Title})
+	if err := emitEvent(ctx, tx, Event{Type: "record.restored", WorkspaceID: ws, Object: spec.Key, RecordID: id, ActorID: a.ID, Source: a.Source,
+		Record: rowSnapshot(row), Title: row.Title}); err != nil {
+		return nil, err
+	}
+	return h.afterSave(ctx, tx, ws, spec, a, "restore", row, row)
 }
 
 // destroyRecord deletes a record from the recycle bin for good. Links to it from other
@@ -322,6 +329,8 @@ func (h *Handler) destroyRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, sp
 		`DELETE FROM crm.files WHERE workspace_id = $1 AND object_key = $3 AND record_id = $2`,
 		`DELETE FROM crm.message_links WHERE workspace_id = $1 AND object_key = $3 AND record_id = $2`,
 		`DELETE FROM crm.activities WHERE workspace_id = $1 AND object_key = $3 AND record_id = $2`,
+		// Relationships to or from a record that no longer exists are meaningless.
+		`DELETE FROM crm.record_relationships WHERE workspace_id = $1 AND ((source_object = $3 AND source_id = $2) OR (target_object = $3 AND target_id = $2))`,
 	}
 	plain := []string{`DELETE FROM crm.favorites WHERE workspace_id = $1 AND kind = 'record' AND target_id = $2`}
 	switch spec.Key {
