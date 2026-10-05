@@ -2,7 +2,7 @@ import { listPreset } from './presets';
 // One set of URLs for the phone layout and the desktop CRM (D-104): the same link opens
 // the same thing on both. This file is the phone layout's side of that map.
 
-const DESKTOP_ONLY = new Set(['forecasts', 'reports', 'dashboards', 'workflows', 'campaigns', 'settings', 'setup', 'app-users', 'businesses', 'support']);
+const DESKTOP_ONLY = new Set(['forecasts', 'approvals', 'campaign-results', 'reports', 'dashboards', 'workflows', 'campaigns', 'settings', 'setup', 'app-users', 'businesses', 'support']);
 const OBJECT_RE = /^[a-z][a-z0-9_]{1,40}$/;
 
 /** What a URL means on a phone. `null` = the phone layout has no screen for it (the desktop page is shown instead). */

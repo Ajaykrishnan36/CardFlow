@@ -37,7 +37,8 @@ export function ForecastPage() {
   const [sp, setSp] = useSearchParams();
   const periodsQ = useQuery({ queryKey: ['forecast-periods', code], queryFn: () => api.forecastPeriods(), staleTime: 5 * 60_000 });
   const period = sp.get('period') || periodsQ.data?.current.quarter || '';
-  const groupBy = sp.get('groupBy') === 'team' ? 'team' : 'owner';
+  const g = sp.get('groupBy');
+  const groupBy = g === 'team' || g === 'territory' || g === 'role' ? g : 'owner';
   const forecastQ = useQuery({
     queryKey: ['forecast', code, period, groupBy],
     queryFn: () => api.forecast({ period, groupBy }),
@@ -112,7 +113,9 @@ export function ForecastPage() {
           onChange={(v) => patch({ groupBy: v })}
           options={[
             { value: 'owner', label: 'By person' },
-            { value: 'team', label: 'By team' }
+            { value: 'team', label: 'By team' },
+            { value: 'territory', label: 'By territory' },
+            { value: 'role', label: 'By role' }
           ]}
         />
         {f?.canManage && periodsQ.data ? (
@@ -170,7 +173,7 @@ export function ForecastPage() {
             {f.rows.length === 0 ? (
               <EmptyState
                 icon={TrendingUp}
-                title={groupBy === 'team' ? 'No teams yet' : 'No deals in this period'}
+                title={groupBy === 'team' ? 'No teams yet' : groupBy === 'territory' ? 'No territories yet' : 'No deals in this period'}
                 body={
                   groupBy === 'team'
                     ? 'Create teams in Settings → Teams to see the forecast rolled up by team.'
@@ -187,7 +190,7 @@ export function ForecastPage() {
                 <table className="w-full min-w-[860px] text-[13px]">
                   <thead>
                     <tr className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
-                      <th className="px-4 py-2.5">{groupBy === 'team' ? 'Team' : 'Person'}</th>
+                      <th className="px-4 py-2.5">{groupBy === 'team' ? 'Team' : groupBy === 'territory' ? 'Territory' : groupBy === 'role' ? 'Role' : 'Person'}</th>
                       <th className="px-3 py-2.5 text-right">Target</th>
                       <th className="px-3 py-2.5 text-right">Closed won</th>
                       <th className="px-3 py-2.5 text-right">Commit</th>
@@ -207,7 +210,7 @@ export function ForecastPage() {
                           {r.id === f.me ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">(you)</span> : null}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums">
-                          {f.canManage && r.id ? (
+                          {f.canManage && r.id && (groupBy === 'owner' || groupBy === 'team') ? (
                             <button
                               type="button"
                               className="group inline-flex items-center gap-1 hover:text-primary"
@@ -271,7 +274,7 @@ export function ForecastPage() {
                       <Num n={f.totals.pipeline} money={money} />
                       <td className="px-3 py-2.5 text-right tabular-nums">{money(f.totals.forecast)}</td>
                       <td className="px-3 py-2.5 text-xs font-normal text-muted-foreground" colSpan={groupBy === 'owner' ? 2 : 1}>
-                        {groupBy === 'team' ? 'Someone in two teams shows in both; the total counts each deal once.' : ''}
+                        {groupBy === 'team' ? 'Someone in two teams shows in both; the total counts each deal once.' : groupBy === 'territory' ? 'A territory includes everything below it; the total counts each deal once.' : ''}
                       </td>
                     </tr>
                   </tfoot>

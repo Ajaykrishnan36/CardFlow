@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'rea
 import {
   UserPlus, Contact, Briefcase, Handshake, CheckSquare, Calendar, LifeBuoy, StickyNote, MessageSquare, Banknote, FileText, ShoppingCart,
   Package, Repeat, Book, Truck, Clipboard, Box, ScanLine, ChevronRight, AlertCircle, RefreshCw, CreditCard, FileSignature, HardDrive, Timer, ShieldCheck,
-  CalendarClock, TrendingUp, Wrench
+  CalendarClock, TrendingUp, Wrench, MapPin
 } from 'lucide-react';
 import { colors, spacing, radii, typography, shadows } from '../../theme';
 
@@ -14,7 +14,8 @@ export const objectIcons = {
   notes: StickyNote, communications: MessageSquare, income: Banknote, expenses: Banknote, quotes: FileText, invoices: FileText,
   sales_orders: ShoppingCart, purchase_orders: Truck, catalog_items: Package, subscriptions: Repeat, price_books: Book, solutions: Book,
   line_items: Clipboard, cards: ScanLine, payments: CreditCard, contracts: FileSignature, assets: HardDrive, sla_policies: Timer,
-  entitlements: ShieldCheck, appointments: CalendarClock, forecasts: TrendingUp, vendors: Truck, services: Wrench
+  entitlements: ShieldCheck, appointments: CalendarClock, forecasts: TrendingUp, vendors: Truck, services: Wrench, territories: MapPin, work_orders: Wrench, service_resources: Truck,
+  refunds: Banknote, credit_notes: FileText, debit_notes: FileText, adjustments: Clipboard, resource_absences: Calendar, approvals: ShieldCheck
 };
 
 export function iconFor(object) {

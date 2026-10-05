@@ -199,8 +199,8 @@ backend/
                            email, workflows, reports, dashboards, API keys, webhooks, SSO, recycle bin
     connectors/cardflow/   Business Card Snap sync (app users, cards, tickets ↔ Cases)
     mail/, oauth/, shared/ email senders, OAuth providers, helpers
-    store/migrations/      CRM database migrations (0001 … 0021), applied at startup
-    docs/DECISIONS.md      every design decision, D-01 … D-117 — read this first
+    store/migrations/      CRM database migrations (0001 … 0022), applied at startup
+    docs/DECISIONS.md      every design decision, D-01 … D-127 — read this first
 frontend/
   src/crm/
     app.tsx                routes
@@ -277,6 +277,28 @@ curl -s https://cardflow-api-fsij.onrender.com/crm/login | grep -o 'bundle\.[a-f
 - Code: `backend/internal/crm/records/{relationships,payments,forecast,sla,contracts,hooks}.go`,
   migration `0021_enterprise_model.sql`; web `features/records/record-enterprise.tsx`,
   `features/forecast/forecast-page.tsx`; phone `src/screens/crm/EnterprisePanels.js`.
+
+**Commercial, sales-execution and service model** (D-118 to D-127, Oct 2026; `DATA_MODEL.md` §7):
+- **Pricing:** price book entries, bundles, pricing / discount / eligibility / configuration
+  rules, discount approval, quote → order → invoice with prices frozen once issued.
+- **Money:** multi-currency with the rate fixed on each record; refunds, credit notes, debit
+  notes and write-offs as records; approval limits.
+- **Sales execution:** contact roles, account and opportunity teams (with access),
+  territories with dated assignments, forecast by territory and role with history,
+  campaign members and attribution.
+- **Service:** work orders, service resources, scheduling with conflict detection,
+  entitlement usage, assignment and customer-update SLA milestones.
+- Code: `backend/internal/crm/records/{currency,pricing,approvals,finance,roleteams,territories,campaignmembers,fieldservice}.go`,
+  migration `0022_commercial_model.sql`; web `features/records/record-commerce.tsx`,
+  `features/commerce/commerce-pages.tsx`; phone `src/screens/crm/EnterprisePanels.js`.
+- New permissions (Users & access → permission sets): Manage pricing, Manage approvals,
+  Manage territories, Manage record teams, Manage scheduling.
+
+Still open after this round: tax rules beyond one rate per item; inventory / stock;
+recurring invoices from contract lines; travel time and maps for field service; a calendar
+view of resources; record-team access in reports and global search; editing lines, roles,
+teams and territories on the phone layout (they show there; they are changed on the desktop);
+appointment reminders; warranty-expiry automation.
 
 Not built from the enterprise brief: warranty-expiry automation for assets, default
 reports for the new objects (they are available in the report builder), a relationship

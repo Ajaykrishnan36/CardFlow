@@ -186,11 +186,146 @@ function ContractRenewal({ record, onOpenRecord }) {
   );
 }
 
+const LINE_OBJECTS = ['quotes', 'sales_orders', 'invoices', 'work_orders', 'contracts', 'opportunities', 'credit_notes'];
+
+// The priced items of a document, and the step to the next document (D-120).
+function DocumentLines({ object, record, onOpenRecord }) {
+  const { activeCode, can } = useCrm();
+  const [doc, setDoc] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    crmApi.documentLines(activeCode, object, record.id).then(setDoc).catch(() => setDoc(null));
+  }, [activeCode, object, record.id, record.version]);
+  if (!doc || !doc.pricing?.lines?.length) return null;
+  const p = doc.pricing;
+  const status = String(record.values?.status || '');
+  const approval = String(record.values?.approvalStatus || '');
+  const next =
+    object === 'quotes' && can('sales_orders', 'create') && !['declined', 'expired'].includes(status) && approval !== 'pending' && approval !== 'rejected'
+      ? ['Create order', () => crmApi.convertQuote(activeCode, record.id)]
+      : object === 'sales_orders' && can('invoices', 'create') && status !== 'cancelled'
+        ? ['Create invoice', () => crmApi.invoiceOrder(activeCode, record.id)]
+        : object === 'work_orders' && can('invoices', 'create') && status === 'completed' && !record.values?.invoiceId
+          ? ['Create invoice', () => crmApi.invoiceWorkOrder(activeCode, record.id)]
+          : null;
+  const go = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const made = await next[1]();
+      onOpenRecord?.(made.object, made.id);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View>
+      <SectionTitle>Items and pricing</SectionTitle>
+      <Panel style={{ padding: spacing.md }}>
+        {p.lines.map((l, i) => (
+          <View key={i} style={[styles.rowBetween, { marginBottom: 6, paddingLeft: l.bundleOf != null ? spacing.md : 0 }]}>
+            <Text style={[styles.muted, { flex: 1, marginTop: 0, color: colors.textPrimary }]} numberOfLines={2}>{l.quantity} × {l.name}</Text>
+            <Text style={styles.strong}>{money(l.total, p.currency)}</Text>
+          </View>
+        ))}
+        <View style={[styles.figures, { marginTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }]}>
+          <Figure label="Discount" value={money(p.discount, p.currency)} />
+          <Figure label="Tax" value={money(p.tax, p.currency)} />
+          <Figure label="Total" value={money(p.total, p.currency)} />
+        </View>
+        {approval === 'pending' ? <Text style={styles.muted}>The discount on this quote is waiting for approval.</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {next ? (
+          <View style={{ marginTop: spacing.md }}>
+            <Button title={next[0]} size="sm" loading={busy} onPress={go} />
+          </View>
+        ) : null}
+      </Panel>
+    </View>
+  );
+}
+
+// Who is involved: contact roles and the record's team (D-122, D-123).
+function PeopleOnRecord({ object, record, onOpenRecord }) {
+  const { activeCode } = useCrm();
+  const [roles, setRoles] = useState([]);
+  const [team, setTeam] = useState([]);
+  useEffect(() => {
+    crmApi.contactRoles(activeCode, object, record.id).then((r) => setRoles(r.data || [])).catch(() => setRoles([]));
+    crmApi.recordTeam(activeCode, object, record.id).then((r) => setTeam(r.data || [])).catch(() => setTeam([]));
+  }, [activeCode, object, record.id]);
+  if (!roles.length && !team.length) return null;
+  return (
+    <View>
+      {roles.length ? (
+        <>
+          <SectionTitle>Contact roles</SectionTitle>
+          <Panel style={{ padding: spacing.md }}>
+            {roles.map((r) => (
+              <Text key={r.id} style={styles.line} onPress={() => onOpenRecord?.('contacts', r.contactId)}>
+                {r.contact} · {r.role}{r.isPrimary ? ' · primary' : ''}{r.isActive ? '' : ' · ended'}
+              </Text>
+            ))}
+          </Panel>
+        </>
+      ) : null}
+      {team.length ? (
+        <>
+          <SectionTitle>Team</SectionTitle>
+          <Panel style={{ padding: spacing.md }}>
+            {team.map((m) => (
+              <Text key={m.identityId} style={[styles.muted, { color: colors.textPrimary }]}>
+                {m.name} · {m.teamRole || 'Member'} · {m.accessLevel === 'read' ? 'can view' : m.accessLevel === 'write' ? 'can edit' : 'full access'}
+              </Text>
+            ))}
+          </Panel>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function CaseWorkOrder({ record, onOpenRecord }) {
+  const { activeCode, can } = useCrm();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (!can('work_orders', 'create')) return null;
+  const make = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const wo = await crmApi.caseWorkOrder(activeCode, record.id);
+      onOpenRecord?.('work_orders', wo.id);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={{ marginTop: spacing.md }}>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Button title="Create work order" variant="secondary" size="sm" loading={busy} onPress={make} />
+    </View>
+  );
+}
+
+const PEOPLE_OBJECTS = ['accounts', 'opportunities', 'cases', 'contracts', 'work_orders'];
+
 export function EnterprisePanels({ object, record, onChanged, onOpenRecord }) {
-  if (object === 'invoices') return <InvoicePayments record={record} onChanged={onChanged} onOpenRecord={onOpenRecord} />;
-  if (object === 'cases') return <CaseSla record={record} />;
-  if (object === 'contracts') return <ContractRenewal record={record} onOpenRecord={onOpenRecord} />;
-  return null;
+  return (
+    <>
+      {LINE_OBJECTS.includes(object) ? <DocumentLines object={object} record={record} onOpenRecord={onOpenRecord} /> : null}
+      {object === 'invoices' ? <InvoicePayments record={record} onChanged={onChanged} onOpenRecord={onOpenRecord} /> : null}
+      {object === 'cases' ? <CaseSla record={record} /> : null}
+      {object === 'cases' ? <CaseWorkOrder record={record} onOpenRecord={onOpenRecord} /> : null}
+      {object === 'contracts' ? <ContractRenewal record={record} onOpenRecord={onOpenRecord} /> : null}
+      {PEOPLE_OBJECTS.includes(object) ? <PeopleOnRecord object={object} record={record} onOpenRecord={onOpenRecord} /> : null}
+    </>
+  );
 }
 
 const styles = StyleSheet.create({

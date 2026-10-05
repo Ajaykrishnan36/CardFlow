@@ -714,6 +714,106 @@ The sidebar and the phone menu group objects as Sales, Products, Sales operation
 Purchasing and Finance (a business's own objects stay under CRM / "More"). Forecasts is a
 desktop page; on a phone its menu entry opens the same address in the desktop layout.
 
+### D-118 — Multi-currency with the rate fixed on the record
+
+`crm.currencies` (shared list) and `crm.exchange_rates` (per business, effective-dated; a new
+rate ends the previous one, nothing is overwritten). Opportunities, quotes, orders, invoices,
+payments, income, expenses and contracts carry `currency`, `exchangeRate` and the amount in
+the business's base currency. The rate is looked up once, for the record's own date, in the
+save hook (`records/currency.go`) and kept: later rates never touch existing records. A rate
+typed on the record wins. A foreign currency with no rate is refused (422) rather than
+guessed. Forecasts and attribution add up base amounts. Money arithmetic in Go is in whole
+hundredths (`Cents`), never floats.
+
+### D-119 — Price book entries
+
+A price is a row in `crm.price_book_entries` (book, item, currency, quantity break, start
+date → list price, selling price, cost, largest discount). The catalog price is only the
+fallback when no entry exists and the document is in the base currency. Entries are
+soft-deleted and versioned; every change is audited with old and new values. Managing prices
+needs the capability `pricing.manage`.
+
+### D-120 — CPQ on the existing catalog and line items
+
+One engine (`records/pricing.go`) prices every document that has lines (quotes, sales orders,
+invoices, credit notes, contracts, work orders, opportunities): price book → entry → price
+rule → discount rule → line discount → tax, deterministic and in integers. Bundles
+(`crm.product_bundle_items`) expand into component lines; `crm.pricing_rules` also holds
+configuration (requires / excludes) and eligibility (customer type, territory) rules. Results
+are stored on `line_items` as a snapshot; conversion quote → order → invoice copies lines
+without re-pricing; lines of a document that left draft are locked (409) in both APIs.
+`PUT /{object}/{id}/lines` replaces lines under a row lock on the document. Quotes can be
+revised (`quoteVersion`, `previousQuoteId`). Someone without `pricing.manage` can't override
+a price that the engine worked out.
+
+### D-121 — Approvals by limit and role
+
+`crm.approval_rules` (kind, limit, approver role) and `crm.approval_requests`. Kinds:
+discount (percent off list on a quote), refund, credit note, debit note, write-off (amounts).
+A record over a limit waits; a member in the approver role, a role above it in the hierarchy,
+or with `approvals.manage` decides. The requester can't decide their own request unless they
+hold `approvals.manage` (so a one-person business isn't stuck). An approval already given for
+at least the same value isn't asked for again.
+
+### D-122 — Contact roles are relationships with meaning
+
+Not a new table: `crm.record_relationships` gained `role`, `is_primary`, `is_active`,
+`start_date`, `end_date`, and a system type `contact_role` (contact → any record). One row per
+contact per record; one primary contact per record (partial unique index). Own API
+(`…/contact-roles`), hidden from the generic relationship list. Asset relationship types
+(installed on, component of, replaced by, upgraded to, depends on) were added as system types.
+
+### D-123 — Record teams give access
+
+`crm.record_team_members` (record, person, team role, access level). The list query and the
+single-record query accept a record whose team includes the viewer or someone in a role below
+them; updates need `write`, deletes `full` (checked in `updateValues` / `deleteRecord`, so
+every caller is covered). Managing a team: the owner or someone above them, a `full` member,
+or the capability `record_teams.manage`. Reports, global search and dashboards still use
+ownership only — a team member finds the record in its list and by link. An account's team
+does not open the account's deals: each record has its own team.
+
+### D-124 — Territories
+
+The territory is an object (`territories`, tree by `parentTerritoryId`, cycle-checked) so it
+gets lists, forms, lookups and reports for free; `crm.territory_assignments` is a table
+because it needs dates, foreign keys to accounts, identities and teams, and a uniqueness
+rule. A deal's `territoryId` resolves account → owner → owner's team at creation; open deals
+follow their account when it is reassigned, closed deals keep theirs. The free-text
+`territory` on deals is kept; a one-time backfill turns each distinct text into a territory
+record and links the deals. Territory structure is readable by everyone who can read
+territories; assigning needs `territory.manage`.
+
+### D-125 — Campaign members; attribution is computed
+
+`crm.campaign_members` (lead xor contact, status, responded, first/last touch); everyone an
+email campaign is sent to becomes a member, and the migration turned existing recipients
+into members. Cost columns were added to `crm.campaigns`. Attribution (first touch, last
+touch, even) is worked out on request from members, opportunity contacts, contact roles and
+lead conversions; the shares of a deal sum to exactly its amount. Nothing is stored, so
+nothing can drift.
+
+### D-126 — Refunds, credit notes, debit notes, adjustments
+
+Four objects in the generic engine plus two allocation tables (`crm.refund_allocations`,
+`crm.credit_allocations`). An invoice's balance is derived:
+total + debit notes − payments (less refunds) − credit applied − write-offs, never negative.
+The old `POST /payments/{id}/refund` now creates a refund record; a payment's
+`refundedAmount` is derived from its succeeded refunds. Refunds come out of the unapplied
+part of a payment first, then off its invoices, newest allocation first. A one-time backfill
+creates a refund record for payments that already carried a refunded amount.
+
+### D-127 — Work orders, resources, scheduling, entitlement usage, more SLA milestones
+
+`work_orders`, `service_resources`, `resource_absences` are objects. Appointments gained
+`resourceId`, `workOrderId`, `durationMinutes`. Saving an appointment locks its resource and
+refuses a booking outside working hours, during an absence, without a needed skill, or over
+capacity (409 / 422); `GET /scheduling/slots` offers only times that would be accepted.
+Rescheduling creates a new appointment and marks the old one. A completed work order can be
+invoiced (lines copied). `crm.entitlement_usage` counts cases and work-order hours;
+`overagePolicy` blocks or flags. SLA policies gained assignment and customer-update
+milestones, a warning percentage and an escalation contact. No GPS, routing or travel time.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

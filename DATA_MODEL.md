@@ -1,7 +1,7 @@
 # Data model
 
 How Ajay's CRM stores its data: every table, what it is for, and how the tables connect.
-Written from the database itself on 5 Oct 2026 (CRM migrations 0001–0021, app migrations
+Written from the database itself on 5 Oct 2026 (CRM migrations 0001–0022, app migrations
 001–015). Section 12 lists every column of every table.
 
 ## 1. The shape in one page
@@ -10,7 +10,7 @@ There is **one PostgreSQL database** with two schemas:
 
 | Schema | What lives there | Tables |
 |---|---|---|
-| `crm` | People and sign-in, businesses, roles and permissions, all CRM records, email, automation, reports, plans, relationships, payments, forecasts, SLA clocks | 70 |
+| `crm` | People and sign-in, businesses, roles and permissions, all CRM records, email, automation, reports, plans, relationships, payments, pricing, approvals, currencies, territories, campaign members, field service | 84 |
 | `public` | The card vault, the public directory (listings), app profiles, support tickets, app-store subscription events | 19 |
 
 Five ideas explain almost everything:
@@ -61,6 +61,18 @@ erDiagram
     object_records ||--o{ sla_timers : "case has clocks"
     workspaces ||--o{ forecast_quotas : "targets"
     workspaces ||--o{ forecast_submissions : "submitted forecasts"
+    object_records ||--o{ price_book_entries : "price book has prices for items"
+    object_records ||--o{ product_bundle_items : "bundle has components"
+    workspaces ||--o{ pricing_rules : "pricing and discount rules"
+    workspaces ||--o{ approval_requests : "waiting for a decision"
+    workspaces ||--o{ exchange_rates : "rates into its base currency"
+    currencies ||--o{ exchange_rates : ""
+    object_records ||--o{ territory_assignments : "territory has accounts and people"
+    campaigns ||--o{ campaign_members : "reached"
+    object_records ||--o{ record_team_members : "record has a team"
+    object_records ||--o{ refund_allocations : "refund comes off invoice"
+    object_records ||--o{ credit_allocations : "credit note applied to invoice"
+    object_records ||--o{ entitlement_usage : "entitlement used by"
 ```
 
 ## 2. Words on screen → tables
@@ -82,6 +94,19 @@ erDiagram
 | Relationship between two records | `crm.record_relationships`, its kind in `crm.relationship_types` |
 | Forecast target, submitted forecast | `crm.forecast_quotas`, `crm.forecast_submissions` (the forecast numbers themselves are sums over opportunities, not stored) |
 | SLA clock on a case | `crm.sla_timers` |
+| Price of an item in a price book | `crm.price_book_entries` |
+| Bundle contents | `crm.product_bundle_items` |
+| Pricing, discount, eligibility and configuration rules | `crm.pricing_rules` |
+| Approval limits, approval requests | `crm.approval_rules`, `crm.approval_requests` |
+| Currency, exchange rate | `crm.currencies` (shared list), `crm.exchange_rates` (per business) |
+| Contact role (decision maker, billing contact…) | `crm.record_relationships` with `type_key` = `contact_role` (role, primary, active, dates) |
+| Account team, opportunity team | `crm.record_team_members` |
+| Territory | `crm.object_records` (`territories`); who and what belongs to it: `crm.territory_assignments` |
+| Campaign member, campaign cost | `crm.campaign_members`; cost columns on `crm.campaigns` |
+| Refund, Credit note, Debit note, Adjustment (write-off) | `crm.object_records` (`refunds`, `credit_notes`, `debit_notes`, `adjustments`); which invoice they touch: `crm.refund_allocations`, `crm.credit_allocations` |
+| Work order, Service resource, Resource absence | `crm.object_records` (`work_orders`, `service_resources`, `resource_absences`) |
+| Entitlement usage | `crm.entitlement_usage` |
+| Forecast history | `crm.forecast_history` |
 | Catalog, Price book, Quote, Sales order, Invoice, Purchase order, Line item, Subscription | `crm.object_records` (`catalog_items`, `price_books`, `quotes`, `sales_orders`, `invoices`, `purchase_orders`, `line_items`, `subscriptions`) |
 | Knowledge base article | `crm.object_records` with `object_key` = `solutions` |
 | Custom object / custom field | `crm.object_definitions` (per business) / `crm.field_definitions` |
@@ -419,6 +444,22 @@ erDiagram
     purchase_orders ||--o{ expenses : "purchaseOrderId"
 ```
 
+#### Adjustments — `adjustments` (code `ADJ-…`, module `finance`)
+
+Adjustment is the record's `name`. Statuses: Draft, Pending approval, Approved, Rejected, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `invoiceId` — Invoice (required) | lookup | `invoices` |
+| `accountId` — Account | lookup | `accounts` |
+| `adjustmentType` — Type | select |  |
+| `amount` — Amount (required) | currency |  |
+| `currency` — Currency | text |  |
+| `adjustmentDate` — Date | date |  |
+| `reason` — Reason (required) | text |  |
+| `reference` — Reference | text |  |
+| `description` — Notes | textarea |  |
+
 #### Appointments — `appointments` (code `APT-…`, module `calendar`)
 
 Subject is the record's `name`. Statuses: Scheduled, Confirmed, In progress, Completed, Cancelled, No show, Rescheduled.
@@ -440,6 +481,10 @@ Subject is the record's `name`. Statuses: Scheduled, Confirmed, In progress, Com
 | `notes` — Notes | textarea |  |
 | `cancellationReason` — Cancellation reason | text |  |
 | `rescheduledFrom` — Rescheduled from | lookup | `appointments` |
+| `resourceId` — Resource | lookup | `service_resources` |
+| `workOrderId` — Work order | lookup | `work_orders` |
+| `durationMinutes` — Duration (minutes) | number |  |
+| `bookingSource` — Booked through | select |  |
 
 #### Assets — `assets` (code `AST-…`, module `catalog`)
 
@@ -462,6 +507,8 @@ Asset name is the record's `name`. Statuses: Active, Installed, Inactive, Under 
 | `contractId` — Contract | lookup | `contracts` |
 | `subscriptionId` — Subscription | lookup | `subscriptions` |
 | `description` — Description | textarea |  |
+| `workOrderId` — Last work order | lookup | `work_orders` |
+| `replacedOn` — Replaced on | date |  |
 
 #### Cases — `cases` (code `CS-…`, module `tickets`)
 
@@ -488,6 +535,9 @@ Subject is the record's `name`. Statuses: New, Working, Escalated, Resolved, Clo
 | `firstRespondedAt` — First responded | datetime |  |
 | `slaBreached` — SLA breached | boolean |  |
 | `escalatedAt` — Escalated on | datetime |  |
+| `assignedAt` — Assigned on | datetime |  |
+| `lastCustomerUpdateAt` — Customer last updated | datetime |  |
+| `entitlementExceeded` — Over entitlement | boolean |  |
 
 #### Catalog — `catalog_items` (code `ITM-…`, module `catalog`)
 
@@ -505,6 +555,13 @@ Item name is the record's `name`. Statuses: Active, Inactive.
 | `itemType` — Type | select |  |
 | `billingFrequency` — Billed | select |  |
 | `durationMinutes` — Duration (minutes) | number |  |
+| `family` — Product family | text |  |
+| `isBundle` — Sold as a bundle | boolean |  |
+| `serviceCategory` — Service category | text |  |
+| `skillsRequired` — Skills needed (comma separated) | text |  |
+| `capacity` — Bookings at the same time | number |  |
+| `serviceLocation` — Where it is delivered | select |  |
+| `workOrderEligible` — Can be put on a work order | boolean |  |
 
 #### Communications — `communications` (code `COM-…`, module `communications`)
 
@@ -544,6 +601,42 @@ Contract name is the record's `name`. Statuses: Draft, Active, Expiring, Renewed
 | `subscriptionId` — Subscription | lookup | `subscriptions` |
 | `terms` — Terms | textarea |  |
 | `description` — Description | textarea |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseValue` — Value in base currency | currency |  |
+| `priceBookId` — Price book | lookup | `price_books` |
+
+#### Credit notes — `credit_notes` (code `CN-…`, module `finance`)
+
+Credit note is the record's `name`. Statuses: Draft, Pending approval, Issued, Partially applied, Fully applied, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `accountId` — Account | lookup | `accounts` |
+| `contactId` — Contact | lookup | `contacts` |
+| `invoiceId` — Invoice | lookup | `invoices` |
+| `issueDate` — Issue date | date |  |
+| `currency` — Currency | text |  |
+| `subtotal` — Subtotal | currency |  |
+| `tax` — Tax | currency |  |
+| `total` — Total (required) | currency |  |
+| `appliedAmount` — Applied | currency |  |
+| `remainingAmount` — Remaining | currency |  |
+| `reason` — Reason | text |  |
+| `description` — Notes | textarea |  |
+
+#### Debit notes — `debit_notes` (code `DN-…`, module `finance`)
+
+Debit note is the record's `name`. Statuses: Draft, Pending approval, Issued, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `invoiceId` — Invoice (required) | lookup | `invoices` |
+| `accountId` — Account | lookup | `accounts` |
+| `issueDate` — Issue date | date |  |
+| `currency` — Currency | text |  |
+| `total` — Amount (required) | currency |  |
+| `reason` — Reason | text |  |
+| `description` — Notes | textarea |  |
 
 #### Entitlements — `entitlements` (code `ENT-…`, module `tickets`)
 
@@ -564,6 +657,10 @@ Entitlement name is the record's `name`. Statuses: Active, Inactive, Expired.
 | `channels` — Channels | multiselect |  |
 | `casesIncluded` — Cases included | number |  |
 | `description` — Description | textarea |  |
+| `hoursIncluded` — Service hours included | number |  |
+| `casesUsed` — Cases used | number |  |
+| `hoursUsed` — Hours used | number |  |
+| `overagePolicy` — When the allowance is used up | select |  |
 
 #### Calendar events — `events` (code `EVT-…`, module `calendar`)
 
@@ -601,6 +698,9 @@ Title is the record's `name`. Statuses: Paid, Pending, Cancelled.
 | `recurring` — Repeats | select |  |
 | `description` — Notes | textarea |  |
 | `purchaseOrderId` — Purchase order | lookup | `purchase_orders` |
+| `currency` — Currency | text |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseAmount` — Amount in base currency | currency |  |
 
 #### Income — `income` (code `INC-…`, module `finance`)
 
@@ -618,6 +718,9 @@ Title is the record's `name`. Statuses: Received, Pending, Cancelled.
 | `reference` — Reference | text |  |
 | `recurring` — Repeats | select |  |
 | `description` — Notes | textarea |  |
+| `currency` — Currency | text |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseAmount` — Amount in base currency | currency |  |
 
 #### Invoices — `invoices` (code `INV-…`, module `sales_docs`)
 
@@ -639,6 +742,17 @@ Invoice name is the record's `name`. Statuses: Draft, Sent, Partially paid, Paid
 | `contractId` — Contract | lookup | `contracts` |
 | `subscriptionId` — Subscription | lookup | `subscriptions` |
 | `opportunityId` — Opportunity | lookup | `opportunities` |
+| `discount` — Discount | currency |  |
+| `priceBookId` — Price book | lookup | `price_books` |
+| `quoteId` — Quote | lookup | `quotes` |
+| `workOrderId` — Work order | lookup | `work_orders` |
+| `creditedAmount` — Credited | currency |  |
+| `debitedAmount` — Debit notes | currency |  |
+| `writtenOffAmount` — Written off | currency |  |
+| `finalizedAt` — Finalized on | datetime |  |
+| `currency` — Currency | text |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseTotal` — Amount in base currency | currency |  |
 
 #### Line items — `line_items` (code `LI-…`, module `sales_docs`)
 
@@ -657,6 +771,21 @@ Item is the record's `name`. Statuses: —.
 | `invoiceId` — Invoice | lookup | `invoices` |
 | `priceBookId` — Price book | lookup | `price_books` |
 | `contractId` — Contract | lookup | `contracts` |
+| `listPrice` — List price | currency |  |
+| `discountAmount` — Discount amount | currency |  |
+| `taxRate` — Tax rate | percent |  |
+| `taxAmount` — Tax | currency |  |
+| `unitCost` — Unit cost | currency |  |
+| `priceBookEntryId` — Price book entry | text |  |
+| `pricingNote` — How it was priced | text |  |
+| `bundleLineId` — Part of bundle line | lookup | `line_items` |
+| `workOrderId` — Work order | lookup | `work_orders` |
+| `creditNoteId` — Credit note | lookup | `credit_notes` |
+| `startDate` — Starts | date |  |
+| `endDate` — Ends | date |  |
+| `billingFrequency` — Billed | select |  |
+| `durationMinutes` — Duration (minutes) | number |  |
+| `sortOrder` — Order | number |  |
 
 #### Notes — `notes` (code `NTE-…`, module `notes`)
 
@@ -690,6 +819,10 @@ Opportunity name is the record's `name`. Statuses: Prospecting, Qualification, P
 | `lostReason` — Lost reason | text |  |
 | `priceBookId` — Price book | lookup | `price_books` |
 | `territory` — Territory | text |  |
+| `territoryId` — Sales territory | lookup | `territories` |
+| `currency` — Currency | text |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseAmount` — Amount in base currency | currency |  |
 
 #### Payments — `payments` (code `PAY-…`, module `finance`)
 
@@ -711,6 +844,8 @@ Payment is the record's `name`. Statuses: Pending, Authorized, Paid, Failed, Par
 | `allocatedAmount` — Applied to invoices | currency |  |
 | `unappliedAmount` — Not yet applied | currency |  |
 | `notes` — Notes | textarea |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseAmount` — Amount in base currency | currency |  |
 
 #### Price books — `price_books` (code `PB-…`, module `sales_docs`)
 
@@ -721,6 +856,9 @@ Price book name is the record's `name`. Statuses: Active, Inactive.
 | `validFrom` — Valid from | date |  |
 | `validTo` — Valid to | date |  |
 | `description` — Description | textarea |  |
+| `currency` — Currency | text |  |
+| `isDefault` — Default price book | boolean |  |
+| `accountId` — Only for this customer | lookup | `accounts` |
 
 #### Purchase orders — `purchase_orders` (code `PO-…`, module `sales_docs`)
 
@@ -754,6 +892,40 @@ Quote name is the record's `name`. Statuses: Draft, Sent, Accepted, Declined, Ex
 | `total` — Total | currency |  |
 | `terms` — Terms | textarea |  |
 | `description` — Notes | textarea |  |
+| `discountPercent` — Largest discount | percent |  |
+| `approvalStatus` — Approval | select |  |
+| `quoteVersion` — Version | number |  |
+| `previousQuoteId` — Previous version | lookup | `quotes` |
+| `currency` — Currency | text |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseTotal` — Amount in base currency | currency |  |
+
+#### Refunds — `refunds` (code `RF-…`, module `finance`)
+
+Refund is the record's `name`. Statuses: Pending approval, Processing, Succeeded, Failed, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `paymentId` — Payment (required) | lookup | `payments` |
+| `amount` — Amount (required) | currency |  |
+| `currency` — Currency | text |  |
+| `refundDate` — Refund date (required) | date |  |
+| `reason` — Reason | text |  |
+| `reference` — Reference number | text |  |
+| `externalId` — External transaction ID | text |  |
+| `accountId` — Account | lookup | `accounts` |
+| `notes` — Notes | textarea |  |
+
+#### Resource absences — `resource_absences` (code `ABS-…`, module `tickets`)
+
+Reason is the record's `name`. Statuses: —.
+
+| Field | Type | Links to |
+|---|---|---|
+| `resourceId` — Resource (required) | lookup | `service_resources` |
+| `startsAt` — From (required) | datetime |  |
+| `endsAt` — Until (required) | datetime |  |
+| `description` — Notes | textarea |  |
 
 #### Sales orders — `sales_orders` (code `SO-…`, module `sales_docs`)
 
@@ -770,6 +942,30 @@ Order name is the record's `name`. Statuses: Draft, Confirmed, Shipped, Delivere
 | `subtotal` — Subtotal | currency |  |
 | `tax` — Tax | currency |  |
 | `total` — Total | currency |  |
+| `description` — Notes | textarea |  |
+| `discount` — Discount | currency |  |
+| `priceBookId` — Price book | lookup | `price_books` |
+| `currency` — Currency | text |  |
+| `exchangeRate` — Exchange rate | number |  |
+| `baseTotal` — Amount in base currency | currency |  |
+
+#### Service resources — `service_resources` (code `RES-…`, module `tickets`)
+
+Resource name is the record's `name`. Statuses: Active, Inactive.
+
+| Field | Type | Links to |
+|---|---|---|
+| `resourceType` — Type | select |  |
+| `userId` — User | lookup | `users` |
+| `skills` — Skills (comma separated) | text |  |
+| `territoryId` — Service territory | lookup | `territories` |
+| `workStart` — Working hours start (HH:MM) | text |  |
+| `workEnd` — Working hours end (HH:MM) | text |  |
+| `workDays` — Working days (mon,tue,…) | text |  |
+| `holidays` — Days off (YYYY-MM-DD, comma separated) | textarea |  |
+| `capacity` — Jobs at the same time | number |  |
+| `phone` — Phone | phone |  |
+| `homeLocation` — Base location | text |  |
 | `description` — Notes | textarea |  |
 
 #### SLA policies — `sla_policies` (code `SLA-…`, module `tickets`)
@@ -789,6 +985,10 @@ Policy name is the record's `name`. Statuses: Active, Inactive.
 | `autoEscalate` — Escalate the case when breached | boolean |  |
 | `isDefault` — Use when no entitlement applies | boolean |  |
 | `description` — Description | textarea |  |
+| `assignmentMinutes` — Assign within (minutes) | number |  |
+| `customerUpdateMinutes` — Update the customer every (minutes) | number |  |
+| `warnPercent` — Warn at (% of time used) | number |  |
+| `escalateTo` — Escalate to | lookup | `users` |
 
 #### Knowledge base — `solutions` (code `KB-…`, module `knowledge`)
 
@@ -836,6 +1036,48 @@ Subject is the record's `name`. Statuses: Not started, In progress, Waiting on s
 | `caseId` — Case | lookup | `cases` |
 | `contractId` — Contract | lookup | `contracts` |
 | `assetId` — Asset | lookup | `assets` |
+
+#### Territories — `territories` (code `TER-…`, module `opportunities`)
+
+Territory name is the record's `name`. Statuses: Active, Inactive.
+
+| Field | Type | Links to |
+|---|---|---|
+| `territoryCode` — Short code | text |  |
+| `parentTerritoryId` — Parent territory | lookup | `territories` |
+| `territoryType` — Type | select |  |
+| `managerId` — Manager | lookup | `users` |
+| `priority` — Priority | number |  |
+| `effectiveFrom` — Effective from | date |  |
+| `effectiveTo` — Effective to | date |  |
+| `description` — Description | textarea |  |
+
+#### Work orders — `work_orders` (code `WO-…`, module `tickets`)
+
+Subject is the record's `name`. Statuses: New, Planned, Scheduled, In progress, On hold, Completed, Cancelled.
+
+| Field | Type | Links to |
+|---|---|---|
+| `priority` — Priority | select |  |
+| `accountId` — Account | lookup | `accounts` |
+| `contactId` — Contact | lookup | `contacts` |
+| `caseId` — Case | lookup | `cases` |
+| `assetId` — Asset | lookup | `assets` |
+| `contractId` — Contract | lookup | `contracts` |
+| `entitlementId` — Entitlement | lookup | `entitlements` |
+| `resourceId` — Assigned resource | lookup | `service_resources` |
+| `territoryId` — Service territory | lookup | `territories` |
+| `scheduledStart` — Scheduled start | datetime |  |
+| `scheduledEnd` — Scheduled end | datetime |  |
+| `actualStart` — Actual start | datetime |  |
+| `actualEnd` — Actual end | datetime |  |
+| `location` — Location | text |  |
+| `estimatedCost` — Estimated cost | currency |  |
+| `actualCost` — Actual cost | currency |  |
+| `total` — Billable total | currency |  |
+| `invoiceId` — Invoice | lookup | `invoices` |
+| `description` — Description | richtext |  |
+| `completionNotes` — Completion notes | textarea |  |
 
 
 A business can add **its own objects** (a row in `crm.object_definitions` with its
@@ -899,11 +1141,123 @@ erDiagram
     }
 ```
 
+### The commercial, sales-execution and service model (migration 0022)
+
+```mermaid
+erDiagram
+    PRICE_BOOK ||--o{ PRICE_BOOK_ENTRY : "prices"
+    PRODUCT_OR_SERVICE ||--o{ PRICE_BOOK_ENTRY : "priced in"
+    PRODUCT_OR_SERVICE ||--o{ BUNDLE_ITEM : "bundle of"
+    PRICING_RULE }o--o{ PRODUCT_OR_SERVICE : "applies to"
+    QUOTE ||--o{ LINE_ITEM : "priced lines (snapshot)"
+    LINE_ITEM }o--o| PRICE_BOOK_ENTRY : "priced from"
+    QUOTE ||--o| APPROVAL_REQUEST : "discount approval"
+    QUOTE ||--o| SALES_ORDER : "converted to"
+    SALES_ORDER ||--o| INVOICE : "invoiced as"
+    INVOICE ||--o{ PAYMENT_ALLOCATION : "paid by"
+    PAYMENT ||--o{ REFUND : "refunded by"
+    REFUND ||--o{ REFUND_ALLOCATION : "comes off"
+    INVOICE ||--o{ REFUND_ALLOCATION : ""
+    CREDIT_NOTE ||--o{ CREDIT_ALLOCATION : "applied through"
+    INVOICE ||--o{ CREDIT_ALLOCATION : ""
+    INVOICE ||--o{ DEBIT_NOTE : "extra charge"
+    INVOICE ||--o{ ADJUSTMENT : "write-off"
+    CURRENCY ||--o{ EXCHANGE_RATE : "rate into base"
+    TERRITORY ||--o{ TERRITORY : "parent of"
+    TERRITORY ||--o{ TERRITORY_ASSIGNMENT : "has"
+    ACCOUNT ||--o{ TERRITORY_ASSIGNMENT : "assigned"
+    OPPORTUNITY }o--o| TERRITORY : "territoryId"
+    CONTACT ||--o{ CONTACT_ROLE : "holds"
+    OPPORTUNITY ||--o{ CONTACT_ROLE : "has"
+    ACCOUNT ||--o{ RECORD_TEAM_MEMBER : "account team"
+    OPPORTUNITY ||--o{ RECORD_TEAM_MEMBER : "opportunity team"
+    CAMPAIGN ||--o{ CAMPAIGN_MEMBER : "reached"
+    LEAD ||--o{ CAMPAIGN_MEMBER : ""
+    CONTACT ||--o{ CAMPAIGN_MEMBER : ""
+    CASE ||--o{ WORK_ORDER : "needs"
+    WORK_ORDER ||--o{ LINE_ITEM : "services and parts"
+    WORK_ORDER ||--o{ APPOINTMENT : "scheduled as"
+    SERVICE_RESOURCE ||--o{ APPOINTMENT : "books"
+    SERVICE_RESOURCE ||--o{ RESOURCE_ABSENCE : "away"
+    WORK_ORDER ||--o| INVOICE : "billed as"
+    ENTITLEMENT ||--o{ ENTITLEMENT_USAGE : "used by cases and work"
+```
+
+**Pricing (D-119, D-120).** A price lives in `crm.price_book_entries`: one row per price
+book, item, currency, quantity break and start date, with list price, selling price, cost and
+the largest discount allowed. Old prices stay as history (`valid_to`, soft delete). A line is
+priced in a fixed order: the price book named on the document → the customer's own price book
+(`price_books.accountId`) → the default one (`isDefault`); its entry for the item, currency,
+date and quantity (else the catalog price); the first matching **price rule**, then the first
+matching **discount rule** (`crm.pricing_rules`, by `priority`); the discount typed on the
+line (within the entry's limit); tax. **Bundles** (`crm.product_bundle_items`) add their
+required components and the chosen options, each either included in the bundle's price or
+priced on top. **Configuration** rules say what must or can't be sold together;
+**eligibility** rules say which customer types or territories may buy an item.
+
+The result is written onto `line_items` as a **snapshot** — `listPrice`, `unitPrice`,
+`discountPercent`, `discountAmount`, `taxRate`, `taxAmount`, `total`, `priceBookEntryId`,
+`pricingNote` — and the document's `subtotal`, `discount`, `tax`, `total` are their sums.
+All of it is computed in whole hundredths (no floating point). Quote → sales order → invoice
+copies the lines as they are; nothing is priced again. Once a quote is accepted, an order
+confirmed or an invoice issued (`finalizedAt`), its lines can't be changed — through the
+pricing API or the records API (409).
+
+**Approvals (D-121).** `crm.approval_rules` holds limits per kind (discount %, refund,
+credit note, debit note, write-off amount) with the role that may approve. Crossing a limit
+opens a row in `crm.approval_requests`; the record waits (`approvalStatus` on a quote,
+status *Pending approval* on finance documents) until someone in that role or a role above
+it decides.
+
+**Multi-currency (D-118).** `crm.currencies` is the shared list; `crm.exchange_rates` holds
+each business's rates into its base currency (`workspaces.currency`) with effective dates.
+Opportunities, quotes, orders, invoices, payments, income, expenses and contracts carry
+`currency`, `exchangeRate` and the amount in the base currency (`baseAmount` / `baseTotal` /
+`baseValue`). The rate is taken once, for the record's date, and kept; a later rate never
+changes an existing record. Forecasts add up base amounts.
+
+**Finance documents (D-126).**
+`balance = total + debit notes − payments (less refunds) − credit applied − write-offs`.
+A **refund** is a record against a payment; the payment's `refundedAmount` is the sum of its
+succeeded refunds and `crm.refund_allocations` says which invoices lose the money (the part
+of the payment not applied to any invoice goes back first). A **credit note** is applied to
+invoices through `crm.credit_allocations`; what isn't applied stays on the note. A **debit
+note** adds to an invoice; an **adjustment** (write-off) takes off what will never be paid.
+
+**Contact roles (D-122).** `crm.record_relationships` rows of type `contact_role`: contact →
+deal, account, case or contract, with `role`, `is_primary` (one per record), `is_active`,
+`start_date`, `end_date`.
+
+**Record teams (D-123).** `crm.record_team_members`: a person on the team of one record,
+with a team role and an access level. A member who sees only their own records can open a
+record whose team they are on (`read`), change it (`write`) or delete it (`full`).
+
+**Territories (D-124).** The territory tree is `territories` records (`parentTerritoryId`).
+`crm.territory_assignments` links accounts, people and teams with `effective_from` /
+`effective_to`; moving an account ends the old row and adds a new one. A deal's
+`territoryId` is resolved from its account, then its owner, then the owner's teams; open
+deals follow their account, closed deals keep theirs. The old free-text `territory` field
+stays.
+
+**Campaign members and attribution (D-125).** `crm.campaign_members`: a lead or a contact a
+campaign reached, with status and response. Attribution is computed, not stored: each deal's
+amount is shared between the campaigns that touched its people (primary contact, contact
+roles, converted leads) by first touch, last touch, or evenly — the shares add up to the deal.
+
+**Field service (D-127).** `work_orders` (from a case; lines priced like any document),
+`service_resources` (skills, working hours, days off, capacity), `resource_absences`, and
+appointments with a `resourceId`. An appointment is refused if the resource lacks a skill the
+service needs, isn't working then, is away, or is already booked up to its capacity.
+`crm.entitlement_usage` counts cases and hours against an entitlement; when the allowance is
+used up the entitlement's `overagePolicy` blocks the case or flags it. SLA clocks gained the
+milestones `assignment` and `customer_update`, a warning threshold and an escalation contact.
+
 ### Links between any two records
 
-`crm.relationship_types` lists the kinds of link. Thirteen are built in (`workspace_id` is
+`crm.relationship_types` lists the kinds of link. Nineteen are built in (`workspace_id` is
 null): related to, works for, decision maker for, influencer for, contact for, attendee,
-partner of, competitor on, supplies, includes, covers, renewal of, owns. A business can add its
+partner of, competitor on, supplies, includes, covers, renewal of, owns, contact role, and for
+assets: installed on, component of, replaced by, upgraded to, depends on. A business can add its
 own. A type may fix the object at either end (works for: contact → account) and says how many
 each side may have (`cardinality`; e.g. an asset has one owner).
 
@@ -925,8 +1279,8 @@ one payment can pay many invoices.
 
 - Naming an invoice on a payment applies as much of it as the invoice still needs; the rest
   stays on the payment as `unappliedAmount` and can be applied to another invoice.
-- Only payments whose status is Paid or Partially refunded count; a refund lowers what each
-  invoice received, proportionally.
+- Only payments whose status is Paid or Partially refunded count. Refunds are records
+  (`refunds`); what a refund takes off each invoice is in `crm.refund_allocations`.
 - An invoice's `amountPaid`, `balanceDue` and status (Sent → Partially paid → Paid) are
   **worked out from its allocations** in the same transaction as the payment change. Typing a
   paid amount on an invoice that has payments does not stick.
@@ -949,7 +1303,8 @@ whose `closeDate` falls inside it:
 | Forecast | Closed won + Commit |
 | Weighted | open amount × `probability` |
 
-Rows are per owner or per team; totals are computed once over the deals, so someone in two
+Rows are per owner, team, territory (each territory including everything below it) or
+role; every submission and decision is kept in `crm.forecast_history`. Totals are computed once over the deals, so someone in two
 teams appears in both team rows without the total counting their deals twice. A person with
 row scope "own" gets only their own deals and those of the roles below them.
 
@@ -1156,6 +1511,8 @@ One row per person who can sign in (customer, teammate or platform owner). The s
 | `updated_at` | timestamptz | yes |  |
 | `source` | text | no |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.verified_identifiers`
 
 A person's email addresses and mobile numbers. `verified_at` is set only after a code sent there was typed back. One value belongs to one person.
@@ -1168,6 +1525,8 @@ A person's email addresses and mobile numbers. `verified_at` is set only after a
 | `value_normalized` | text | yes |  |
 | `namespace` | text | yes | default 'global' |
 | `verified_at` | timestamptz | no |  |
+
+Indexes: 3 (including the primary key).
 
 Unique: (`kind`, `namespace`, `value_normalized`)
 
@@ -1184,6 +1543,8 @@ The password hash of a person who has set one (argon2id), with lock-out counters
 | `locked_until` | timestamptz | no |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.mfa_methods`
 
 Authenticator-app second factor and recovery codes (encrypted / hashed).
@@ -1198,6 +1559,8 @@ Authenticator-app second factor and recovery codes (encrypted / hashed).
 | `last_used_step` | bigint | yes | default 0 |
 | `confirmed_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 #### `crm.sessions`
 
@@ -1226,6 +1589,8 @@ Every sign-in. `transport` is `cookie` (browser) or `bearer` (native app). Revok
 | `auth_method` | text | yes | default 'password' |
 | `transport` | text | yes | default 'cookie' |
 
+Indexes: 3 (including the primary key).
+
 Unique: (`token_hash`)
 
 #### `crm.otp_challenges`
@@ -1244,6 +1609,8 @@ One-time codes sent by SMS or email: hashed, expiring, single-use, attempt-limit
 | `consumed_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.password_resets`
 
 Single-use "forgot password" tokens (hashed).
@@ -1256,6 +1623,8 @@ Single-use "forgot password" tokens (hashed).
 | `used_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.sso_links`
 
 Links a person to their Google / Microsoft / LinkedIn / company-SSO account.
@@ -1267,6 +1636,8 @@ Links a person to their Google / Microsoft / LinkedIn / company-SSO account.
 | `identity_id` | uuid | yes | → `crm.identities`, deleted with it |
 | `email_at_link` | text | no |  |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 #### `crm.sso_providers`
 
@@ -1292,6 +1663,8 @@ Company single sign-on (SAML or OpenID Connect) configured for one business.
 | `oidc_client_id` | text | yes | default '' |
 | `oidc_secret_enc` | bytea | no |  |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`workspace_id`)
 
 #### `crm.invitations`
@@ -1315,6 +1688,8 @@ An invitation to join a business with a role, sent by email; accepted once.
 | `created_by` | uuid | yes | → `crm.identities` |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`token_hash`)
 
 #### `crm.invite_links`
@@ -1333,6 +1708,8 @@ A reusable "join this business" link, limited to company email domains.
 | `created_by` | uuid | no |  |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 Unique: (`token_hash`)
 
@@ -1362,6 +1739,8 @@ A **business** (the tenant). Every customer record carries its `id` as `workspac
 | `origin` | text | yes | default 'owner' |
 | `profile` | jsonb | yes | default '{}' |
 
+Indexes: 5 (including the primary key).
+
 Unique: (`code`); (`custom_domain`)
 
 #### `crm.products`
@@ -1382,6 +1761,8 @@ A **setup** (shown as "App" in the owner console): a named bundle of modules, ro
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`key`)
 
 #### `crm.product_versions`
@@ -1396,6 +1777,8 @@ Published versions of a setup. A business pins the version it installed.
 | `published_at` | timestamptz | yes |  |
 | `published_by` | uuid | no | → `crm.identities` |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.workspace_products`
 
 Which setups a business has installed, and at which version.
@@ -1409,6 +1792,8 @@ Which setups a business has installed, and at which version.
 | `status` | text | yes | default 'active' |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.platform_settings`
 
 Platform-wide switches, e.g. `self_serve` (may customers create businesses, and how many).
@@ -1419,6 +1804,8 @@ Platform-wide switches, e.g. `self_serve` (may customers create businesses, and 
 | `value` | jsonb | yes |  |
 | `updated_by` | uuid | no | → `crm.identities` |
 | `updated_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 #### `crm.plans`
 
@@ -1440,6 +1827,8 @@ Price plans (Free, Pro, Business) with their limits (`members`, `records`, `card
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.workspace_subscriptions`
 
 The plan a business is on: status, period end and where it came from (set by the owner, app store, …). At most one row per business; none means the default plan.
@@ -1458,6 +1847,8 @@ The plan a business is on: status, period end and where it came from (set by the
 | `updated_by` | uuid | no | → `crm.identities` |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.subscription_events`
 
 History of plan changes for a business.
@@ -1472,6 +1863,8 @@ History of plan changes for a business.
 | `actor_id` | uuid | no | → `crm.identities` |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.usage_counters`
 
 Monthly counters per business (e.g. card scans) checked against plan limits.
@@ -1482,6 +1875,8 @@ Monthly counters per business (e.g. card scans) checked against plan limits.
 | `metric` | text | yes | part of the primary key |
 | `period` | date | yes | part of the primary key |
 | `value` | bigint | yes | default 0 |
+
+Indexes: 1 (including the primary key).
 
 ### Members, roles and permissions
 
@@ -1499,6 +1894,8 @@ A person belongs to a business. `status`: invited, active, suspended, revoked. `
 | `auth_version` | integer | yes | default 1 |
 | `created_by` | uuid | no | → `crm.identities` |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 3 (including the primary key).
 
 Unique: (`workspace_id`, `identity_id`)
 
@@ -1522,6 +1919,8 @@ Positions in a business's hierarchy (Super Admin → Admin → Staff → End use
 | `updated_at` | timestamptz | yes |  |
 | `parent_role_id` | uuid | no | → `crm.roles`, cleared if it is deleted |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`workspace_id`, `key`)
 
 #### `crm.role_assignments`
@@ -1540,6 +1939,8 @@ The role a membership holds, and for which installed setups (`product_ids`).
 | `expires_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.permission_sets`
 
 A named set of rules: per object which actions (read, create, update, delete, convert, import, export, destroy), row scope (own / whole business), field rules and capabilities. This is what actually grants access.
@@ -1556,6 +1957,8 @@ A named set of rules: per object which actions (read, create, update, delete, co
 | `updated_at` | timestamptz | yes |  |
 | `system_key` | text | no |  |
 
+Indexes: 3 (including the primary key).
+
 Unique: (`workspace_id`, `name`)
 
 #### `crm.membership_permission_sets`
@@ -1570,6 +1973,8 @@ Which permission sets a member has.
 | `granted_by` | uuid | yes | → `crm.identities` |
 | `expires_at` | timestamptz | no |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.teams`
 
 Named groups of members inside a business.
@@ -1582,6 +1987,8 @@ Named groups of members inside a business.
 | `description` | text | yes | default '' |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`workspace_id`, `name`)
 
 #### `crm.team_members`
@@ -1593,6 +2000,8 @@ Members of a team.
 | `workspace_id` | uuid | yes | the business (tenant) — → `crm.workspaces` |
 | `team_id` | uuid | yes | part of the primary key; → `crm.teams`, deleted with it |
 | `membership_id` | uuid | yes | part of the primary key; → `crm.memberships`, deleted with it |
+
+Indexes: 1 (including the primary key).
 
 #### `crm.api_keys`
 
@@ -1614,6 +2023,8 @@ Keys for the public API of one business (hashed), with a role or permission set.
 | `role_id` | uuid | no | → `crm.roles` |
 | `expires_at` | timestamptz | no |  |
 | `last_used_ip` | inet | no |  |
+
+Indexes: 3 (including the primary key).
 
 Unique: (`key_hash`)
 
@@ -1671,6 +2082,8 @@ A person or company that might buy. Has its own status flow (new → working →
 | `updated_at` | timestamptz | yes |  |
 | `deleted_by` | uuid | no |  |
 
+Indexes: 7 (including the primary key).
+
 Unique: (`workspace_id`, `code`)
 
 #### `crm.accounts`
@@ -1718,6 +2131,8 @@ A company or individual customer. `parent_account_id` builds account hierarchies
 | `updated_at` | timestamptz | yes |  |
 | `deleted_by` | uuid | no |  |
 
+Indexes: 3 (including the primary key).
+
 Unique: (`workspace_id`, `code`)
 
 #### `crm.contacts`
@@ -1757,6 +2172,8 @@ A person, usually at an account (`account_id`).
 | `updated_at` | timestamptz | yes |  |
 | `deleted_by` | uuid | no |  |
 
+Indexes: 7 (including the primary key).
+
 Unique: (`workspace_id`, `code`)
 
 #### `crm.lead_conversions`
@@ -1776,6 +2193,8 @@ What a lead became: the account, contact (and deal) created when it was converte
 | `status` | text | yes | default 'converted' |
 | `converted_by` | uuid | no |  |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 #### `crm.object_definitions`
 
@@ -1797,6 +2216,8 @@ The definition of every other object: its names, code prefix, statuses and field
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 | `workspace_id` | uuid | no | → `crm.workspaces` |
+
+Indexes: 3 (including the primary key).
 
 Unique: (`prefix`)
 
@@ -1821,6 +2242,8 @@ The records of every object defined as data — deals, tasks, events, notes, cas
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 | `deleted_by` | uuid | no |  |
+
+Indexes: 16 (including the primary key).
 
 Unique: (`workspace_id`, `object_key`, `code`)
 
@@ -1847,6 +2270,8 @@ Custom fields a business added to an object (including to leads, accounts and co
 | `is_unique` | boolean | yes | default false |
 | `lookup_target` | text | no |  |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`workspace_id`, `object_key`, `key`)
 
 #### `crm.layouts`
@@ -1862,6 +2287,8 @@ The page layout of an object for one business: sections, field order, highlights
 | `status` | text | yes | default 'published' |
 | `updated_by` | uuid | no |  |
 | `updated_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 Unique: (`workspace_id`, `object_key`)
 
@@ -1883,6 +2310,8 @@ Saved list views (table, kanban, calendar) with filters, sorting and columns; pr
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.favorites`
 
 Records and views a member pinned to their sidebar.
@@ -1898,6 +2327,8 @@ Records and views a member pinned to their sidebar.
 | `position` | integer | yes | default 0 |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`workspace_id`, `identity_id`, `kind`, `target_id`)
 
 #### `crm.code_counters`
@@ -1910,6 +2341,8 @@ The next number for record codes (L-000001, OPP-000001…) per business and pref
 | `prefix` | text | yes | part of the primary key |
 | `next_value` | bigint | yes | default 1 |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.assignment_state`
 
 Round-robin position for automatic record assignment.
@@ -1919,6 +2352,8 @@ Round-robin position for automatic record assignment.
 | `workspace_id` | uuid | yes | part of the primary key; the business (tenant) — → `crm.workspaces` |
 | `key` | text | yes | part of the primary key |
 | `last_index` | integer | yes | default '-1'::integer |
+
+Indexes: 1 (including the primary key).
 
 ### Relationships, payments, forecasts and SLA
 
@@ -1941,6 +2376,8 @@ The kinds of link two records can have. Rows with no `workspace_id` are built in
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 3 (including the primary key).
+
 #### `crm.record_relationships`
 
 A link between two records of one business: its type, where it starts (`source_object`, `source_id`) and where it points (`target_object`, `target_id`). Both ends are checked to be in the same business when the link is made.
@@ -1959,6 +2396,13 @@ A link between two records of one business: its type, where it starts (`source_o
 | `created_by` | uuid | no | → `crm.identities` |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
+| `role` | text | no |  |
+| `is_primary` | boolean | yes | default false |
+| `is_active` | boolean | yes | default true |
+| `start_date` | date | no |  |
+| `end_date` | date | no |  |
+
+Indexes: 5 (including the primary key).
 
 Unique: (`workspace_id`, `type_key`, `source_object`, `source_id`, `target_object`, `target_id`)
 
@@ -1975,6 +2419,8 @@ How much of a payment pays an invoice. Both ids point at `crm.object_records` (a
 | `amount` | numeric(16,2) | yes |  |
 | `created_by` | uuid | no | → `crm.identities` |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 4 (including the primary key).
 
 Unique: (`payment_id`, `invoice_id`)
 
@@ -1996,6 +2442,8 @@ Sales targets per period (`period_key`: `2026-10`, `2026-Q3`, `FY2026`) for the 
 | `updated_by` | uuid | no | → `crm.identities` |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 #### `crm.forecast_submissions`
 
@@ -2022,6 +2470,8 @@ A person's submitted forecast for a period: a snapshot of their numbers at that 
 | `approved_at` | timestamptz | no |  |
 | `approved_by` | uuid | no | → `crm.identities` |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`workspace_id`, `period_key`, `owner_id`, `pipeline`)
 
 #### `crm.sla_timers`
@@ -2046,8 +2496,315 @@ The SLA clocks of a case: one row per milestone (first response, resolution) wit
 | `breached_at` | timestamptz | no |  |
 | `escalated_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
+| `warn_percent` | integer | yes | default 80 |
+
+Indexes: 4 (including the primary key).
 
 Unique: (`case_id`, `milestone`)
+
+### Pricing, approvals and currencies
+
+#### `crm.currencies`
+
+The currencies the product knows (ISO code, name, symbol, decimals). Shared by every business; not customer data.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `code` | text | yes | primary key |
+| `name` | text | yes |  |
+| `symbol` | text | yes |  |
+| `decimal_places` | integer | yes | default 2 |
+| `is_active` | boolean | yes | default true |
+
+Indexes: 1 (including the primary key).
+
+#### `crm.exchange_rates`
+
+A business's rate from a currency into another (normally its base currency), valid from a date. A new rate ends the previous one the day before; old rates are kept so records made then can be explained.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `from_currency` | text | yes | → `crm.currencies` |
+| `to_currency` | text | yes | → `crm.currencies` |
+| `rate` | numeric(20,8) | yes |  |
+| `effective_from` | date | yes |  |
+| `effective_to` | date | no |  |
+| `source` | text | yes | default 'manual' |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
+
+Unique: (`workspace_id`, `from_currency`, `to_currency`, `effective_from`)
+
+#### `crm.price_book_entries`
+
+The price of one item in one price book: currency, list price, selling price, cost, largest discount, quantity break and validity dates. `price_book_id` and `catalog_item_id` point at `crm.object_records`. Soft-deleted so documents priced from an entry can still name it.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `price_book_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `catalog_item_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `currency` | text | yes | → `crm.currencies` |
+| `list_price` | numeric(16,2) | yes |  |
+| `unit_price` | numeric(16,2) | yes |  |
+| `cost` | numeric(16,2) | no |  |
+| `max_discount_pct` | numeric(5,2) | no |  |
+| `min_quantity` | numeric(14,3) | yes | default 1 |
+| `max_quantity` | numeric(14,3) | no |  |
+| `valid_from` | date | yes | default CURRENT_DATE |
+| `valid_to` | date | no |  |
+| `is_active` | boolean | yes | default true |
+| `version` | integer | yes | default 1 |
+| `created_by` | uuid | no | → `crm.identities` |
+| `updated_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+| `updated_at` | timestamptz | yes |  |
+| `deleted_at` | timestamptz | no |  |
+
+Indexes: 3 (including the primary key).
+
+#### `crm.product_bundle_items`
+
+The components of a bundle: which item, how many per bundle, required or optional, and whether its price is included in the bundle's.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `bundle_item_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `component_item_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `is_required` | boolean | yes | default true |
+| `quantity` | numeric(14,3) | yes | default 1 |
+| `min_quantity` | numeric(14,3) | no |  |
+| `max_quantity` | numeric(14,3) | no |  |
+| `sequence` | integer | yes | default 0 |
+| `price_mode` | text | yes | default 'additional' |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 3 (including the primary key).
+
+Unique: (`bundle_item_id`, `component_item_id`)
+
+#### `crm.pricing_rules`
+
+Rules evaluated when a document is priced. `kind`: price (set a price), discount, eligibility (who may buy), configuration (requires / excludes). `condition` and `action` are JSON; `priority` orders them.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `name` | text | yes |  |
+| `kind` | text | yes |  |
+| `priority` | integer | yes | default 100 |
+| `condition` | jsonb | yes | default '{}' |
+| `action` | jsonb | yes | default '{}' |
+| `effective_from` | date | no |  |
+| `effective_to` | date | no |  |
+| `is_active` | boolean | yes | default true |
+| `created_by` | uuid | no | → `crm.identities` |
+| `updated_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+| `updated_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
+
+#### `crm.approval_rules`
+
+Limits above which something needs approval, per kind (discount percent; refund, credit note, debit note, write-off amount), and the role that may approve.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `kind` | text | yes |  |
+| `min_value` | numeric(16,2) | yes | default 0 |
+| `approver_role` | text | yes | default 'ADMIN' |
+| `label` | text | yes | default '' |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
+
+Unique: (`workspace_id`, `kind`, `min_value`)
+
+#### `crm.approval_requests`
+
+One request for approval of a record (`object_key`, `record_id`): its value, who asked, the role that must decide, the decision and who made it. At most one pending request per record and kind.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `kind` | text | yes |  |
+| `object_key` | text | yes |  |
+| `record_id` | uuid | yes |  |
+| `value` | numeric(16,2) | yes |  |
+| `approver_role` | text | yes |  |
+| `reason` | text | yes | default '' |
+| `status` | text | yes | default 'pending' |
+| `requested_by` | uuid | no | → `crm.identities` |
+| `decided_by` | uuid | no | → `crm.identities` |
+| `decision_note` | text | yes | default '' |
+| `created_at` | timestamptz | yes |  |
+| `decided_at` | timestamptz | no |  |
+
+Indexes: 3 (including the primary key).
+
+### Sales execution, finance and service
+
+#### `crm.record_team_members`
+
+A person on the team of one record (account team, opportunity team, case team, contract team) with a team role and an access level (read, write, full).
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `object_key` | text | yes |  |
+| `record_id` | uuid | yes |  |
+| `identity_id` | uuid | yes | → `crm.identities`, deleted with it |
+| `team_role` | text | yes | default '' |
+| `access_level` | text | yes | default 'read' |
+| `is_primary` | boolean | yes | default false |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+| `updated_at` | timestamptz | yes |  |
+
+Indexes: 3 (including the primary key).
+
+Unique: (`workspace_id`, `object_key`, `record_id`, `identity_id`)
+
+#### `crm.territory_assignments`
+
+An account, a person or a team in a territory, from a date to a date. Ending an assignment sets `effective_to`; the row is kept.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `territory_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `kind` | text | yes |  |
+| `account_id` | uuid | no | → `crm.accounts`, deleted with it |
+| `identity_id` | uuid | no | → `crm.identities`, deleted with it |
+| `team_id` | uuid | no | → `crm.teams`, deleted with it |
+| `is_primary` | boolean | yes | default true |
+| `effective_from` | date | yes | default CURRENT_DATE |
+| `effective_to` | date | no |  |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 5 (including the primary key).
+
+#### `crm.campaign_members`
+
+A lead or a contact reached by a campaign (exactly one of `lead_id` / `contact_id`), with status, whether they responded, and first and last touch.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `campaign_id` | uuid | yes | → `crm.campaigns`, deleted with it |
+| `lead_id` | uuid | no | → `crm.leads`, deleted with it |
+| `contact_id` | uuid | no | → `crm.contacts`, deleted with it |
+| `status` | text | yes | default 'sent' |
+| `source` | text | yes | default 'manual' |
+| `responded` | boolean | yes | default false |
+| `response_date` | timestamptz | no |  |
+| `first_touch_at` | timestamptz | yes |  |
+| `last_touch_at` | timestamptz | yes |  |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+| `updated_at` | timestamptz | yes |  |
+
+Indexes: 6 (including the primary key).
+
+#### `crm.refund_allocations`
+
+The share of a refund that comes off an invoice the refunded payment had paid. Rebuilt whenever the payment's refunds or allocations change.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `refund_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `payment_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `invoice_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `amount` | numeric(16,2) | yes |  |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 4 (including the primary key).
+
+Unique: (`refund_id`, `invoice_id`)
+
+#### `crm.credit_allocations`
+
+How much of a credit note is applied to an invoice.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `credit_note_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `invoice_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `amount` | numeric(16,2) | yes |  |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 3 (including the primary key).
+
+Unique: (`credit_note_id`, `invoice_id`)
+
+#### `crm.entitlement_usage`
+
+One use of an entitlement: a case, or hours of work on a work order. One source counts once.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | uuid | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `entitlement_id` | uuid | yes | → `crm.object_records`, deleted with it |
+| `kind` | text | yes |  |
+| `quantity` | numeric(12,2) | yes |  |
+| `source_object` | text | yes |  |
+| `source_id` | uuid | yes |  |
+| `note` | text | yes | default '' |
+| `created_by` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 3 (including the primary key).
+
+Unique: (`entitlement_id`, `kind`, `source_object`, `source_id`)
+
+#### `crm.forecast_history`
+
+Every forecast submission and every manager decision, with the numbers at that moment.
+
+| Column | Type | Required | Notes |
+|---|---|---|---|
+| `id` | bigint | yes | primary key |
+| `workspace_id` | uuid | yes | → `crm.workspaces`, deleted with it |
+| `period_key` | text | yes |  |
+| `owner_id` | uuid | yes | → `crm.identities`, deleted with it |
+| `pipeline` | text | yes | default '' |
+| `event` | text | yes |  |
+| `closed_won` | numeric(16,2) | yes | default 0 |
+| `commit_amount` | numeric(16,2) | yes | default 0 |
+| `best_case` | numeric(16,2) | yes | default 0 |
+| `pipeline_amount` | numeric(16,2) | yes | default 0 |
+| `forecast_amount` | numeric(16,2) | yes | default 0 |
+| `override_amount` | numeric(16,2) | no |  |
+| `quota` | numeric(16,2) | yes | default 0 |
+| `comment` | text | yes | default '' |
+| `actor_id` | uuid | no | → `crm.identities` |
+| `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 ### Timeline, files, notifications and audit
 
@@ -2073,6 +2830,8 @@ The timeline of a record: created, changed, notes, calls, card scanned, app even
 | `record_id` | uuid | no |  |
 | `actor_id` | uuid | no |  |
 
+Indexes: 6 (including the primary key).
+
 Unique: (`dedupe_key`)
 
 #### `crm.files`
@@ -2094,6 +2853,8 @@ Files attached to a record (stored in the database).
 | `created_at` | timestamptz | yes |  |
 | `deleted_at` | timestamptz | no |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.notifications`
 
 In-app notifications for a member (mentions, assignments, reminders).
@@ -2110,6 +2871,8 @@ In-app notifications for a member (mentions, assignments, reminders).
 | `actor_id` | uuid | no |  |
 | `read_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 #### `crm.audit_events`
 
@@ -2131,6 +2894,8 @@ Who did what, when, from where, with before/after values. Written in the same tr
 | `request_id` | text | no |  |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 3 (including the primary key).
+
 #### `crm.external_links`
 
 Maps a record to its counterpart in a connected system (the app's user id ↔ a lead / account / contact).
@@ -2148,6 +2913,8 @@ Maps a record to its counterpart in a connected system (the app's user id ↔ a 
 | `last_login_at` | timestamptz | no |  |
 | `synced_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.card_links`
 
 Links a scanned business card (`public.saved_cards.id`) to the lead, contact or account it is about, inside one business.
@@ -2161,6 +2928,8 @@ Links a scanned business card (`public.saved_cards.id`) to the lead, contact or 
 | `record_id` | uuid | yes |  |
 | `created_by` | uuid | no | → `crm.identities` |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 4 (including the primary key).
 
 Unique: (`workspace_id`, `card_id`, `object_key`, `record_id`)
 
@@ -2189,6 +2958,8 @@ A member's connected mailbox (Google, Microsoft, IMAP/SMTP); credentials are enc
 | `last_synced_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 Unique: (`workspace_id`, `identity_id`, `email`)
 
@@ -2220,6 +2991,8 @@ Emails sent from or synced into the CRM.
 | `rfc_message_id` | text | no |  |
 | `in_reply_to` | text | no |  |
 
+Indexes: 5 (including the primary key).
+
 Unique: (`mail_account_id`, `provider_id`)
 
 #### `crm.message_links`
@@ -2232,6 +3005,8 @@ Which records an email belongs to.
 | `workspace_id` | uuid | yes | the business (tenant) — → `crm.workspaces` |
 | `object_key` | text | yes | part of the primary key |
 | `record_id` | uuid | yes | part of the primary key |
+
+Indexes: 2 (including the primary key).
 
 #### `crm.campaigns`
 
@@ -2256,6 +3031,14 @@ A bulk email to a filtered list of records.
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 | `sent_at` | timestamptz | no |  |
+| `campaign_type` | text | yes | default 'email' |
+| `budgeted_cost` | numeric(16,2) | no |  |
+| `actual_cost` | numeric(16,2) | no |  |
+| `expected_revenue` | numeric(16,2) | no |  |
+| `start_date` | date | no |  |
+| `end_date` | date | no |  |
+
+Indexes: 1 (including the primary key).
 
 #### `crm.campaign_recipients`
 
@@ -2273,6 +3056,8 @@ One recipient of a campaign with delivery status and unsubscribe token.
 | `token` | text | yes |  |
 | `sent_at` | timestamptz | no |  |
 
+Indexes: 2 (including the primary key).
+
 Unique: (`token`)
 
 #### `crm.unsubscribes`
@@ -2285,6 +3070,8 @@ Addresses that opted out of a business's campaigns.
 | `email` | text | yes | part of the primary key |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.mail_blocklist`
 
 Senders a member never wants synced.
@@ -2295,6 +3082,8 @@ Senders a member never wants synced.
 | `identity_id` | uuid | yes | part of the primary key; → `crm.identities`, deleted with it |
 | `pattern` | text | yes | part of the primary key |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 ### Automation and integration
 
@@ -2320,6 +3109,8 @@ An automation: trigger + steps. `draft` is being edited; `published` is what run
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 3 (including the primary key).
+
 Unique: (`webhook_token`)
 
 #### `crm.workflow_versions`
@@ -2333,6 +3124,8 @@ Every published version of a workflow.
 | `definition` | jsonb | yes |  |
 | `published_by` | uuid | no |  |
 | `published_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 #### `crm.workflow_runs`
 
@@ -2355,6 +3148,8 @@ One execution of a workflow with its step results.
 | `started_at` | timestamptz | yes |  |
 | `finished_at` | timestamptz | no |  |
 
+Indexes: 3 (including the primary key).
+
 #### `crm.webhooks`
 
 Outgoing webhooks of a business (signed with an encrypted secret).
@@ -2375,6 +3170,8 @@ Outgoing webhooks of a business (signed with an encrypted secret).
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.webhook_deliveries`
 
 Each delivery attempt of a webhook event.
@@ -2394,6 +3191,8 @@ Each delivery attempt of a webhook event.
 | `next_attempt_at` | timestamptz | no |  |
 | `created_at` | timestamptz | yes |  |
 | `delivered_at` | timestamptz | no |  |
+
+Indexes: 3 (including the primary key).
 
 Unique: (`webhook_id`, `event_id`)
 
@@ -2418,6 +3217,8 @@ Events (record created/updated/…) written with the change and relayed afterwar
 | `relayed_at` | timestamptz | no |  |
 | `attempts` | integer | yes | default 0 |
 
+Indexes: 3 (including the primary key).
+
 Unique: (`event_id`)
 
 #### `crm.idempotency_keys`
@@ -2434,6 +3235,8 @@ Remembers the answer to a request sent with an `Idempotency-Key`, so a retry doe
 | `status_code` | integer | no |  |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `crm.connector_state`
 
 Small key/value store for background jobs (sync cursors, one-time markers such as fresh-start runs).
@@ -2443,6 +3246,8 @@ Small key/value store for background jobs (sync cursors, one-time markers such a
 | `key` | text | yes | primary key |
 | `value` | jsonb | yes | default '{}' |
 | `updated_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 ### Reports
 
@@ -2462,6 +3267,8 @@ Saved reports over one object (filters, grouping, totals); they run with the vie
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.dashboards`
 
 Dashboards made of report widgets.
@@ -2477,6 +3284,8 @@ Dashboards made of report widgets.
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `crm.schema_migrations`
 
 Which CRM migrations have been applied.
@@ -2486,6 +3295,8 @@ Which CRM migrations have been applied.
 | `version` | bigint | yes | primary key |
 | `name` | text | yes |  |
 | `applied_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 ### Cards, directory and app (schema `public`)
 
@@ -2524,6 +3335,8 @@ The app profile of a person (cards, listings, premium). Linked to the login by `
 | `subscription_updated_at` | timestamptz | no |  |
 | `identity_id` | uuid | no | → `crm.identities` |
 
+Indexes: 3 (including the primary key).
+
 Unique: (`phone`)
 
 #### `public.saved_cards`
@@ -2555,6 +3368,8 @@ A scanned or saved business card (the card vault). `identity_id` = who saved it,
 | `workspace_id` | uuid | no | → `crm.workspaces` |
 | `event_tag` | varchar(100) | no |  |
 
+Indexes: 6 (including the primary key).
+
 #### `public.saved_card_phones`
 
 Phone numbers read from a card.
@@ -2569,6 +3384,8 @@ Phone numbers read from a card.
 | `is_whatsapp` | boolean | yes | default false |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `public.saved_card_emails`
 
 Email addresses read from a card.
@@ -2579,6 +3396,8 @@ Email addresses read from a card.
 | `saved_card_id` | uuid | yes | → `public.saved_cards`, deleted with it |
 | `email` | varchar(255) | yes |  |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 #### `public.saved_card_addresses`
 
@@ -2591,6 +3410,8 @@ The address read from a card.
 | `parse_status` | parse_status | yes | default 'raw_only'::parse_status |
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 #### `public.saved_card_images`
 
@@ -2609,6 +3430,8 @@ The photos of a card (front / back).
 | `content_type` | varchar(50) | no | default 'image/jpeg' |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `public.saved_card_tags`
 
 Tags on a card.
@@ -2617,6 +3440,8 @@ Tags on a card.
 |---|---|---|---|
 | `saved_card_id` | uuid | yes | part of the primary key; → `public.saved_cards`, deleted with it |
 | `tag_id` | uuid | yes | part of the primary key; → `public.tags`, deleted with it |
+
+Indexes: 1 (including the primary key).
 
 #### `public.tags`
 
@@ -2629,6 +3454,8 @@ A person's tags for their cards.
 | `name` | varchar(50) | yes |  |
 | `kind` | tag_kind | yes | default 'custom'::tag_kind |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 Unique: (`user_id`, `name`)
 
@@ -2676,6 +3503,8 @@ A **public listing** in the directory. `workspace_id` links it to the business (
 | `claimed_at` | timestamptz | no |  |
 | `workspace_id` | uuid | no | → `crm.workspaces` |
 
+Indexes: 7 (including the primary key).
+
 Unique: (`slug`)
 
 #### `public.business_phones`
@@ -2692,6 +3521,8 @@ Phone numbers of a listing.
 | `otp_verified` | boolean | yes | default false |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 1 (including the primary key).
+
 #### `public.business_services`
 
 Products and services of a listing.
@@ -2702,6 +3533,8 @@ Products and services of a listing.
 | `business_id` | uuid | yes | → `public.businesses`, deleted with it |
 | `name` | varchar(100) | yes |  |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 1 (including the primary key).
 
 #### `public.business_card_images`
 
@@ -2715,6 +3548,8 @@ The original card images of a listing.
 | `image_data` | bytea | no |  |
 | `content_type` | varchar(80) | no | default 'image/jpeg' |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 Unique: (`business_id`, `side`)
 
@@ -2733,6 +3568,8 @@ The generated digital card of a listing: template, colour, QR slug.
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 3 (including the primary key).
+
 Unique: (`business_id`); (`qr_slug`)
 
 #### `public.categories`
@@ -2749,6 +3586,8 @@ Directory categories (reference data).
 | `sort_order` | smallint | yes | default 0 |
 | `is_active` | boolean | yes | default true |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 Unique: (`slug`)
 
@@ -2773,6 +3612,8 @@ Support requests from app users to the platform.
 | `created_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 
+Indexes: 3 (including the primary key).
+
 #### `public.support_ticket_messages`
 
 The conversation on a support ticket.
@@ -2787,6 +3628,8 @@ The conversation on a support ticket.
 | `body` | text | yes |  |
 | `created_at` | timestamptz | yes |  |
 
+Indexes: 2 (including the primary key).
+
 #### `public.contact_backups`
 
 A person's backed-up phone contacts.
@@ -2799,6 +3642,8 @@ A person's backed-up phone contacts.
 | `phones` | jsonb | yes | default '[]' |
 | `emails` | jsonb | yes | default '[]' |
 | `created_at` | timestamptz | yes |  |
+
+Indexes: 2 (including the primary key).
 
 #### `public.subscription_payments`
 
@@ -2815,6 +3660,8 @@ Older direct payments for the app's premium plan.
 | `status` | varchar(20) | yes | default 'created' |
 | `created_at` | timestamptz | yes |  |
 | `paid_at` | timestamptz | no |  |
+
+Indexes: 4 (including the primary key).
 
 Unique: (`razorpay_order_id`); (`razorpay_payment_id`)
 
@@ -2844,3 +3691,5 @@ App-store subscription events received from RevenueCat.
 | `received_at` | timestamptz | yes |  |
 | `updated_at` | timestamptz | yes |  |
 | `processed_at` | timestamptz | no |  |
+
+Indexes: 2 (including the primary key).

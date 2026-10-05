@@ -758,7 +758,7 @@ export interface ForecastRow extends ForecastNumbers {
 
 export interface Forecast {
   period: ForecastPeriod;
-  groupBy: 'owner' | 'team';
+  groupBy: 'owner' | 'team' | 'territory' | 'role';
   pipeline: string;
   currency: string;
   totals: ForecastNumbers;
@@ -797,5 +797,364 @@ export function enterpriseApi(code: string) {
     reviewForecast: (submissionId: string, body: { status: 'approved' | 'rejected'; overrideAmount?: number; comment?: string }) =>
       api<{ ok: boolean }>(`${base}/forecast/submissions/${enc(submissionId)}/review`, { method: 'POST', body }),
     setFiscalStart: (fiscalStartMonth: number) => api<{ fiscalStartMonth: number }>(`${base}/forecast/settings`, { method: 'PUT', body: { fiscalStartMonth } })
+  };
+}
+
+// ---- Commercial, sales-execution and service model (D-118…D-127) ----
+
+export interface PriceBookEntry {
+  id: string;
+  priceBookId: string;
+  priceBook?: string;
+  itemId: string;
+  item?: string;
+  sku?: string;
+  currency: string;
+  listPrice: number;
+  unitPrice: number;
+  cost?: number;
+  maxDiscountPercent?: string;
+  minQuantity: string;
+  maxQuantity?: string;
+  validFrom: string;
+  validTo?: string;
+  isActive: boolean;
+  version: number;
+}
+
+export interface BundleComponent {
+  itemId: string;
+  item?: string;
+  required: boolean;
+  quantity: number;
+  minQuantity?: string;
+  maxQuantity?: string;
+  sequence?: number;
+  priceMode: 'included' | 'additional';
+}
+
+export interface PricingRule {
+  id: string;
+  name: string;
+  kind: 'price' | 'discount' | 'eligibility' | 'configuration';
+  priority: number;
+  condition: {
+    itemIds?: string[];
+    family?: string;
+    itemType?: string;
+    minQuantity?: number;
+    maxQuantity?: number;
+    accountIds?: string[];
+    accountTypes?: string[];
+    territoryIds?: string[];
+    priceBookIds?: string[];
+    withItemIds?: string[];
+    currency?: string;
+  };
+  action: { type?: string; value?: number; requires?: string[]; excludes?: string[]; accountTypes?: string[]; territoryIds?: string[]; message?: string };
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  isActive: boolean;
+}
+
+export interface PriceLineInput {
+  itemId?: string;
+  name?: string;
+  quantity: number;
+  discountPercent?: number;
+  unitPrice?: number;
+  options?: Array<{ itemId: string; quantity?: number }>;
+  startDate?: string;
+  endDate?: string;
+  billingFrequency?: string;
+}
+
+export interface PricedLine {
+  itemId?: string;
+  name: string;
+  sku?: string;
+  quantity: number;
+  listPrice: number;
+  unitPrice: number;
+  discountPercent: number;
+  discountAmount: number;
+  taxRate: number;
+  taxAmount: number;
+  total: number;
+  priceBookEntryId?: string;
+  pricingNote: string;
+  bundleOf?: number;
+}
+
+export interface PriceResult {
+  priceBookId?: string;
+  priceBook?: string;
+  currency: string;
+  lines: PricedLine[];
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  maxDiscountPercent: number;
+  approval: { required: boolean; kind: string; value: number; approverRole?: string; label?: string };
+}
+
+export interface ApprovalRequest {
+  id: string;
+  kind: string;
+  object: string;
+  recordId: string;
+  record: string;
+  value: number;
+  approverRole: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  requestedBy: string;
+  decidedBy?: string;
+  note?: string;
+  createdAt: string;
+  decidedAt?: string;
+  canDecide: boolean;
+}
+
+export interface DocumentLines {
+  object: string;
+  id: string;
+  status: string;
+  editable: boolean;
+  pricing: PriceResult;
+  approvalRequest?: ApprovalRequest;
+}
+
+export interface ApprovalRule {
+  kind: string;
+  minValue: number;
+  approverRole: string;
+  label: string;
+}
+
+export interface ExchangeRate {
+  id: string;
+  fromCurrency: string;
+  toCurrency: string;
+  rate: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  source: string;
+}
+
+export interface ContactRole {
+  id: string;
+  contactId: string;
+  contact: string;
+  email?: string;
+  phone?: string;
+  object: string;
+  recordId: string;
+  record: string;
+  role: string;
+  isPrimary: boolean;
+  isActive: boolean;
+  startDate?: string;
+  endDate?: string;
+  note?: string;
+}
+
+export interface RecordTeamMember {
+  identityId: string;
+  name: string;
+  email?: string;
+  teamRole: string;
+  accessLevel: 'read' | 'write' | 'full';
+  isPrimary: boolean;
+}
+
+export interface TerritoryNode {
+  id: string;
+  code: string;
+  name: string;
+  parentId?: string;
+  type?: string;
+  status?: string;
+  manager?: string;
+  depth: number;
+  accounts: number;
+  people: number;
+  teams: number;
+}
+
+export interface TerritoryAssignment {
+  id: string;
+  territoryId: string;
+  territory?: string;
+  kind: 'account' | 'user' | 'team';
+  targetId: string;
+  target: string;
+  isPrimary: boolean;
+  effectiveFrom: string;
+  effectiveTo?: string;
+}
+
+export interface CampaignMember {
+  id: string;
+  campaignId: string;
+  campaign?: string;
+  object: 'leads' | 'contacts';
+  recordId: string;
+  name: string;
+  email?: string;
+  status: string;
+  source: string;
+  responded: boolean;
+  firstTouchAt: string;
+  lastTouchAt: string;
+}
+
+export interface CampaignAttribution {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  members: number;
+  responded: number;
+  leads: number;
+  contacts: number;
+  convertedLeads: number;
+  opportunities: number;
+  wonDeals: number;
+  pipeline: number;
+  wonRevenue: number;
+  actualCost?: number;
+  budgetedCost?: number;
+  expectedRevenue?: number;
+  conversionRate: number;
+  roiPercent?: number;
+  costPerLead?: number;
+}
+
+export interface CreditAllocation {
+  id: string;
+  invoiceId: string;
+  invoice: string;
+  invoiceCode: string;
+  amount: number;
+}
+
+export interface Slot {
+  resourceId: string;
+  resource: string;
+  start: string;
+  end: string;
+}
+
+export interface EntitlementUsage {
+  data: Array<{ kind: 'case' | 'hours'; quantity: number; object: string; recordId: string; note: string; at: string }>;
+  cases: { included: number; used: number; remaining?: number };
+  hours: { included: number; used: number; remaining?: number };
+  overagePolicy: string;
+}
+
+export interface AccountStatement {
+  currency: string;
+  invoiced: number;
+  outstanding: number;
+  unappliedPayments: number;
+  unusedCredit: number;
+  netReceivable: number;
+  lines: Array<{ kind: 'invoice' | 'payment' | 'credit_note'; id: string; code: string; name: string; status: string; date: string; amount: number; open: number }>;
+}
+
+export function commerceApi(code: string) {
+  const base = `/w/${enc(code)}`;
+  const rec = (object: string, id: string) => `${base}/crm/${enc(object)}/${enc(id)}`;
+  return {
+    // pricing
+    entries: (params: { priceBookId?: string; itemId?: string }) => api<{ data: PriceBookEntry[]; canManage: boolean; base: string }>(`${base}/price-book-entries${qs(params)}`),
+    saveEntry: (body: Record<string, unknown>, id?: string) =>
+      api<PriceBookEntry>(id ? `${base}/price-book-entries/${enc(id)}` : `${base}/price-book-entries`, { method: id ? 'PATCH' : 'POST', body }),
+    deleteEntry: (id: string) => api<void>(`${base}/price-book-entries/${enc(id)}`, { method: 'DELETE' }),
+    bundle: (itemId: string) => api<{ data: BundleComponent[]; canManage: boolean }>(`${base}/catalog_items/${enc(itemId)}/bundle`),
+    saveBundle: (itemId: string, components: BundleComponent[]) =>
+      api<{ data: BundleComponent[] }>(`${base}/catalog_items/${enc(itemId)}/bundle`, { method: 'PUT', body: { components } }),
+    rules: () => api<{ data: PricingRule[]; canManage: boolean }>(`${base}/pricing/rules`),
+    saveRule: (body: Partial<PricingRule>, id?: string) =>
+      api<{ data: PricingRule[] }>(id ? `${base}/pricing/rules/${enc(id)}` : `${base}/pricing/rules`, { method: id ? 'PATCH' : 'POST', body }),
+    deleteRule: (id: string) => api<void>(`${base}/pricing/rules/${enc(id)}`, { method: 'DELETE' }),
+    preview: (body: { priceBookId?: string; currency?: string; accountId?: string; date?: string; lines: PriceLineInput[] }) =>
+      api<PriceResult>(`${base}/pricing/preview`, { method: 'POST', body }),
+    lines: (object: string, id: string) => api<DocumentLines>(`${base}/${enc(object)}/${enc(id)}/lines`),
+    putLines: (object: string, id: string, body: { priceBookId?: string; currency?: string; lines: PriceLineInput[] }) =>
+      api<DocumentLines>(`${base}/${enc(object)}/${enc(id)}/lines`, { method: 'PUT', body }),
+    reviseQuote: (id: string) => api<{ object: string; id: string; code: string }>(`${base}/quotes/${enc(id)}/revise`, { method: 'POST' }),
+    convertQuote: (id: string) => api<{ object: string; id: string; code: string }>(`${base}/quotes/${enc(id)}/convert`, { method: 'POST' }),
+    invoiceOrder: (id: string) => api<{ object: string; id: string; code: string }>(`${base}/sales_orders/${enc(id)}/invoice`, { method: 'POST' }),
+
+    // approvals
+    approvalRules: () =>
+      api<{ data: ApprovalRule[]; kinds: Record<string, string>; roles: Array<{ key: string; name: string }>; canManage: boolean }>(`${base}/approvals/rules`),
+    saveApprovalRules: (kind: string, rules: ApprovalRule[]) => api<{ data: ApprovalRule[] }>(`${base}/approvals/rules`, { method: 'PUT', body: { kind, rules } }),
+    approvals: (status = 'pending') => api<{ data: ApprovalRequest[]; kinds: Record<string, string> }>(`${base}/approvals${qs({ status })}`),
+    decide: (id: string, status: 'approved' | 'rejected', note?: string) => api<{ ok: boolean }>(`${base}/approvals/${enc(id)}/decide`, { method: 'POST', body: { status, note } }),
+
+    // currencies
+    currencies: () => api<{ data: Array<{ code: string; name: string; symbol: string }>; base: string; canManage: boolean }>(`${base}/currencies`),
+    rates: () => api<{ data: ExchangeRate[]; base: string; canManage: boolean }>(`${base}/exchange-rates`),
+    saveRate: (body: { fromCurrency: string; rate: number; effectiveFrom?: string }) => api<{ data: ExchangeRate[] }>(`${base}/exchange-rates`, { method: 'PUT', body }),
+    deleteRate: (id: string) => api<void>(`${base}/exchange-rates/${enc(id)}`, { method: 'DELETE' }),
+
+    // finance
+    creditAllocations: (id: string) => api<{ data: CreditAllocation[]; canEdit: boolean }>(`${base}/credit_notes/${enc(id)}/allocations`),
+    applyCredit: (id: string, body: { invoiceId: string; amount: number }) => api<{ data: CreditAllocation[] }>(`${base}/credit_notes/${enc(id)}/apply`, { method: 'POST', body }),
+    unapplyCredit: (id: string, allocationId: string) => api<void>(`${base}/credit_notes/${enc(id)}/allocations/${enc(allocationId)}`, { method: 'DELETE' }),
+    statement: (accountId: string) => api<AccountStatement>(`${base}/accounts/${enc(accountId)}/statement`),
+
+    // people on a record
+    contactRoles: (object: string, id: string) => api<{ data: ContactRole[]; roles: string[]; canEdit: boolean }>(`${rec(object, id)}/contact-roles`),
+    addContactRole: (object: string, id: string, body: { contactId: string; role: string; isPrimary?: boolean; note?: string }) =>
+      api<{ data: ContactRole[] }>(`${rec(object, id)}/contact-roles`, { method: 'POST', body }),
+    updateContactRole: (roleId: string, body: Partial<Pick<ContactRole, 'role' | 'isPrimary' | 'isActive' | 'endDate'>>) =>
+      api<{ data: ContactRole[] }>(`${base}/contact-roles/${enc(roleId)}`, { method: 'PATCH', body }),
+    deleteContactRole: (roleId: string) => api<void>(`${base}/contact-roles/${enc(roleId)}`, { method: 'DELETE' }),
+    team: (object: string, id: string) => api<{ data: RecordTeamMember[]; roles: string[]; ownerId: string; canEdit: boolean }>(`${rec(object, id)}/team`),
+    saveTeamMember: (object: string, id: string, body: { identityId: string; teamRole: string; accessLevel: string; isPrimary?: boolean }) =>
+      api<{ data: RecordTeamMember[] }>(`${rec(object, id)}/team`, { method: 'PUT', body }),
+    removeTeamMember: (object: string, id: string, identityId: string) => api<void>(`${rec(object, id)}/team/${enc(identityId)}`, { method: 'DELETE' }),
+
+    // territories
+    territoryTree: () => api<{ data: TerritoryNode[]; canManage: boolean }>(`${base}/territories/tree`),
+    territoryAssignments: (id: string, history = false) =>
+      api<{ data: TerritoryAssignment[]; canManage: boolean }>(`${base}/territories/${enc(id)}/assignments${qs({ history: history ? 1 : undefined })}`),
+    assignTerritory: (id: string, body: { kind: string; accountId?: string; identityId?: string; teamId?: string; isPrimary?: boolean }) =>
+      api<{ data: TerritoryAssignment[] }>(`${base}/territories/${enc(id)}/assignments`, { method: 'POST', body }),
+    endAssignment: (id: string) => api<void>(`${base}/territory-assignments/${enc(id)}`, { method: 'DELETE' }),
+    accountTerritories: (accountId: string) => api<{ data: TerritoryAssignment[]; canManage: boolean }>(`${rec('accounts', accountId)}/territories`),
+
+    // campaigns
+    attribution: (model: string) =>
+      api<{ model: string; data: CampaignAttribution[]; currency: string; totals: { wonRevenue: number; pipeline: number; deals: number }; canManage: boolean; models: Array<{ key: string; label: string }> }>(
+        `${base}/campaigns/attribution${qs({ model })}`
+      ),
+    campaignMembers: (campaignId: string) => api<{ data: CampaignMember[]; statuses: string[] }>(`${base}/campaigns/${enc(campaignId)}/members`),
+    addCampaignMember: (campaignId: string, body: { leadId?: string; contactId?: string; status?: string; source?: string }) =>
+      api<{ data: CampaignMember[] }>(`${base}/campaigns/${enc(campaignId)}/members`, { method: 'POST', body }),
+    updateCampaignMember: (id: string, body: { status?: string; responded?: boolean }) => api<{ ok: boolean }>(`${base}/campaign-members/${enc(id)}`, { method: 'PATCH', body }),
+    removeCampaignMember: (id: string) => api<void>(`${base}/campaign-members/${enc(id)}`, { method: 'DELETE' }),
+    campaignCosts: (campaignId: string, body: { campaignType?: string; budgetedCost?: number; actualCost?: number; expectedRevenue?: number }) =>
+      api<{ ok: boolean }>(`${base}/campaigns/${enc(campaignId)}/costs`, { method: 'PATCH', body }),
+    recordCampaigns: (object: string, id: string) => api<{ data: CampaignMember[] }>(`${rec(object, id)}/campaigns`),
+
+    // field service
+    slots: (params: { serviceId?: string; date: string; days?: number; resourceId?: string; durationMinutes?: number }) =>
+      api<{ data: Slot[]; durationMinutes: number }>(`${base}/scheduling/slots${qs(params)}`),
+    book: (body: { serviceId?: string; resourceId?: string; start: string; accountId?: string; contactId?: string; workOrderId?: string; caseId?: string; name?: string; durationMinutes?: number }) =>
+      api<RecordRow>(`${base}/scheduling/book`, { method: 'POST', body }),
+    reschedule: (appointmentId: string, body: { start: string; resourceId?: string }) => api<RecordRow>(`${base}/appointments/${enc(appointmentId)}/reschedule`, { method: 'POST', body }),
+    caseWorkOrder: (caseId: string) => api<RecordRow>(`${base}/cases/${enc(caseId)}/work-order`, { method: 'POST' }),
+    invoiceWorkOrder: (id: string) => api<{ object: string; id: string; code: string }>(`${base}/work_orders/${enc(id)}/invoice`, { method: 'POST' }),
+    entitlementUsage: (id: string) => api<EntitlementUsage>(`${base}/entitlements/${enc(id)}/usage`),
+    forecastHistory: (period: string) =>
+      api<{ events: Array<{ owner: string; event: string; forecastAmount: number; overrideAmount?: number; comment?: string; actor?: string; at: string }>; accuracy: Array<{ ownerId: string; submitted: number; closedWon: number; accuracyPercent?: number }> }>(
+        `${base}/forecast/history${qs({ period })}`
+      )
   };
 }

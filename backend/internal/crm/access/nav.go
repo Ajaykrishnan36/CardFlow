@@ -51,6 +51,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if e.Can("opportunities", "read") {
 		nav = append(nav, NavItem{Key: "forecasts", Label: "Forecasts", Path: base + "/forecasts", Icon: "trending-up", Group: "Sales", Available: true})
 	}
+	// Requests waiting for a decision: discounts, refunds, credit notes, write-offs (D-121).
+	if e.Can("quotes", "read") || e.Can("invoices", "read") || e.HasCapability(CapApprovals) {
+		nav = append(nav, NavItem{Key: "approvals", Label: "Approvals", Path: base + "/approvals", Icon: "badge-check", Group: "Sales operations", Available: true})
+	}
 	// Scanned business cards (D-98): for anyone who works with leads or contacts.
 	if e.Can("lead", "read") || e.Can("contact", "read") {
 		nav = append(nav, NavItem{Key: "cards", Label: "Business cards", Path: base + "/cards", Icon: "scan-line", Group: "Sales", Available: true})
@@ -84,6 +88,13 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	}
 	if e.HasCapability(CapCampaigns) {
 		nav = append(nav, NavItem{Key: "campaigns", Label: "Email campaigns", Path: base + "/campaigns", Icon: "megaphone", Group: "Automation", Available: true})
+	}
+	// What each campaign brought in (D-125).
+	if e.HasCapability(CapCampaigns) || e.Can("opportunities", "read") {
+		nav = append(nav, NavItem{Key: "campaign-results", Label: "Campaign results", Path: base + "/campaign-results", Icon: "megaphone", Group: "Automation", Available: true})
+	}
+	if e.HasCapability(CapPricing) || e.HasCapability(CapApprovals) {
+		nav = append(nav, NavItem{Key: "pricing", Label: "Pricing & approvals", Path: base + "/settings/pricing", Icon: "sliders", Group: "Settings", Available: true})
 	}
 	if e.HasCapability(CapEmailSend) {
 		nav = append(nav, NavItem{Key: "mailboxes", Label: "Email & calendar", Path: base + "/settings/email", Icon: "mail", Group: "Settings", Available: true})

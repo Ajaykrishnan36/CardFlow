@@ -27,6 +27,10 @@ import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys
 import { layoutHref, listHref, recordHref, scopedLookupHref, useRecordScope } from './record-scope';
 import { RunWorkflowButton } from './run-workflow';
 import { isForbidden, RecordNoAccess } from './record-states';
+import {
+  AccountTerritoryCard, BookAppointmentButton, BundleCard, CaseWorkOrderButton, ContactRolesCard, CreditNoteCard, DocumentLinesCard, EntitlementUsageCard,
+  PriceEntriesCard, RecordCampaignsCard, RecordTeamCard, TerritoryMembersCard, hasContactRoles, hasLines, hasRecordTeam
+} from './record-commerce';
 import { CaseSlaCard, InvoicePaymentsCard, PaymentAllocationsCard, RelationshipsCard, RenewContractButton } from './record-enterprise';
 
 export function RecordDetailPage({ object }: { object: ObjectKey }) {
@@ -297,7 +301,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   // Links made in the Relationships panel have their own card (add / remove) on workspace pages.
   const inWorkspace = scope.audience === 'member';
   const relatedLists = detail.related.filter(
-    (r) => r.object !== 'activities' && !(inWorkspace && (r.key.startsWith('rel:') || (object === 'invoices' && r.object === 'payments')))
+    (r) => r.object !== 'activities' && !(inWorkspace && (r.key.startsWith('rel:') || (object === 'invoices' && r.object === 'payments') || (hasLines(object) && r.object === 'line_items')))
   );
   const relatedCount = relatedLists.reduce((n, r) => n + r.rows.length, 0);
   const canEmail = Boolean(email) && scope.hasCapability('email.send');
@@ -404,6 +408,8 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
             ) : null}
             <RunWorkflowButton object={object} id={id} disabled={editing} />
             {object === 'contracts' ? <RenewContractButton record={record} disabled={editing} /> : null}
+            {inWorkspace && object === 'cases' ? <CaseWorkOrderButton record={record} disabled={editing} /> : null}
+            {inWorkspace && (object === 'work_orders' || object === 'appointments' || object === 'cases') ? <BookAppointmentButton record={record} object={object as 'work_orders' | 'appointments' | 'cases'} disabled={editing} /> : null}
             {canConvert ? (
               <Button size="sm" onClick={() => setConvertOpen(true)} disabled={editing}>
                 <ArrowRightLeft /> {t('records.detail.convert')}
@@ -460,6 +466,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div ref={mainRef} className="min-w-0 lg:col-span-2">
+          {inWorkspace && hasLines(object) ? <DocumentLinesCard object={object} record={record} /> : null}
           {ticketId ? <TicketConversation code={workspaceCode} ticketId={ticketId} canReply={canEdit} /> : null}
           <Card className="overflow-hidden">
             <Tabs
@@ -574,6 +581,16 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
           {inWorkspace && object === 'cases' ? <CaseSlaCard record={record} /> : null}
           {inWorkspace && object === 'invoices' ? <InvoicePaymentsCard record={record} /> : null}
           {inWorkspace && object === 'payments' ? <PaymentAllocationsCard record={record} canEdit={canEdit} /> : null}
+          {inWorkspace && object === 'credit_notes' ? <CreditNoteCard record={record} /> : null}
+          {inWorkspace && object === 'entitlements' ? <EntitlementUsageCard record={record} /> : null}
+          {inWorkspace && object === 'price_books' ? <PriceEntriesCard mode="book" record={record} /> : null}
+          {inWorkspace && object === 'catalog_items' ? <PriceEntriesCard mode="item" record={record} /> : null}
+          {inWorkspace && object === 'catalog_items' ? <BundleCard record={record} /> : null}
+          {inWorkspace && object === 'territories' ? <TerritoryMembersCard record={record} /> : null}
+          {inWorkspace && hasContactRoles(object) ? <ContactRolesCard object={object} record={record} /> : null}
+          {inWorkspace && hasRecordTeam(object) ? <RecordTeamCard object={object} record={record} /> : null}
+          {inWorkspace && object === 'accounts' ? <AccountTerritoryCard record={record} /> : null}
+          {inWorkspace && (object === 'leads' || object === 'contacts') ? <RecordCampaignsCard object={object} record={record} /> : null}
           {inWorkspace ? <RelationshipsCard object={object} record={record} canEdit={canEdit} /> : null}
           {relatedLists.map((r) => (
             <RelatedCard key={r.key} list={r} compact onViewAll={() => setTab('related')} />

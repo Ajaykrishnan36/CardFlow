@@ -117,7 +117,7 @@ export function CrmModulesScreen({ onOpenList, onOpenPath, onOpenRecord, onOpenS
                       key={n.key}
                       style={[styles.module, shadows.sm]}
                       activeOpacity={0.8}
-                      onPress={() => (object === 'cards' ? onOpenCards() : filtered || object === 'forecasts' ? onOpenPath(n.path) : onOpenList(object))}
+                      onPress={() => (object === 'cards' ? onOpenCards() : filtered || ['forecasts', 'approvals', 'campaign-results'].includes(object) ? onOpenPath(n.path) : onOpenList(object))}
                     >
                       <View style={styles.moduleIcon}>
                         <Icon size={18} color={colors.primary} />

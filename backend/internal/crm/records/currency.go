@@ -441,6 +441,11 @@ func (h *Handler) currencySaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, sp
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.currencies WHERE code = $1 AND is_active)`, cur).Scan(&known); err != nil {
 			return nil, err
 		}
+		if !known && before != nil && strings.EqualFold(strings.TrimSpace(before.text("currency")), cur) {
+			// Text typed into the currency field before currencies were a list: left as it is,
+			// and the record is not converted, rather than blocking every later edit of it.
+			return after, nil
+		}
 		if !known {
 			return nil, shared.Validation(map[string]string{"currency": "Use a three-letter currency code from the currency list, e.g. USD."})
 		}

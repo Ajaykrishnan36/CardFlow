@@ -234,7 +234,7 @@ export function RecordDetailScreen({ object, id, onBack, onEdit, onOpenRecord, o
     .map((s) => ({ title: s.title, id: s.id, rows: s.fields.map((k) => byKey[k]).filter(Boolean).map((f) => ({ f, text: display(f, record, currency) })).filter((r) => r.text) }))
     .filter((s) => s.rows.length);
   // An invoice's payments have their own panel (with the balance and "Record payment").
-  const lists = (detail.related || []).filter((l) => l.object !== 'activities' && l.rows?.length && !(object === 'invoices' && l.object === 'payments'));
+  const lists = (detail.related || []).filter((l) => l.object !== 'activities' && l.rows?.length && !(object === 'invoices' && l.object === 'payments') && !(l.object === 'line_items' && ['quotes', 'sales_orders', 'invoices', 'work_orders', 'contracts', 'opportunities', 'credit_notes'].includes(object)));
 
   return (
     <View style={styles.screen}>

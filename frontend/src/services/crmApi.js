@@ -52,6 +52,13 @@ export const crmApi = {
   update: (code, object, id, values, expectedVersion) =>
     crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}`, { method: 'PATCH', body: { values, expectedVersion } }),
   remove: (code, object, id) => crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  documentLines: (code, object, id) => crm(`${w(code)}/${object}/${encodeURIComponent(id)}/lines`),
+  convertQuote: (code, id) => crm(`${w(code)}/quotes/${encodeURIComponent(id)}/convert`, { method: 'POST' }),
+  invoiceOrder: (code, id) => crm(`${w(code)}/sales_orders/${encodeURIComponent(id)}/invoice`, { method: 'POST' }),
+  invoiceWorkOrder: (code, id) => crm(`${w(code)}/work_orders/${encodeURIComponent(id)}/invoice`, { method: 'POST' }),
+  caseWorkOrder: (code, id) => crm(`${w(code)}/cases/${encodeURIComponent(id)}/work-order`, { method: 'POST' }),
+  contactRoles: (code, object, id) => crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}/contact-roles`),
+  recordTeam: (code, object, id) => crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}/team`),
   invoiceLedger: (code, id) => crm(`${w(code)}/invoices/${encodeURIComponent(id)}/payments`),
   caseSla: (code, id) => crm(`${w(code)}/cases/${encodeURIComponent(id)}/sla`),
   renewContract: (code, id, body) => crm(`${w(code)}/contracts/${encodeURIComponent(id)}/renew`, { method: 'POST', body }),

@@ -1,5 +1,7 @@
 import {
   ScanLine,
+  BadgeCheck,
+  SlidersHorizontal,
   TrendingUp,
   FileSignature,
   HardDrive,
@@ -122,6 +124,8 @@ const icons: Record<string, LucideIcon> = {
   'bar-chart-3': BarChart3,
   'layout-grid': LayoutGrid,
   'trending-up': TrendingUp,
+  'badge-check': BadgeCheck,
+  sliders: SlidersHorizontal,
   'file-signature': FileSignature,
   'hard-drive': HardDrive,
   timer: Timer,
