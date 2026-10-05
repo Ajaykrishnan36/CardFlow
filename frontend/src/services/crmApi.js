@@ -63,7 +63,8 @@ export const crmApi = {
   saveCard: (code, body, idempotencyKey) => crm(`${w(code)}/cards`, { method: 'POST', body, idempotencyKey }),
   unlinkCard: (code, cardId, linkId) => crm(`${w(code)}/cards/${encodeURIComponent(cardId)}/links/${encodeURIComponent(linkId)}`, { method: 'DELETE' }),
 
-  plan: (code) => crm(`${w(code)}/plan`)
+  plan: (code) => crm(`${w(code)}/plan`),
+  gettingStarted: (code) => crm(`${w(code)}/getting-started`)
 };
 
 /** The first thing to show from an error: a field message if there is one, else the message. */

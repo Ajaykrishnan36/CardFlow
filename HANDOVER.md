@@ -148,17 +148,28 @@ CRM settings:
 
 Setting `CRM_FRESH_START=erase-everything-<label>` (for example
 `erase-everything-2026-10-05`) and restarting the server **permanently erases every
-customer's data**: people, businesses, records, cards, listings, tickets, sessions and the
-audit log. It keeps the platform owner's login, the setups, plans and settings.
-Afterwards it creates the baseline: mobile 98765 43211 as Super Admin of "Ajay tech" and
-"Ajay finace", each with sample records and a public listing.
+customer's data** except one account.
+
+Kept:
+- the platform owner's login;
+- the person with mobile 98765 43211 (their profile and their own saved cards);
+- that person's business named "Ajay traders", with its records and public listing;
+- setups, plans, settings and directory categories.
+
+Erased: every other person, business (including that person's other businesses), record,
+card, listing, ticket, session, file, message and audit entry. If the kept person or
+business doesn't exist yet, it is created (empty). No sample records are added.
 
 - Take a database backup first. There is no undo.
 - Each value runs once. Leaving the setting in place, or restarting, does not erase again.
   To erase again later, change the label.
 - It all happens in one transaction: if anything fails, nothing is erased (the log says why).
-- Check the server log for `fresh start complete — baseline created`.
+- Check the server log for `fresh start complete`.
 - Nothing in the app or the API can trigger it; only this setting can.
+- To keep a different number or business name: `CRM_FRESH_START_PHONE`,
+  `CRM_FRESH_START_BUSINESS`.
+- The "Business Card Snap" row in the owner console is the system workspace that receives
+  the app's support tickets and sign-ups. It is emptied, not removed (the server needs it).
 
 App settings: see `.env.example`. It covers the database, Redis, S3, JWT, Gemini, SMS,
 KYC, RevenueCat, maps and so on.

@@ -135,3 +135,38 @@ func TestBrowserSessionWorksOnTheAppAPI(t *testing.T) {
 		t.Fatalf("the app API still accepts a signed-out cookie: %d", s)
 	}
 }
+
+// New businesses get a "getting started" list whose ticks come from real data (D-109).
+func TestGettingStartedReflectsRealProgress(t *testing.T) {
+	token := signIn(t, freshPhone(), "Starter")
+	ws := newBusiness(t, token, "Starter Traders")
+	step := func() map[string]bool {
+		r := call(t, "GET", crmAPI+"/w/"+ws+"/getting-started", token, nil)
+		want(t, r, 200, "getting started")
+		out := map[string]bool{}
+		for _, s := range r.list("steps") {
+			m := s.(map[string]any)
+			out[m["key"].(string)] = m["done"].(bool)
+		}
+		return out
+	}
+	before := step()
+	for _, k := range []string{"lead", "scan", "followup", "business", "team", "email"} {
+		if done, has := before[k]; !has || done {
+			t.Fatalf("a new business should list %q as not done: %v", k, before)
+		}
+	}
+	create(t, token, ws, "leads", map[string]any{"lastName": "First Lead"})
+	create(t, token, ws, "tasks", map[string]any{"name": "Call back"})
+	want(t, call(t, "POST", crmAPI+"/w/"+ws+"/cards", token, map[string]any{"action": "card_only", "card": card("A Card", "", "9555500011", "")}), 201, "scan a card")
+	after := step()
+	if !after["lead"] || !after["followup"] || !after["scan"] || after["team"] || after["email"] {
+		t.Fatalf("ticks should follow what was done: %v", after)
+	}
+	// Another business of the same person starts from zero.
+	other := newBusiness(t, token, "Second Starter")
+	r := call(t, "GET", crmAPI+"/w/"+other+"/getting-started", token, nil)
+	if r.at("done") != float64(0) {
+		t.Fatalf("progress leaked between businesses: %s", truncate(r.Raw, 200))
+	}
+}

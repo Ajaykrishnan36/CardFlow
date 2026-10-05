@@ -604,6 +604,25 @@ The phone layout keeps no session of its own: in a browser both layouts use the 
 splash and onboarding screens, the mock-driven owner screens and the sample directory data are
 removed. An account without an app profile (signed up by email) gets the desktop layout on a phone.
 
+### D-108 — Fresh start keeps one account (replaces the sample baseline of D-106)
+
+A fresh start no longer seeds sample businesses. It keeps the platform owner, one person by mobile
+number (default +91 98765 43211) and that person's business by name (default "Ajay traders") with
+its records, setup and listing; everything else is erased, including that person's other businesses.
+Records in the kept business that named an erased teammate pass to the business's owner. The kept
+person and owner stay signed in. Whatever of the kept account is missing is created, empty. The
+app's start-up seed is reference data only (directory categories).
+
+### D-109 — First-time guidance
+
+`GET /w/{code}/getting-started` lists the first steps for a business (first lead, scan a card, plan
+a follow-up, complete the business profile, add a teammate, add your email) with `done` worked out
+from the business's real data and the caller's permissions. The phone Home and the desktop dashboard
+show it as a card until everything is done or it is hidden (per business, per device). The phone
+layout also shows a four-step tour once per person per device. Browse lists other people's
+businesses only; a person's own are under Profile → My Businesses (open the CRM, the business card
+and listing, or add a business).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

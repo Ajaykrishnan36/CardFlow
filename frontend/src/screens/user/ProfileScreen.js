@@ -35,9 +35,9 @@ function formatPhoneDisplay(phone) {
   return digits;
 }
 
-export function ProfileScreen({ onNavigate, onBack, onSignOut }) {
-  const { user, logout, updateProfile } = useAuth();
-  const { businesses, active } = useCrm();
+export function ProfileScreen({ onNavigate, onBack, onSignOut, onOpenListing, onOpenBusiness, onNewBusiness }) {
+  const { user, logout, updateProfile, myBusinesses } = useAuth();
+  const { businesses, active, canCreate } = useCrm();
   const [showPlan, setShowPlan] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
@@ -178,6 +178,47 @@ export function ProfileScreen({ onNavigate, onBack, onSignOut }) {
       </Card>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>My Businesses</Text>
+        <Card style={styles.menuCard}>
+          {businesses.length === 0 ? (
+            <Text style={styles.bizEmpty}>You don’t have a business yet.</Text>
+          ) : null}
+          {businesses.map((b) => {
+            // The business's public listing (digital card, original card, QR), matched by name.
+            const listing = (myBusinesses || []).find((l) => String(l.name || l.business_name || '').trim().toLowerCase() === b.name.trim().toLowerCase());
+            return (
+              <View key={b.id} style={styles.bizItem}>
+                <View style={styles.bizLogo}>
+                  <Text style={styles.bizLogoText}>{b.name.slice(0, 2).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.menuText} numberOfLines={1}>{b.name}</Text>
+                  <Text style={styles.menuSub} numberOfLines={1}>{b.roleName || 'Member'} · {b.members} {b.members === 1 ? 'person' : 'people'}{active?.code === b.code ? ' · open now' : ''}</Text>
+                  <View style={styles.bizActions}>
+                    <TouchableOpacity onPress={() => onOpenBusiness?.(b.code)}>
+                      <Text style={styles.bizLink}>Open CRM</Text>
+                    </TouchableOpacity>
+                    {listing ? (
+                      <TouchableOpacity onPress={() => onOpenListing?.(listing)}>
+                        <Text style={styles.bizLink}>Business card &amp; listing</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+          {canCreate ? (
+            <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={onNewBusiness} activeOpacity={0.7}>
+              <Briefcase size={18} color={colors.primary} style={{ marginRight: spacing.md }} />
+              <Text style={[styles.menuText, { color: colors.primary, flex: 1 }]}>Add a business</Text>
+              <ChevronRight size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+        </Card>
+      </View>
+
+      <View style={styles.section}>
         {renderMenuCard(primaryItems)}
       </View>
 
@@ -201,6 +242,12 @@ export function ProfileScreen({ onNavigate, onBack, onSignOut }) {
 }
 
 const styles = StyleSheet.create({
+  bizEmpty: { fontSize: 13, color: colors.textSecondary, padding: spacing.md },
+  bizItem: { flexDirection: 'row', gap: 12, padding: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  bizLogo: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  bizLogoText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  bizActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 6 },
+  bizLink: { fontSize: 13, fontWeight: '700', color: colors.primary },
   verifiedBox: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, borderRadius: radii.input, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: colors.bgMuted },
   verifiedValue: { flex: 1, fontSize: 15, color: colors.textPrimary },
   container: { flex: 1, backgroundColor: colors.bgMuted },

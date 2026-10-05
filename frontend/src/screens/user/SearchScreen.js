@@ -13,7 +13,9 @@ import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api';
 
 export function SearchScreen({ onSelectBusiness, initialCategoryId, onBack }) {
-  const { isBusinessSaved, saveBusinessToVault, unsaveBusinessFromVault } = useAuth();
+  const { isBusinessSaved, saveBusinessToVault, unsaveBusinessFromVault, user, myBusinesses } = useAuth();
+  // Browse is for finding other businesses: your own are under Profile → My businesses.
+  const mine = new Set((myBusinesses || []).map((b) => String(b.id)));
   const [savingBizId, setSavingBizId] = useState(null);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
   const showSnackbar = (message, type = 'success') => setSnackbar({ visible: true, message, type });
@@ -73,6 +75,7 @@ export function SearchScreen({ onSelectBusiness, initialCategoryId, onBack }) {
   }, [loadDirectoryData]);
 
   const filteredBusinesses = businesses.filter((biz) => {
+    if (mine.has(String(biz.id)) || (user?.id && String(biz.owner_user_id) === String(user.id))) return false;
     if (selectedCat !== 'all' && biz.categoryId !== selectedCat && biz.category?.toLowerCase() !== selectedCat.toLowerCase()) return false;
     if (gstOnly && biz.verification !== 'gst') return false;
     if (searchQuery.trim()) {
@@ -164,7 +167,7 @@ export function SearchScreen({ onSelectBusiness, initialCategoryId, onBack }) {
           <EmptyState
             icon={Building2}
             title="No businesses found"
-            description="Try adjusting search, radius, or category filters."
+            description="Try another search, radius or category. Your own businesses are under Profile → My Businesses."
             actionTitle="Reset Filters"
             onAction={() => {
               setSearchQuery('');

@@ -29,6 +29,7 @@ import { RecordListScreen } from '../screens/crm/RecordListScreen';
 import { RecordDetailScreen } from '../screens/crm/RecordDetailScreen';
 import { RecordFormScreen } from '../screens/crm/RecordFormScreen';
 import { BusinessGate, BusinessSwitcher } from '../screens/crm/BusinessScreens';
+import { WelcomeTour } from '../screens/crm/GettingStarted';
 
 /**
  * The phone layout. The address bar is the navigation state (D-104): every screen has a
@@ -38,7 +39,7 @@ import { BusinessGate, BusinessSwitcher } from '../screens/crm/BusinessScreens';
  * Bottom tabs: Home · My CRM · Scan · My Cards · Browse.
  */
 export function AppNavigator() {
-  const { isAuthenticated, authReady, savedCards, subscriptionOverlayOpen, closeSubscription, logout } = useAuth();
+  const { isAuthenticated, authReady, savedCards, subscriptionOverlayOpen, closeSubscription, logout, user } = useAuth();
   const { status, businesses, activeCode, switchBusiness } = useCrm();
   const location = useLocation();
   const navigate = useNavigate();
@@ -284,7 +285,16 @@ export function AppNavigator() {
     }
     case 'profile':
       hideTabs = true;
-      screen = <ProfileScreen onNavigate={selectTab} onBack={() => back(homePath)} onSignOut={logout} />;
+      screen = (
+        <ProfileScreen
+          onNavigate={selectTab}
+          onBack={() => back(homePath)}
+          onSignOut={logout}
+          onOpenListing={openListing}
+          onOpenBusiness={(bizCode) => go(paths.home(bizCode))}
+          onNewBusiness={() => setSwitcherOpen(true)}
+        />
+      );
       break;
     case 'support': {
       hideTabs = true;
@@ -324,6 +334,14 @@ export function AppNavigator() {
             onCreate={(object) => openCreate(object)}
             onOpenRecord={openRecord}
             onScan={() => go(paths.scan(code))}
+            onStart={(where) => {
+              if (where === 'lead') openCreate('leads');
+              else if (where === 'scan') go(paths.scan(code));
+              else if (where === 'task') openCreate('tasks');
+              else if (where === 'business') go(paths.businessProfile(code));
+              else if (where === 'team') go(paths.team(code));
+              else if (where === 'account') go(paths.profile);
+            }}
           />
         </BusinessGate>
       );
@@ -334,6 +352,9 @@ export function AppNavigator() {
       <Layout header={null} footer={hideTabs ? null : <TabBar currentTab={tab} onSelectTab={selectTab} />}>
         <View style={styles.stack}>{screen}</View>
       </Layout>
+
+      {/* First sign-in on this device: a short tour (once the person has a business). */}
+      {businesses.length > 0 ? <WelcomeTour userId={user?.id} /> : null}
 
       <BusinessSwitcher
         visible={switcherOpen}

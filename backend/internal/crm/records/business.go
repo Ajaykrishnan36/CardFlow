@@ -23,6 +23,7 @@ import (
 func (h *Handler) businessRoutes(r chi.Router) {
 	r.Get("/business", h.handleGetBusiness)
 	r.Patch("/business", h.handleUpdateBusiness)
+	r.Get("/getting-started", h.handleGettingStarted)
 	// The business's plan, what it uses, and the plans on offer (any member may look).
 	r.Get("/plan", func(w http.ResponseWriter, r *http.Request) {
 		out, err := plans.NewHandler(h.store).Overview(r, scopeFrom(r.Context()).WS)
@@ -165,4 +166,71 @@ func (h *Handler) handleUpdateBusiness(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := h.loadBusiness(r)
 	respond(w, r, http.StatusOK, b, err)
+}
+
+// Getting started (D-109): what a new business should do first, with what is already
+// done worked out from its real data — never a canned "100% complete".
+//
+//	GET /w/{code}/getting-started
+
+type startStep struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Done  bool   `json:"done"`
+	// Go names where the step is done: lead | scan | task | business | team | account.
+	Go string `json:"go"`
+}
+
+func (h *Handler) handleGettingStarted(w http.ResponseWriter, r *http.Request) {
+	sc := scopeFrom(r.Context())
+	ctx := r.Context()
+	me := actor(r)
+	var hasPeople, hasFollowUp, hasTeam, hasEmail bool
+	var profileFields int
+	err := h.store.Pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM crm.leads WHERE workspace_id = $1 AND deleted_at IS NULL)
+		    OR EXISTS (SELECT 1 FROM crm.contacts WHERE workspace_id = $1 AND deleted_at IS NULL),
+		       EXISTS (SELECT 1 FROM crm.object_records WHERE workspace_id = $1 AND deleted_at IS NULL AND object_key IN ('tasks', 'events'))
+		    OR EXISTS (SELECT 1 FROM crm.leads WHERE workspace_id = $1 AND deleted_at IS NULL AND next_follow_up_at IS NOT NULL),
+		       (SELECT count(*) FROM crm.memberships WHERE workspace_id = $1 AND status IN ('active', 'invited')) > 1,
+		       EXISTS (SELECT 1 FROM crm.verified_identifiers WHERE identity_id = $2 AND kind = 'email' AND verified_at IS NOT NULL),
+		       (SELECT count(*) FROM jsonb_object_keys((SELECT profile FROM crm.workspaces WHERE id = $1)))`,
+		sc.WS, me).Scan(&hasPeople, &hasFollowUp, &hasTeam, &hasEmail, &profileFields)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	hasCard := false
+	if h.cardsReady(ctx) {
+		_ = h.store.Pool.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM public.saved_cards WHERE workspace_id = $1 AND deleted_at IS NULL)
+			    OR EXISTS (SELECT 1 FROM crm.card_links WHERE workspace_id = $1)`, sc.WS).Scan(&hasCard)
+	}
+	steps := []startStep{}
+	if sc.Can("leads", "create") {
+		steps = append(steps, startStep{Key: "lead", Title: "Add your first lead", Go: "lead", Done: hasPeople,
+			Body: "A lead is someone who might buy from you. Add one by hand, or scan their card."})
+		steps = append(steps, startStep{Key: "scan", Title: "Scan a business card", Go: "scan", Done: hasCard,
+			Body: "Take a photo of a paper card. It is read for you and saved as a lead or contact."})
+	}
+	if sc.Can("tasks", "create") {
+		steps = append(steps, startStep{Key: "followup", Title: "Plan a follow-up", Go: "task", Done: hasFollowUp,
+			Body: "Add a task or a meeting so you remember to call back. It shows on your Home screen on the day."})
+	}
+	if canEditBusiness(sc) {
+		steps = append(steps, startStep{Key: "business", Title: "Complete your business profile", Go: "business", Done: profileFields >= 3,
+			Body: "Phone, address and tax details appear on your digital card and public listing."})
+		steps = append(steps, startStep{Key: "team", Title: "Add a teammate", Go: "team", Done: hasTeam,
+			Body: "Add people by mobile number and choose what each of them can see and do."})
+	}
+	steps = append(steps, startStep{Key: "email", Title: "Add your email", Go: "account", Done: hasEmail,
+		Body: "Verify an email address so you can also sign in with it and get important messages."})
+	done := 0
+	for _, s := range steps {
+		if s.Done {
+			done++
+		}
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"steps": steps, "done": done, "total": len(steps)})
 }

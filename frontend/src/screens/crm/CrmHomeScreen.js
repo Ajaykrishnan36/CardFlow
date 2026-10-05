@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCrm } from '../../context/CrmContext';
 import { crmApi } from '../../services/crmApi';
 import { Chip, SectionTitle, Row, Panel, Loading, ErrorBox, money, iconFor } from './ui';
+import { GettingStartedCard } from './GettingStarted';
 
 const RANGES = [
   { key: 'today', label: 'Today' },
@@ -37,7 +38,7 @@ function greeting() {
  * /dashboard/summary — nothing here is sample data), quick create, and what needs
  * attention today. The header switches business.
  */
-export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCreate, onOpenRecord, onScan }) {
+export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCreate, onOpenRecord, onScan, onStart }) {
   const { user } = useAuth();
   const { active, activeCode, currency } = useCrm();
   const [range, setRange] = useState('month');
@@ -113,6 +114,10 @@ export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCre
       </View>
 
       <Text style={styles.greeting}>{greeting()}{firstName && firstName !== 'New' && firstName !== 'CardFlow' ? `, ${firstName}` : ''}</Text>
+
+      <View style={{ marginTop: spacing.md }}>
+        <GettingStartedCard code={activeCode} onGo={onStart} />
+      </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ranges}>
         {RANGES.map((r) => (
@@ -221,7 +226,7 @@ const styles = StyleSheet.create({
   bizRole: { fontSize: 11, color: colors.textSecondary, marginTop: 1 },
   avatarBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
   greeting: { fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginTop: spacing.lg },
-  ranges: { marginTop: spacing.md, marginBottom: spacing.md },
+  ranges: { marginBottom: spacing.md },
   customRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.md },
   dateInput: { flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radii.input, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: colors.bgCard, color: colors.textPrimary, fontSize: 13 },
   hint: { fontSize: 13, color: colors.textSecondary, paddingVertical: spacing.lg, textAlign: 'center' },
