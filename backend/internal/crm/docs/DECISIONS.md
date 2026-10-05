@@ -874,6 +874,15 @@ The owner console's invite dialog takes an optional phone number next to name an
   because a number is a way to sign in and only its holder should add one to a live account.
 - The invitation itself is still delivered by email.
 
+## D-132 — Signing in by phone accepts an open invitation
+
+An invited person whose invitation carries a phone number (D-131) can sign in with a code
+sent to that number and lands in the business: the sign-in accepts their open, unexpired
+invitations and gives them the invited role, setups and permission sets. The inviter put
+the number on the invitation, so the code proves they are the invited person, as the
+emailed link does. The link still works and is how they set a password; the email address
+stays unverified until then. Someone invited by email only is not affected.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

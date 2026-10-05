@@ -195,30 +195,7 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 			WHERE identity_id = $1 AND kind = 'email' AND verified_at IS NULL`, inv.identityID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(ctx, `UPDATE crm.memberships SET status = 'active', auth_version = auth_version + 1 WHERE id = $1`, inv.membershipID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM crm.role_assignments WHERE membership_id = $1`, inv.membershipID); err != nil {
-			return err
-		}
-		var grantedBy uuid.UUID
-		if err := tx.QueryRow(ctx, `SELECT created_by FROM crm.invitations WHERE id = $1`, inv.id).Scan(&grantedBy); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO crm.role_assignments (workspace_id, membership_id, role_id, product_ids, granted_by)
-			VALUES ($1, $2, $3, $4, $5)`, inv.workspaceID, inv.membershipID, inv.roleID, inv.productIDs, grantedBy); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO crm.membership_permission_sets (workspace_id, membership_id, permission_set_id, granted_by)
-			SELECT $1, $2, ps.id, $4 FROM crm.permission_sets ps
-			JOIN crm.invitations inv ON inv.id = $3 AND ps.id = ANY(inv.permission_set_ids)
-			WHERE ps.workspace_id = $1
-			ON CONFLICT DO NOTHING`, inv.workspaceID, inv.membershipID, inv.id, grantedBy); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE crm.invitations SET status = 'accepted', accepted_at = now() WHERE id = $1`, inv.id); err != nil {
+		if err := activateInvitation(ctx, tx, inv.id, inv.workspaceID, inv.membershipID, inv.roleID, inv.productIDs); err != nil {
 			return err
 		}
 
@@ -268,6 +245,86 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 		Next:                  nextPath(isOwner, mfaRequired, enrollRequired, mustChange),
 	}
 	return &out, nil
+}
+
+// activateInvitation turns an invited membership into an active one with the role, setups
+// and permission sets the invitation carries, and marks the invitation accepted.
+func activateInvitation(ctx context.Context, tx pgx.Tx, invID, workspaceID, membershipID, roleID uuid.UUID, productIDs []uuid.UUID) error {
+	if _, err := tx.Exec(ctx, `UPDATE crm.memberships SET status = 'active', auth_version = auth_version + 1 WHERE id = $1`, membershipID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM crm.role_assignments WHERE membership_id = $1`, membershipID); err != nil {
+		return err
+	}
+	var grantedBy uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT created_by FROM crm.invitations WHERE id = $1`, invID).Scan(&grantedBy); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO crm.role_assignments (workspace_id, membership_id, role_id, product_ids, granted_by)
+		VALUES ($1, $2, $3, $4, $5)`, workspaceID, membershipID, roleID, productIDs, grantedBy); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO crm.membership_permission_sets (workspace_id, membership_id, permission_set_id, granted_by)
+		SELECT $1, $2, ps.id, $4 FROM crm.permission_sets ps
+		JOIN crm.invitations inv ON inv.id = $3 AND ps.id = ANY(inv.permission_set_ids)
+		WHERE ps.workspace_id = $1
+		ON CONFLICT DO NOTHING`, workspaceID, membershipID, invID, grantedBy); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `UPDATE crm.invitations SET status = 'accepted', accepted_at = now() WHERE id = $1`, invID)
+	return err
+}
+
+// acceptByPhone accepts a person's open invitations when they sign in with a code sent to
+// their phone: the number was put on the invitation by whoever invited them, so the code
+// proves they are the invited person just as the emailed link does. The emailed link still
+// works for setting a password; here the email address stays unverified.
+func acceptByPhone(ctx context.Context, tx pgx.Tx, identityID uuid.UUID, meta RequestMeta) error {
+	type open struct {
+		id, ws, membership, role uuid.UUID
+		products                 []uuid.UUID
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT inv.id, inv.workspace_id, inv.membership_id, inv.intended_role_id, inv.product_ids
+		FROM crm.invitations inv
+		JOIN crm.memberships m ON m.id = inv.membership_id
+		JOIN crm.workspaces w ON w.id = inv.workspace_id
+		WHERE m.identity_id = $1 AND m.status = 'invited' AND w.status = 'active'
+		  AND inv.status IN ('pending', 'delivered', 'delivery_failed') AND inv.expires_at > now()
+		ORDER BY inv.created_at
+		FOR UPDATE OF inv`, identityID)
+	if err != nil {
+		return err
+	}
+	var list []open
+	for rows.Next() {
+		var o open
+		if err := rows.Scan(&o.id, &o.ws, &o.membership, &o.role, &o.products); err != nil {
+			rows.Close()
+			return err
+		}
+		list = append(list, o)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, o := range list {
+		if err := activateInvitation(ctx, tx, o.id, o.ws, o.membership, o.role, o.products); err != nil {
+			return err
+		}
+		ws, id := o.ws, o.id
+		if err := shared.WriteAudit(ctx, tx, shared.AuditEvent{
+			WorkspaceID: &ws, ActorID: &identityID, Action: "invitation.accepted", EntityType: "invitation", EntityID: &id,
+			After: map[string]any{"membershipId": o.membership, "method": "phone"},
+			IP:    meta.IP, RequestID: meta.RequestID,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) handleInvitationPreview(w http.ResponseWriter, r *http.Request) {

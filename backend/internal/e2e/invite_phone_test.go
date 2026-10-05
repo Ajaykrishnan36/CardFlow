@@ -52,4 +52,37 @@ func TestOwnerInviteCarriesPhone(t *testing.T) {
 	// Inviting again with their own number is fine; without a number still works.
 	want(t, invite(mail(1), phone), 201, "re-invite with the same number")
 	want(t, invite(mail(2), ""), 201, "invite without a phone number")
+
+	// Signing in with a code sent to that number accepts the invitation: the business opens.
+	status := func() (m, inv string) {
+		_ = testDB.Pool.QueryRow(ctx, `
+			SELECT m.status, (SELECT i.status FROM crm.invitations i WHERE i.membership_id = m.id ORDER BY i.created_at DESC LIMIT 1)
+			FROM crm.memberships m JOIN crm.verified_identifiers e ON e.identity_id = m.identity_id
+			WHERE m.workspace_id = $1::uuid AND e.kind = 'email' AND e.value_normalized = $2`, wsID, mail(1)).Scan(&m, &inv)
+		return
+	}
+	if m, _ := status(); m != "invited" {
+		t.Fatalf("before signing in the person is only invited, got %q", m)
+	}
+	invited := signIn(t, phone, "")
+	if m, inv := status(); m != "active" || inv != "accepted" {
+		t.Fatalf("phone sign-in accepts the invitation: membership %q, invitation %q", m, inv)
+	}
+	want(t, call(t, "GET", crmAPI+"/w/"+ws+"/crm/leads", invited, nil), 200, "the invited admin opens the business")
+	var role string
+	_ = testDB.Pool.QueryRow(ctx, `
+		SELECT r.key FROM crm.role_assignments ra JOIN crm.roles r ON r.id = ra.role_id
+		JOIN crm.memberships m ON m.id = ra.membership_id JOIN crm.verified_identifiers e ON e.identity_id = m.identity_id
+		WHERE m.workspace_id = $1::uuid AND e.value_normalized = $2`, wsID, mail(1)).Scan(&role)
+	if role != "ADMIN" {
+		t.Fatalf("they get the invited role, got %q", role)
+	}
+	// Someone invited by email only is not let in by an unrelated phone sign-in.
+	var other string
+	_ = testDB.Pool.QueryRow(ctx, `
+		SELECT m.status FROM crm.memberships m JOIN crm.verified_identifiers e ON e.identity_id = m.identity_id
+		WHERE m.workspace_id = $1::uuid AND e.value_normalized = $2`, wsID, mail(2)).Scan(&other)
+	if other != "invited" {
+		t.Fatalf("the email-only invitation is still waiting, got %q", other)
+	}
 }

@@ -240,6 +240,11 @@ func (s *Service) ProvePhone(ctx context.Context, in PhoneVerifyInput, meta Requ
 			if _, err := tx.Exec(ctx, `UPDATE crm.verified_identifiers SET verified_at = COALESCE(verified_at, now()) WHERE id = $1`, identifierID); err != nil {
 				return err
 			}
+			if row.status == "active" {
+				if err := acceptByPhone(ctx, tx, row.identityID, meta); err != nil {
+					return err
+				}
+			}
 		}
 		if s.appProfile != nil {
 			app, err := s.appProfile.SignedIn(ctx, tx, row.identityID, phone, name, proof.Created)
