@@ -136,7 +136,29 @@ CRM settings:
   `CRM_GOOGLE_CLIENT_ID`/`_SECRET`, `CRM_MICROSOFT_CLIENT_ID`/`_SECRET`/`_TENANT`,
   `CRM_LINKEDIN_CLIENT_ID`/`_SECRET`.
 - **Business Card Snap sync:** `CRM_CARDFLOW_SYNC`, `CRM_SYNC_INTERVAL`.
-- **Demo data:** `CRM_SEED_DEMO` (local only).
+- **Demo data:** `CRM_SEED_DEMO` (local only; never seeded again after a fresh start).
+- **Sign-in codes by SMS:** `SMS_PROVIDER` (`msg91`, `twilio` or `fast2sms`) with
+  `SMS_AUTH_KEY` (MSG91 also needs `SMS_OTP_TEMPLATE_ID`; Twilio uses
+  `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`). `DEV_MOCK_SMS=true` on a
+  server whose `ENV` isn't `production` shows the code on screen instead of sending it.
+  `OTP_PREVIEW_INSECURE=true` does the same anywhere — never leave it on for real users.
+- **Fresh start:** `CRM_FRESH_START` — see "Fresh start" below.
+
+### Fresh start (erase all customer data)
+
+Setting `CRM_FRESH_START=erase-everything-<label>` (for example
+`erase-everything-2026-10-05`) and restarting the server **permanently erases every
+customer's data**: people, businesses, records, cards, listings, tickets, sessions and the
+audit log. It keeps the platform owner's login, the setups, plans and settings.
+Afterwards it creates the baseline: mobile 98765 43211 as Super Admin of "Ajay tech" and
+"Ajay finace", each with sample records and a public listing.
+
+- Take a database backup first. There is no undo.
+- Each value runs once. Leaving the setting in place, or restarting, does not erase again.
+  To erase again later, change the label.
+- It all happens in one transaction: if anything fails, nothing is erased (the log says why).
+- Check the server log for `fresh start complete — baseline created`.
+- Nothing in the app or the API can trigger it; only this setting can.
 
 App settings: see `.env.example`. It covers the database, Redis, S3, JWT, Gemini, SMS,
 KYC, RevenueCat, maps and so on.
@@ -216,9 +238,24 @@ curl -s https://cardflow-api-fsij.onrender.com/crm/login | grep -o 'bundle\.[a-f
 - Don't copy code from Twenty (it's AGPL). Match features, write our own code.
 - Features ship as working slices. No "coming soon" placeholders.
 
-## 9. Where things stand (Sept 2026)
+## 9. Where things stand (Oct 2026)
 
-Recently done (see DECISIONS.md for details):
+**The app and the CRM are one product now** (D-93 to D-107):
+- **One sign-in** for everyone at `/` and `/crm/login`: mobile number + code, email +
+  password, or email code. Only the owner console has its own (`/crm/owner/login`).
+- **One set of addresses.** After sign-in, a phone-sized screen (and the native app) gets
+  the phone layout, a computer gets the desktop CRM — same URL, same session, same data.
+- **A customer creates their own business** (a CRM workspace) and can have several; each
+  keeps its own records. Each business gets a public listing with its digital card.
+- **Business cards** are scanned into the open business and saved as a lead or contact.
+- **Plans** (Free / Pro / Business) belong to a business and are enforced on the server.
+- **Profile:** verified mobile, add and verify an email, set a password.
+
+Not built yet from the unified plan: owner-console screens for plans and subscriptions
+(the API exists: `/platform/plans`, `/platform/subscriptions`), a plan page on the desktop
+CRM, push notifications, account export/delete, a separate "platform support" queue.
+
+Earlier work (see DECISIONS.md for details):
 - **Records:** rich text, currency and phone codes, grouped tables, running workflows from
   a record, objects owned by a product.
 - **Email:** conversations with Reply (D-80).
@@ -257,3 +294,7 @@ layout.
 - [ ] Add the Google, Microsoft and LinkedIn keys on Render if you want those sign-ins
       live (section 5).
 - [ ] Keep `CRM_ENCRYPTION_KEY_BASE64` backed up somewhere safe (a password manager).
+- [ ] Get SMS sending working (Fast2SMS refused requests: "IP is blacklisted from Dev API
+      section" — ask Fast2SMS to allow the server, or switch to MSG91). Then set
+      `DEV_MOCK_SMS=false` and `ENV=production` on Render so codes are sent, not shown.
+- [ ] Vercel: the project must serve `/api/*` from Render (it's in `frontend/vercel.json`).

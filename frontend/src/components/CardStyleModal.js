@@ -88,7 +88,7 @@ export function CardStyleModal({ visible, business, onClose, onSaved }) {
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
         title="Unlock premium card styles"
-        message="Elegant Dark, Emboss Signet and Boutique Frame are Premium styles. Upgrade to CardFlow Premium to use them."
+        message="Elegant Dark, Emboss Signet and Boutique Frame are Premium styles. Upgrade to Pro to use them."
       />
     </Modal>
   );

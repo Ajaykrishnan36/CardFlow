@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Crown, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Boxes, Crown, ScanLine, ShieldCheck, Users } from 'lucide-react';
 import { LogoMark } from '@crm/components/brand';
 import { AuthHeading, AuthLayout } from './auth-layout';
 import { LoginForm } from './login-form';
@@ -28,6 +28,24 @@ export function LoginPage() {
     >
       <AuthHeading title={t('auth.login.title')} subtitle={t('auth.login.subtitle')} />
       <LoginForm audience="workspace" />
+      {/* On a phone the brand panel is hidden: say what this is under the form. */}
+      <ul className="mt-8 space-y-3.5 lg:hidden">
+        {[
+          { icon: Boxes, title: t('auth.brand.f1Title'), body: t('auth.brand.f1Body') },
+          { icon: ScanLine, title: t('auth.brand.f2Title'), body: t('auth.brand.f2Body') },
+          { icon: Users, title: t('auth.brand.f3Title'), body: t('auth.brand.f3Body') }
+        ].map(({ icon: Icon, title, body }) => (
+          <li key={title} className="flex gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+              <Icon className="size-4" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[13px] font-semibold text-foreground">{title}</p>
+              <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{body}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
       <div className="mt-8 flex flex-col items-start gap-1.5 rounded-lg border border-dashed bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
           <Crown className="size-4 text-primary" aria-hidden />

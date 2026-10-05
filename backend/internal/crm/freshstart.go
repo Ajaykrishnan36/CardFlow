@@ -195,6 +195,11 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 				continue
 			}
 			t, col := pgx.Identifier{"crm", table}.Sanitize(), pgx.Identifier{column}.Sanitize()
+			if column == "identity_id" {
+				// The row is about that person (a membership, a mailbox): it goes with them.
+				steps = append(steps, eraseStep{table + " (people)", `DELETE FROM ` + t + ` WHERE identity_id IS NOT NULL AND identity_id <> ALL($1)`, []any{owners}})
+				continue
+			}
 			steps = append(steps, eraseStep{table + "." + column, `UPDATE ` + t + ` SET ` + col + ` = $2 WHERE ` + col + ` IS NOT NULL AND ` + col + ` <> ALL($1)`, []any{owners, owners[0]}})
 		}
 		refs.Close()

@@ -1,14 +1,14 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Animated, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCrm } from '../context/CrmContext';
 import { colors } from '../theme';
 import { Layout } from '../components/Layout';
 import { TabBar } from '../components/TabBar';
-
-import { SplashScreen } from '../screens/auth/SplashScreen';
-import { LoginScreen } from '../screens/auth/LoginScreen';
-import { OtpScreen } from '../screens/auth/OtpScreen';
-import { OnboardingScreen } from '../screens/auth/OnboardingScreen';
+import { ScreenLoader } from '../components/Loader';
+import { fetchListing } from '../services/api';
+import { parseRoute, paths } from './routes';
 
 import { SearchScreen } from '../screens/user/SearchScreen';
 import { BusinessDetailsScreen } from '../screens/user/BusinessDetailsScreen';
@@ -29,488 +29,317 @@ import { RecordListScreen } from '../screens/crm/RecordListScreen';
 import { RecordDetailScreen } from '../screens/crm/RecordDetailScreen';
 import { RecordFormScreen } from '../screens/crm/RecordFormScreen';
 import { BusinessGate, BusinessSwitcher } from '../screens/crm/BusinessScreens';
-import { useCrm } from '../context/CrmContext';
-import { apiClient } from '../services/api';
-
-
-const HOME_TAB = 'user_dashboard';
-
-function AuthFlow({ authStep, setAuthStep, currentPhone, setCurrentPhone }) {
-  const slide = useRef(new Animated.Value(authStep === 'otp' ? 1 : 0)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (authStep !== 'login' && authStep !== 'otp') return;
-    opacity.setValue(0.85);
-    Animated.parallel([
-      Animated.timing(slide, {
-        toValue: authStep === 'otp' ? 1 : 0,
-        duration: 280,
-        useNativeDriver: true
-      }),
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 260,
-        useNativeDriver: true
-      })
-    ]).start();
-  }, [authStep, slide, opacity]);
-
-  if (authStep === 'splash') {
-    return <SplashScreen onGetStarted={() => setAuthStep('login')} />;
-  }
-
-  const translateX = slide.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -24]
-  });
-  const otpTranslate = slide.interpolate({
-    inputRange: [0, 1],
-    outputRange: [36, 0]
-  });
-
-  return (
-    <View style={{ flex: 1 }}>
-      {authStep === 'login' ? (
-        <Animated.View style={{ flex: 1, opacity, transform: [{ translateX }] }}>
-          <LoginScreen
-            onOtpRequested={(phone) => {
-              setCurrentPhone(phone);
-              setAuthStep('otp');
-            }}
-          />
-        </Animated.View>
-      ) : (
-        <Animated.View style={{ flex: 1, opacity, transform: [{ translateX: otpTranslate }] }}>
-          <OtpScreen phone={currentPhone} onBackToPhone={() => setAuthStep('login')} />
-        </Animated.View>
-      )}
-    </View>
-  );
-}
 
 /**
- * App navigation model:
- * - primaryTab: one of the 5 bottom destinations — Home (CRM dashboard), My CRM, Scan, My Cards, Browse
- * - CRM screens (list → record → form) are a stack over the Home / My CRM tabs
- * - primaryTab ids keep their old names (Home is user_dashboard)
- * - Scan remembers which tab opened it (never used as a bridge to Home)
- * - Business/Card details overlay the active tab so Browse search state is preserved
- * - Profile is a secondary screen reached from Home (not a bottom tab)
+ * The phone layout. The address bar is the navigation state (D-104): every screen has a
+ * URL, the same URL the desktop CRM uses for the same thing, so links, reload and the
+ * browser's Back button all work.
+ *
+ * Bottom tabs: Home · My CRM · Scan · My Cards · Browse.
  */
 export function AppNavigator() {
-  const { isAuthenticated, role, isNewUser, subscriptionOverlayOpen, closeSubscription, token } = useAuth();
-  const { activeCode } = useCrm();
-  // CRM stack: [{ type: 'list' | 'detail' | 'form', object, id, query, initialValues, initialLookups }]
-  const [crmStack, setCrmStack] = useState([]);
+  const { isAuthenticated, authReady, savedCards, subscriptionOverlayOpen, closeSubscription, logout } = useAuth();
+  const { status, businesses, activeCode, switchBusiness } = useCrm();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [crmVersion, setCrmVersion] = useState(0);
-  const pushCrm = useCallback((entry) => setCrmStack((st) => [...st, entry]), []);
-  const popCrm = useCallback(() => setCrmStack((st) => st.slice(0, -1)), []);
-  // Another business means other records: leave whatever record was open.
-  useEffect(() => {
-    setCrmStack([]);
-  }, [activeCode]);
+  // Things a URL can't carry: a listing or ticket picked from a list, a form's prefill.
+  const memory = useRef({ listings: {}, tickets: {}, prefill: {}, steps: 0 });
+  const [, bump] = useState(0);
 
-  const [authStep, setAuthStep] = useState('splash');
-  const [currentTab, setCurrentTab] = useState(null);
-  const [selectedBusiness, setSelectedBusiness] = useState(null);
-  const [selectedCard, setSelectedCard] = useState(null);
-  const [currentPhone, setCurrentPhone] = useState('');
-  const [supportView, setSupportView] = useState('hub');
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [showProfile, setShowProfile] = useState(false);
-  const [sharedCardId, setSharedCardId] = useState(null);
+  const route = useMemo(() => parseRoute(location.pathname, location.search), [location.pathname, location.search]);
 
-  const scanOriginRef = useRef(HOME_TAB);
-  const profileOriginRef = useRef(HOME_TAB);
+  const go = useCallback((to, opts) => {
+    memory.current.steps += opts?.replace ? 0 : 1;
+    navigate(to, opts);
+  }, [navigate]);
 
-  // A "/share/{id}" link opens straight into the shared card, whether or
-  // not the visitor is logged in yet — this check runs before the normal
-  // auth/tab routing below so it takes priority over both.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const m = window.location.pathname.match(/^\/share\/([a-zA-Z0-9-]+)/);
-    if (m) setSharedCardId(m[1]);
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      setCurrentTab(HOME_TAB);
-      setShowProfile(false);
+  /** Back: the previous screen when we came from one, otherwise the screen above this one. */
+  const back = useCallback((fallback) => {
+    if (memory.current.steps > 0) {
+      memory.current.steps -= 1;
+      navigate(-1);
     } else {
-      setCurrentTab(null);
-      setAuthStep('splash');
-      setSelectedBusiness(null);
-      setSelectedCard(null);
-      setShowProfile(false);
+      navigate(fallback, { replace: true });
     }
-  }, [isAuthenticated, role]);
+  }, [navigate]);
 
-  const clearOverlays = useCallback(() => {
-    setSelectedBusiness(null);
-    setSelectedCard(null);
-    setCrmStack([]);
-  }, []);
+  // The business in the URL is the open business.
+  const urlCode = route?.code || '';
+  const isMember = urlCode ? businesses.some((b) => b.code === urlCode) : true;
+  useEffect(() => {
+    if (status !== 'ready' || !urlCode) return;
+    if (isMember && urlCode !== activeCode) switchBusiness(urlCode);
+    if (!isMember) navigate(activeCode ? paths.home(activeCode) : paths.businesses, { replace: true });
+  }, [status, urlCode, isMember, activeCode, switchBusiness, navigate]);
 
-  const goHome = useCallback(() => {
-    clearOverlays();
-    setShowProfile(false);
-    setSupportView('hub');
-    setCurrentTab(HOME_TAB);
-  }, [clearOverlays]);
-
-  const selectTab = useCallback((tabId) => {
-    clearOverlays();
-    setShowProfile(false);
-    if (tabId !== 'user_support') setSupportView('hub');
-
-    if (tabId === 'user_scan') {
-      // Remember where Scan was opened from — Back returns there, never treats Scan as Home
-      if (currentTab && currentTab !== 'user_scan') {
-        scanOriginRef.current = currentTab;
-      } else if (showProfile) {
-        scanOriginRef.current = HOME_TAB;
-      }
+  // "/" (and the sign-in address, once signed in) is the open business's Home.
+  useEffect(() => {
+    if (!isAuthenticated || status !== 'ready' || !route) return;
+    if (route.name === 'root' || (route.name === 'businesses' && businesses.length > 0 && !route.create)) {
+      navigate(activeCode ? paths.home(activeCode) : paths.businesses, { replace: true });
     }
+  }, [isAuthenticated, status, route, activeCode, businesses.length, navigate]);
 
-    setCurrentTab(tabId);
-  }, [clearOverlays, currentTab, showProfile]);
+  // A listing opened by link: load it once.
+  const listingId = route?.name === 'listing' ? route.id : '';
+  useEffect(() => {
+    if (!listingId || memory.current.listings[listingId]) return;
+    fetchListing(listingId)
+      .then((biz) => {
+        memory.current.listings[listingId] = biz;
+        bump((n) => n + 1);
+      })
+      .catch(() => navigate(paths.browse, { replace: true }));
+  }, [listingId, navigate]);
 
-  const openProfile = useCallback(() => {
-    clearOverlays();
-    profileOriginRef.current = currentTab === 'user_scan' ? HOME_TAB : (currentTab || HOME_TAB);
-    setShowProfile(true);
-    setSupportView('hub');
-    // Keep currentTab as Home underneath; Profile is a stack layer
-    if (currentTab === 'user_scan') setCurrentTab(HOME_TAB);
-  }, [clearOverlays, currentTab]);
+  // The tab title says where you are, as on the desktop.
+  const activeName = businesses.find((b) => b.code === activeCode)?.name || '';
+  useEffect(() => {
+    const names = { home: 'Home', menu: 'My CRM', cards: 'My Cards', card: 'Business card', scan: 'Scan a card', browse: 'Browse', listing: 'Listing',
+      mybusiness: 'My business', profile: 'Profile', support: 'Support', businesses: 'Your businesses', share: 'Shared card' };
+    const what = route ? names[route.name] || (route.object ? route.object.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : '') : '';
+    document.title = [what, activeName, "Ajay's CRM"].filter(Boolean).join(' · ');
+  }, [route, activeName]);
 
-  const closeProfile = useCallback(() => {
-    setShowProfile(false);
-    setSupportView('hub');
-    const origin = profileOriginRef.current || HOME_TAB;
-    if (origin !== 'user_scan') setCurrentTab(origin);
-    else setCurrentTab(HOME_TAB);
-  }, []);
-
-  const openBusiness = useCallback((biz) => {
-    setSelectedCard(null);
-    setSelectedBusiness(biz);
-  }, []);
-
-  const openCard = useCallback((card) => {
-    setSelectedBusiness(null);
-    setSelectedCard(card);
-  }, []);
-
-  const openCardById = useCallback(async (cardId) => {
-    const cards = await apiClient.getCards(token);
-    const found = Array.isArray(cards) ? cards.find((c) => c.id === cardId) : null;
-    if (found) {
-      setCrmStack([]);
-      setCurrentTab('user_vault');
-      setSelectedCard(found);
+  const code = activeCode;
+  const openRecord = useCallback((object, id) => go(paths.detail(code, object, id)), [go, code]);
+  const openList = useCallback((object, opts) => go(paths.list(code, object, opts?.q)), [go, code]);
+  const openCreate = useCallback((object, prefill) => {
+    let key = '';
+    if (prefill) {
+      key = Math.random().toString(36).slice(2, 10);
+      memory.current.prefill[key] = prefill;
     }
-  }, [token]);
+    go(paths.create(code, object, key));
+  }, [go, code]);
+  const openListing = useCallback((biz) => {
+    memory.current.listings[biz.id] = biz;
+    go(paths.listing(biz.id));
+  }, [go]);
+  const openCard = useCallback((card) => go(paths.card(code || '-', card.id)), [go, code]);
 
-  const openRecord = useCallback((object, id) => pushCrm({ type: 'detail', object, id }), [pushCrm]);
-
-  const exitScan = useCallback(() => {
-    const target = scanOriginRef.current || HOME_TAB;
-    setCurrentTab(target === 'user_scan' ? HOME_TAB : target);
-  }, []);
-
-  if (sharedCardId) {
+  // A shared-card link is public: no sign-in needed.
+  if (route?.name === 'share') {
     return (
       <Layout>
-        <SharedCardScreen
-          cardId={sharedCardId}
-          onDone={() => {
-            setSharedCardId(null);
-            window.history.replaceState(null, '', '/');
-          }}
-        />
+        <SharedCardScreen cardId={route.id} onDone={() => navigate('/', { replace: true })} />
       </Layout>
     );
   }
 
-  if (!isAuthenticated) {
+  if (!authReady || !isAuthenticated || !route) {
     return (
       <Layout>
-        <AuthFlow
-          authStep={authStep}
-          setAuthStep={setAuthStep}
-          currentPhone={currentPhone}
-          setCurrentPhone={setCurrentPhone}
-        />
+        <ScreenLoader message="Opening your workspace…" subMessage="" />
       </Layout>
     );
   }
 
-  if (isNewUser) {
-    return (
-      <Layout>
-        <OnboardingScreen />
-      </Layout>
-    );
-  }
-
-  const renderSupport = () => {
-    if (supportView === 'request') {
-      return (
-        <SupportRequestScreen
-          onBack={() => setSupportView('hub')}
-          onViewTickets={() => setSupportView('tickets')}
-        />
-      );
-    }
-    if (supportView === 'tickets') {
-      return (
-        <SupportTicketsScreen
-          onBack={() => setSupportView('hub')}
-          onNewRequest={() => setSupportView('request')}
-          onSelectTicket={(t) => {
-            setSelectedTicket(t);
-            setSupportView('detail');
-          }}
-        />
-      );
-    }
-    if (supportView === 'detail') {
-      return (
-        <SupportTicketDetailScreen
-          ticket={selectedTicket}
-          onBack={() => setSupportView('tickets')}
-        />
-      );
-    }
-    return (
-      <SupportHubScreen
-        onBack={() => {
-          // Support opened from Profile
-          setSupportView('hub');
-          setShowProfile(true);
-          setCurrentTab(HOME_TAB);
-        }}
-        onNewRequest={() => setSupportView('request')}
-        onMyTickets={() => setSupportView('tickets')}
-      />
-    );
+  const selectTab = (tabId) => {
+    if (tabId === 'user_dashboard') go(code ? paths.home(code) : paths.businesses);
+    else if (tabId === 'user_crm') go(code ? paths.menu(code) : paths.businesses);
+    else if (tabId === 'user_scan') go(paths.scan(code || '-'));
+    else if (tabId === 'user_vault') go(paths.cards(code || '-'));
+    else if (tabId === 'user_search') go(paths.browse);
+    else if (tabId === 'user_my_business') go(paths.myBusiness(code || '-'));
+    else if (tabId === 'user_support') go(paths.support('hub'));
+    else if (tabId === 'user_profile') go(paths.profile);
   };
 
-  const renderPrimaryTab = () => {
-    switch (currentTab) {
-      case 'user_vault':
-        return (
-          <SavedCardsScreen
-            onScanNewCard={() => selectTab('user_scan')}
-            onSelectCard={openCard}
+  const homePath = code ? paths.home(code) : paths.businesses;
+  const menuPath = code ? paths.menu(code) : paths.businesses;
+  let tab = 'user_dashboard';
+  let hideTabs = false;
+  let screen = null;
+
+  switch (route.name) {
+    case 'menu':
+      tab = 'user_crm';
+      screen = (
+        <BusinessGate>
+          <CrmModulesScreen
+            onOpenSwitcher={() => setSwitcherOpen(true)}
+            onOpenList={openList}
+            onOpenRecord={openRecord}
+            onOpenCards={() => go(paths.cards(code))}
+            onOpenListing={() => go(paths.myBusiness(code))}
+            onOpenTeam={() => go(paths.team(code))}
+            onOpenBusinessProfile={() => go(paths.businessProfile(code))}
           />
-        );
-      case 'user_scan':
-        return (
-          <ScanCardScreen
-            onCardSaved={(card) => {
-              if (card) {
-                // After save, land on card detail over My Cards — not Scan-as-home
-                scanOriginRef.current = 'user_vault';
-                setCurrentTab('user_vault');
-                openCard(card);
-              } else {
-                setCurrentTab('user_vault');
-              }
+        </BusinessGate>
+      );
+      break;
+    case 'list':
+      tab = 'user_crm';
+      screen = (
+        <BusinessGate>
+          <RecordListScreen
+            key={`${route.code}-${route.object}`}
+            object={route.object}
+            initialQuery={route.q}
+            onBack={() => back(menuPath)}
+            onOpenRecord={openRecord}
+            onCreate={(object) => openCreate(object)}
+          />
+        </BusinessGate>
+      );
+      break;
+    case 'detail':
+      tab = 'user_crm';
+      screen = (
+        <BusinessGate>
+          <RecordDetailScreen
+            key={`${route.code}-${route.object}-${route.id}`}
+            object={route.object}
+            id={route.id}
+            onBack={() => back(paths.list(code, route.object))}
+            onEdit={(object, id) => go(paths.edit(code, object, id))}
+            onOpenRecord={openRecord}
+            onCreateRelated={(object, prefill) => openCreate(object, prefill)}
+            onOpenCard={(cardId) => go(paths.card(code, cardId))}
+            onDeleted={() => navigate(paths.list(code, route.object), { replace: true })}
+          />
+        </BusinessGate>
+      );
+      break;
+    case 'form': {
+      tab = 'user_crm';
+      hideTabs = true;
+      const prefill = memory.current.prefill[route.prefill] || {};
+      screen = (
+        <BusinessGate>
+          <RecordFormScreen
+            key={`${route.code}-${route.object}-${route.id || 'new'}-${route.prefill || ''}`}
+            object={route.object}
+            id={route.id}
+            initialValues={prefill.values}
+            initialLookups={prefill.lookups}
+            onBack={() => back(route.id ? paths.detail(code, route.object, route.id) : paths.list(code, route.object))}
+            // The saved record replaces the form in history, so Back doesn't reopen the form.
+            onSaved={(row) => navigate(paths.detail(code, route.object, route.id || row?.id), { replace: true })}
+          />
+        </BusinessGate>
+      );
+      break;
+    }
+    case 'cards':
+      tab = 'user_vault';
+      screen = <SavedCardsScreen onScanNewCard={() => go(paths.scan(code || '-'))} onSelectCard={openCard} />;
+      break;
+    case 'card': {
+      tab = 'user_vault';
+      const card = savedCards.find((c) => String(c.id) === String(route.id));
+      screen = card ? (
+        <SavedCardDetailScreen
+          key={card.id}
+          card={card}
+          onBack={() => back(paths.cards(code || '-'))}
+          onHome={() => go(homePath)}
+          onUpdated={() => {}}
+          onDeleted={() => navigate(paths.cards(code || '-'), { replace: true })}
+          onOpenRecord={openRecord}
+        />
+      ) : (
+        <SavedCardsScreen onScanNewCard={() => go(paths.scan(code || '-'))} onSelectCard={openCard} />
+      );
+      break;
+    }
+    case 'scan':
+      tab = 'user_scan';
+      hideTabs = true;
+      screen = (
+        <ScanCardScreen
+          onCardSaved={(card) => navigate(card?.id ? paths.card(code || '-', card.id) : paths.cards(code || '-'), { replace: true })}
+          onBack={() => back(homePath)}
+        />
+      );
+      break;
+    case 'mybusiness':
+      tab = 'user_crm';
+      screen = <MyBusinessHubScreen onSelectBusiness={openListing} onBack={() => back(menuPath)} onNewBusiness={() => setSwitcherOpen(true)} />;
+      break;
+    case 'browse':
+      tab = 'user_search';
+      screen = <SearchScreen onSelectBusiness={openListing} />;
+      break;
+    case 'listing': {
+      tab = 'user_search';
+      const biz = memory.current.listings[route.id];
+      screen = biz ? (
+        <BusinessDetailsScreen
+          key={route.id}
+          business={biz}
+          onBack={() => back(paths.browse)}
+          onHome={() => go(homePath)}
+          onBusinessUpdated={(next) => {
+            memory.current.listings[route.id] = next;
+            bump((n) => n + 1);
+          }}
+        />
+      ) : (
+        <ScreenLoader message="Opening the listing…" subMessage="" />
+      );
+      break;
+    }
+    case 'profile':
+      hideTabs = true;
+      screen = <ProfileScreen onNavigate={selectTab} onBack={() => back(homePath)} onSignOut={logout} />;
+      break;
+    case 'support': {
+      hideTabs = true;
+      const ticket = memory.current.tickets[route.id];
+      if (route.view === 'request') {
+        screen = <SupportRequestScreen onBack={() => back(paths.support('hub'))} onViewTickets={() => go(paths.support('tickets'))} />;
+      } else if (route.view === 'tickets' || (route.view === 'detail' && !ticket)) {
+        screen = (
+          <SupportTicketsScreen
+            onBack={() => back(paths.support('hub'))}
+            onNewRequest={() => go(paths.support('request'))}
+            onSelectTicket={(t) => {
+              memory.current.tickets[t.id] = t;
+              go(paths.support('detail', t.id));
             }}
-            onBack={exitScan}
           />
         );
-      case 'user_my_business':
-        return <MyBusinessHubScreen onSelectBusiness={openBusiness} />;
-      case 'user_crm':
-        return (
-          <BusinessGate>
-            <CrmModulesScreen
-              onOpenSwitcher={() => setSwitcherOpen(true)}
-              onOpenList={(object, opts) => pushCrm({ type: 'list', object, query: opts?.q || '' })}
-              onOpenRecord={openRecord}
-              onOpenCards={() => selectTab('user_vault')}
-              onOpenListing={() => selectTab('user_my_business')}
-            />
-          </BusinessGate>
-        );
-      case 'user_support':
-        return renderSupport();
-      case 'user_search':
-        return <SearchScreen onSelectBusiness={openBusiness} />;
-      case HOME_TAB:
-      default:
-        return (
-          <BusinessGate>
-            <CrmHomeScreen
-              key={`home-${crmVersion}`}
-              onOpenProfile={openProfile}
-              onOpenSwitcher={() => setSwitcherOpen(true)}
-              onOpenList={(object) => pushCrm({ type: 'list', object })}
-              onCreate={(object) => pushCrm({ type: 'form', object })}
-              onOpenRecord={openRecord}
-              onScan={() => selectTab('user_scan')}
-            />
-          </BusinessGate>
-        );
+      } else if (route.view === 'detail') {
+        screen = <SupportTicketDetailScreen ticket={ticket} onBack={() => back(paths.support('tickets'))} />;
+      } else {
+        screen = <SupportHubScreen onBack={() => back(paths.profile)} onNewRequest={() => go(paths.support('request'))} onMyTickets={() => go(paths.support('tickets'))} />;
+      }
+      break;
     }
-  };
-
-  // Stack layers (never route Home through Scan)
-  const renderStack = () => {
-    if (currentTab === 'user_support') {
-      return renderSupport();
-    }
-
-    if (showProfile && !selectedBusiness && !selectedCard) {
-      return (
-        <ProfileScreen
-          onNavigate={(id) => {
-            if (id === HOME_TAB || id === 'user_dashboard') {
-              goHome();
-              return;
-            }
-            if (id === 'user_support') {
-              setShowProfile(false);
-              setSupportView('hub');
-              setCurrentTab('user_support');
-              return;
-            }
-            setShowProfile(false);
-            selectTab(id);
-          }}
-          onBack={closeProfile}
-        />
+    case 'businesses':
+    case 'root':
+    case 'home':
+    default:
+      tab = 'user_dashboard';
+      screen = (
+        <BusinessGate>
+          <CrmHomeScreen
+            key={route.code || 'home'}
+            onOpenProfile={() => go(paths.profile)}
+            onOpenSwitcher={() => setSwitcherOpen(true)}
+            onOpenList={(object) => openList(object)}
+            onCreate={(object) => openCreate(object)}
+            onOpenRecord={openRecord}
+            onScan={() => go(paths.scan(code))}
+          />
+        </BusinessGate>
       );
-    }
-
-    // Keep tab mounted under detail overlays so Browse filters/search survive
-    return (
-      <View style={styles.stack}>
-        <View
-          style={[styles.tabLayer, (selectedBusiness || selectedCard || crmStack.length > 0) && styles.tabLayerHidden]}
-          pointerEvents={selectedBusiness || selectedCard || crmStack.length > 0 ? 'none' : 'auto'}
-        >
-          {renderPrimaryTab()}
-        </View>
-
-        {crmStack.map((entry, i) => {
-          const top = i === crmStack.length - 1;
-          const key = `${entry.type}-${entry.object}-${entry.id || 'new'}-${i}`;
-          return (
-            <View key={key} style={[styles.overlay, !top && styles.tabLayerHidden]} pointerEvents={top ? 'auto' : 'none'}>
-              {entry.type === 'list' ? (
-                <RecordListScreen
-                  key={`${key}-${crmVersion}`}
-                  object={entry.object}
-                  initialQuery={entry.query}
-                  onBack={popCrm}
-                  onOpenRecord={openRecord}
-                  onCreate={(object) => pushCrm({ type: 'form', object })}
-                />
-              ) : entry.type === 'detail' ? (
-                <RecordDetailScreen
-                  key={`${key}-${crmVersion}`}
-                  object={entry.object}
-                  id={entry.id}
-                  onBack={popCrm}
-                  onEdit={(object, id) => pushCrm({ type: 'form', object, id })}
-                  onOpenRecord={openRecord}
-                  onCreateRelated={(object, prefill) => pushCrm({ type: 'form', object, initialValues: prefill.values, initialLookups: prefill.lookups })}
-                  onOpenCard={openCardById}
-                  onDeleted={() => {
-                    setCrmVersion((v) => v + 1);
-                    popCrm();
-                  }}
-                />
-              ) : (
-                <RecordFormScreen
-                  object={entry.object}
-                  id={entry.id}
-                  initialValues={entry.initialValues}
-                  initialLookups={entry.initialLookups}
-                  onBack={popCrm}
-                  onSaved={(row) => {
-                    // Lists and the record underneath reload; a new record opens.
-                    setCrmVersion((v) => v + 1);
-                    setCrmStack((st) => {
-                      const rest = st.slice(0, -1);
-                      return entry.id || !row?.id ? rest : [...rest, { type: 'detail', object: entry.object, id: row.id }];
-                    });
-                  }}
-                />
-              )}
-            </View>
-          );
-        })}
-
-        {selectedBusiness ? (
-          <View style={styles.overlay}>
-            <BusinessDetailsScreen
-              business={selectedBusiness}
-              onBack={() => setSelectedBusiness(null)}
-              onHome={goHome}
-              onBusinessUpdated={(next) => setSelectedBusiness(next)}
-            />
-          </View>
-        ) : null}
-
-        {selectedCard ? (
-          <View style={styles.overlay}>
-            <SavedCardDetailScreen
-              card={selectedCard}
-              onBack={() => setSelectedCard(null)}
-              onHome={goHome}
-              onUpdated={(next) => setSelectedCard(next)}
-              onDeleted={() => setSelectedCard(null)}
-              onOpenRecord={(object, id) => {
-                setSelectedCard(null);
-                setCurrentTab('user_crm');
-                setCrmStack([{ type: 'detail', object, id }]);
-              }}
-            />
-          </View>
-        ) : null}
-      </View>
-    );
-  };
-
-  const crmFormOpen = crmStack.length > 0 && crmStack[crmStack.length - 1].type === 'form';
-  const hideTabBar =
-    currentTab === 'user_scan' ||
-    currentTab === 'user_support' ||
-    showProfile ||
-    crmFormOpen;
-
-  // Highlight Home when dashboard is under an overlay
-  const tabBarCurrent =
-    selectedBusiness || selectedCard
-      ? currentTab
-      : showProfile
-        ? HOME_TAB
-        : currentTab;
+  }
 
   return (
     <>
-      <Layout
-        header={null}
-        footer={
-          hideTabBar ? null : (
-            <TabBar
-              currentTab={tabBarCurrent}
-              onSelectTab={selectTab}
-            />
-          )
-        }
-      >
-        {renderStack()}
+      <Layout header={null} footer={hideTabs ? null : <TabBar currentTab={tab} onSelectTab={selectTab} />}>
+        <View style={styles.stack}>{screen}</View>
       </Layout>
 
-      <BusinessSwitcher visible={switcherOpen} onClose={() => setSwitcherOpen(false)} />
+      <BusinessSwitcher
+        visible={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+        onSwitched={(nextCode) => go(paths.home(nextCode))}
+      />
 
       {subscriptionOverlayOpen ? (
         <View style={styles.paywallOverlay}>
@@ -523,8 +352,5 @@ export function AppNavigator() {
 
 const styles = StyleSheet.create({
   stack: { flex: 1 },
-  tabLayer: { flex: 1 },
-  tabLayerHidden: { opacity: 0, position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.bgMuted, zIndex: 10 },
   paywallOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.bgMuted, zIndex: 50 }
 });

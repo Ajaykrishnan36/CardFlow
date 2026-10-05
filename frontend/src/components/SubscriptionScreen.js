@@ -9,10 +9,10 @@ import { useAuth } from '../context/AuthContext';
 import { billingPlatformName, isBillingConfigured } from '../services/subscription/subscriptionService';
 
 const PERKS = [
-  'Unlimited saved business cards',
-  'Unlimited businesses on your account',
-  'Premium card templates & themes',
-  'Cloud backup of your phone contacts'
+  'Pro plan for every business you create',
+  'Up to 15 team members and 25,000 records per business',
+  '1,000 business card scans a month',
+  'Premium digital card templates and contact backup'
 ];
 
 // ISO 8601 period (P1M, P1Y, P3M, P1W…) → labels.
@@ -48,8 +48,8 @@ function StatusCard({ subscription, onManage }) {
   const until = formatDate(subscription.expires_at);
   const map = {
     ACTIVE: {
-      title: 'CardFlow Premium is active',
-      sub: subscription.expires_at ? (subscription.will_renew ? `Renews on ${until}` : `Active until ${until}`) : 'Lifetime access',
+      title: 'Your Pro subscription is active',
+      sub: subscription.expires_at ? (subscription.will_renew ? `Renews on ${until}` : `Active until ${until}`) : 'No end date',
       tone: 'gold'
     },
     CANCELLED: {
@@ -140,7 +140,7 @@ export function SubscriptionScreen({ onBack }) {
     if (!pkg || isPurchasing) return;
     try {
       const res = await purchasePackage(pkg);
-      if (res.status === 'active') flash('success', 'Welcome to CardFlow Premium — everything is unlocked!');
+      if (res.status === 'active') flash('success', 'You are on Pro — your businesses have their new limits.');
       else flash('info', 'Purchase received. Premium will unlock as soon as the store confirms the payment.');
     } catch (e) {
       if (e?.code === 'cancelled' || e?.code === 'busy') return;
@@ -178,8 +178,8 @@ export function SubscriptionScreen({ onBack }) {
       <View style={styles.heroIcon}>
         <Crown size={26} color={colors.gold} />
       </View>
-      <Text style={styles.pageTitle}>CardFlow Premium</Text>
-      <Text style={styles.pageSub}>Unlock premium features and grow your business faster.</Text>
+      <Text style={styles.pageTitle}>Upgrade to Pro</Text>
+      <Text style={styles.pageSub}>One subscription covers the businesses you created: more teammates, more records, more card scans.</Text>
 
       <TouchableOpacity style={styles.historyRow} activeOpacity={0.75} onPress={() => setShowHistory(true)}>
         <Receipt size={16} color={colors.primary} style={{ marginRight: spacing.sm }} />
@@ -211,7 +211,7 @@ export function SubscriptionScreen({ onBack }) {
             <Card style={styles.emptyCard}>
               <Text style={styles.emptyText}>
                 {billingPlatformName === 'web'
-                  ? 'CardFlow Premium is available in the CardFlow app for iPhone and Android. Buy it there and it unlocks here too when you sign in with the same account.'
+                  ? 'Pro is sold in the mobile app for iPhone and Android. Buy it there and it unlocks here too when you sign in with the same account.'
                   : "Subscriptions aren't available on this build yet."}
               </Text>
             </Card>

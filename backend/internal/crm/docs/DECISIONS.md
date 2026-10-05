@@ -588,6 +588,22 @@ workspaces with their setup, setups, plans, settings, categories. The baseline i
 and public listing. After a fresh start demo data is never seeded again. Where `CRM_OWNER_EMAIL` is
 set and the single owner has another address, the owner's address becomes that one.
 
+### D-107 — One app shell, two layouts, one set of URLs
+
+`src/entry.js` boots one app for every URL. Signed out, `/` and `/crm/login` are the same sign-in.
+Signed in, `Shell` (`src/crm/app.tsx`) shows the phone layout (React Native Web, `src/MobileRoot.js`,
+mounted in a portal on `<body>` so neither layout's CSS reaches the other) when the screen is under
+768px or this is the native app **and** the phone layout has a screen for the address
+(`src/navigation/routes.js`); otherwise the desktop CRM, which is responsive. The address bar is the
+phone layout's navigation state: `/crm/w/{code}/home`, `/menu`, `/{object}`, `/{object}/{id}`,
+`?new=1`, `?edit=1`, `/cards`, `?card=`, `?scan=1`, `/listing`, `/crm/browse`, `/crm/me`. The desktop
+routes the same addresses (phone-only ones redirect to the nearest desktop page).
+
+The phone layout keeps no session of its own: in a browser both layouts use the HttpOnly cookie
+(D-104), in the native shell both use the bearer token kept by `crm/api/client.ts`. Its old sign-in,
+splash and onboarding screens, the mock-driven owner screens and the sample directory data are
+removed. An account without an app profile (signed up by email) gets the desktop layout on a phone.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

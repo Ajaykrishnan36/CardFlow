@@ -97,7 +97,7 @@ export function TransactionHistoryScreen({ onBack }) {
         </TouchableOpacity>
       ) : null}
       <Text style={styles.pageTitle}>Transaction History</Text>
-      <Text style={styles.pageSub}>Your CardFlow Premium purchases, renewals and changes.</Text>
+      <Text style={styles.pageSub}>Your Pro purchases, renewals and changes.</Text>
 
       {loading ? (
         <Text style={styles.emptyText}>Loading...</Text>
@@ -115,7 +115,7 @@ export function TransactionHistoryScreen({ onBack }) {
             <Card key={t.id || idx} style={styles.txCard}>
               <View style={styles.txRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.txPlan}>{plan || 'CardFlow Premium'}</Text>
+                  <Text style={styles.txPlan}>{plan || 'Pro'}</Text>
                   <Text style={styles.txDate}>{formatDate(t.at)}</Text>
                 </View>
                 <Text style={styles.txAmount}>{formatAmount(t.price, t.currency)}</Text>

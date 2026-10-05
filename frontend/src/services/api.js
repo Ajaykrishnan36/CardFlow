@@ -1,24 +1,26 @@
-// CardFlow Frontend API Client
-// Automatically connects to local backend (http://127.0.0.1:8080) or live Render backend
+// App API client (cards, directory listings, support, billing).
+import { API_ORIGIN, IS_NATIVE, ensureCsrf, sessionToken } from '@crm/api/client';
 
-const getBaseUrl = () => {
-  if (typeof window !== 'undefined') {
-    // Running inside the native Capacitor shell (Android/iOS) — the bundled
-    // app has no local backend to reach, so always use the live one.
-    if (window.Capacitor?.isNativePlatform?.()) {
-      return 'https://cardflow-api-fsij.onrender.com/api/v1';
-    }
-    // When testing on localhost or 127.0.0.1, connect to local backend at 8080
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return 'http://127.0.0.1:8080/api/v1';
-    }
-    // When running on Render web service
-    if (window.location.origin.includes('onrender.com')) {
-      return `${window.location.origin}/api/v1`;
-    }
-  }
-  return 'https://cardflow-api-fsij.onrender.com/api/v1';
-};
+// One sign-in for the whole site (D-104). In a browser the app API is called on this
+// origin and the session is the HttpOnly cookie the sign-in page set — no token in
+// JavaScript. In the native shell there is no shared origin, so it is a bearer token.
+const getBaseUrl = () => `${API_ORIGIN}/api/v1`;
+
+/** What screens pass around as "token": the bearer token natively, a marker in a browser. */
+export const COOKIE_SESSION = 'cookie';
+export function currentSessionToken() {
+  return IS_NATIVE ? sessionToken() : COOKIE_SESSION;
+}
+
+/** fetch for the app API: adds the browser session (cookie + CSRF token) where there is no bearer token. */
+export async function appFetch(url, opts = {}) {
+  if (IS_NATIVE) return fetch(url, opts);
+  const headers = { ...(opts.headers || {}) };
+  if (headers.Authorization === `Bearer ${COOKIE_SESSION}`) delete headers.Authorization;
+  const method = String(opts.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') headers['X-CSRF-Token'] = await ensureCsrf();
+  return fetch(url, { ...opts, headers, credentials: 'same-origin' });
+}
 
 export const API_BASE_URL = getBaseUrl();
 
@@ -26,7 +28,7 @@ export const API_BASE_URL = getBaseUrl();
 export function resolveApiUrl(path) {
   if (!path) return '';
   if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('http')) return path;
-  const origin = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  const origin = API_ORIGIN;
   return path.startsWith('/') ? `${origin}${path}` : `${API_BASE_URL}/${path}`;
 }
 
@@ -41,7 +43,7 @@ export async function fetchCardOriginalImageUrl(imagePathOrCardId, token) {
   if (path.startsWith('data:') || path.startsWith('blob:')) return path;
   const url = resolveApiUrl(path);
   try {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await appFetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) return null;
     const blob = await res.blob();
     return URL.createObjectURL(blob);
@@ -63,7 +65,7 @@ export async function fetchPublicCardImageUrl(cardId, side = 'front') {
   const qs = side && side !== 'front' ? `?side=${side}` : '';
   const url = resolveApiUrl(`/api/v1/public/cards/${cardId}/original-image${qs}`);
   try {
-    const res = await fetch(url);
+    const res = await appFetch(url);
     if (!res.ok) return null;
     const blob = await res.blob();
     return URL.createObjectURL(blob);
@@ -88,7 +90,7 @@ export const apiClient = {
   async sendOtp(phone) {
     const formattedPhone = formatE164(phone);
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/otp/send`, {
+      const res = await appFetch(`${API_BASE_URL}/auth/otp/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: formattedPhone, platform: 'web', device_id: 'browser-client' })
@@ -111,7 +113,7 @@ export const apiClient = {
   async verifyOtp(phone, otp) {
     const formattedPhone = formatE164(phone);
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/otp/verify`, {
+      const res = await appFetch(`${API_BASE_URL}/auth/otp/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: formattedPhone, otp, otp_code: otp, platform: 'web', device_id: 'browser-client' })
@@ -133,7 +135,7 @@ export const apiClient = {
   async getMe(token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/users/me`, { headers });
+    const res = await appFetch(`${API_BASE_URL}/users/me`, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Failed to load profile');
     return data.data || data;
@@ -142,7 +144,7 @@ export const apiClient = {
   async updateProfile(payload, token = '') {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/users/me`, {
+    const res = await appFetch(`${API_BASE_URL}/users/me`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify(payload)
@@ -157,7 +159,7 @@ export const apiClient = {
     const formattedPhone = formatE164(phone);
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/users/me/phone`, {
+    const res = await appFetch(`${API_BASE_URL}/users/me/phone`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ phone: formattedPhone, otp_code: otpCode })
@@ -167,12 +169,12 @@ export const apiClient = {
     return data.data || data;
   },
 
-  // CardFlow Premium (RevenueCat). The server's stored state is what premium
+  // Pro (RevenueCat). The server's stored state is what premium
   // APIs enforce; the app shows it and asks the server to re-sync after a purchase.
   async getBillingStatus(token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/billing/status`, { headers });
+    const res = await appFetch(`${API_BASE_URL}/billing/status`, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not load subscription status');
     return data.data || data;
@@ -182,7 +184,7 @@ export const apiClient = {
   async syncBilling(token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/billing/sync`, { method: 'POST', headers });
+    const res = await appFetch(`${API_BASE_URL}/billing/sync`, { method: 'POST', headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not refresh subscription');
     return data.data || data;
@@ -191,7 +193,7 @@ export const apiClient = {
   async getBillingTransactions(token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/billing/transactions`, { headers });
+    const res = await appFetch(`${API_BASE_URL}/billing/transactions`, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not load transactions');
     return data.data || data;
@@ -201,7 +203,7 @@ export const apiClient = {
   async backupContacts(contacts, token = '') {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/contacts/backup`, {
+    const res = await appFetch(`${API_BASE_URL}/contacts/backup`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ contacts })
@@ -215,7 +217,7 @@ export const apiClient = {
   async getContactBackupStatus(token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/contacts/backup/status`, { headers });
+    const res = await appFetch(`${API_BASE_URL}/contacts/backup/status`, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not check backup status');
     return data.data || data;
@@ -225,7 +227,7 @@ export const apiClient = {
   async getContactBackup(token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/contacts/backup`, { headers });
+    const res = await appFetch(`${API_BASE_URL}/contacts/backup`, { headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not load contact backup');
     return data.data || data;
@@ -235,7 +237,7 @@ export const apiClient = {
   async getCategories() {
     console.log('📡 [API CALL] GET /categories');
     try {
-      const res = await fetch(`${API_BASE_URL}/categories`);
+      const res = await appFetch(`${API_BASE_URL}/categories`);
       const data = await res.json();
       return data.data?.categories || data.data || [];
     } catch (e) {
@@ -248,11 +250,11 @@ export const apiClient = {
   async searchBusinesses(params = {}) {
     console.log('📡 [API CALL] GET /businesses/search', params);
     try {
-      const url = new URL(`${API_BASE_URL}/businesses/search`);
+      const url = new URL(`${API_BASE_URL}/businesses/search`, window.location.origin);
       Object.keys(params).forEach(k => {
         if (params[k] != null && params[k] !== '') url.searchParams.append(k, params[k]);
       });
-      const res = await fetch(url.toString());
+      const res = await appFetch(url.toString());
       const data = await res.json();
       return data.data?.businesses || data.data || [];
     } catch (e) {
@@ -267,7 +269,7 @@ export const apiClient = {
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/cards/scan`, {
+      const res = await appFetch(`${API_BASE_URL}/cards/scan`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ image_object_key: imageKey })
@@ -291,7 +293,7 @@ export const apiClient = {
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/cards`, {
+      const res = await appFetch(`${API_BASE_URL}/cards`, {
         method: 'POST',
         headers,
         body: JSON.stringify(cardData)
@@ -317,7 +319,7 @@ export const apiClient = {
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/cards/${cardId}/original-image`, {
+      const res = await appFetch(`${API_BASE_URL}/cards/${cardId}/original-image`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ image_data: imageData, side: side || 'front' })
@@ -346,7 +348,7 @@ export const apiClient = {
   async updateCard(cardId, cardData, token = '') {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/cards/${cardId}`, {
+    const res = await appFetch(`${API_BASE_URL}/cards/${cardId}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify(cardData)
@@ -361,7 +363,7 @@ export const apiClient = {
   async deleteCard(cardId, token = '') {
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/cards/${cardId}`, { method: 'DELETE', headers });
+    const res = await appFetch(`${API_BASE_URL}/cards/${cardId}`, { method: 'DELETE', headers });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not remove card');
     return data.data || data;
@@ -369,7 +371,7 @@ export const apiClient = {
 
   // Loads a shared card's public fields — no auth, used by the "/share/{id}" link view.
   async getPublicCard(cardId) {
-    const res = await fetch(`${API_BASE_URL}/public/cards/${cardId}`);
+    const res = await appFetch(`${API_BASE_URL}/public/cards/${cardId}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'This shared card link is no longer available.');
     return data.data || data;
@@ -380,7 +382,7 @@ export const apiClient = {
     console.log('📡 [API CALL] GET /cards');
     const headers = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/cards`, { headers });
+    const res = await appFetch(`${API_BASE_URL}/cards`, { headers });
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data?.error?.message || 'Could not load saved cards');
@@ -395,7 +397,7 @@ export const apiClient = {
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/support/tickets`, {
+      const res = await appFetch(`${API_BASE_URL}/support/tickets`, {
         method: 'POST',
         headers,
         body: JSON.stringify(payload)
@@ -414,7 +416,7 @@ export const apiClient = {
     try {
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/support/tickets/my`, { headers });
+      const res = await appFetch(`${API_BASE_URL}/support/tickets/my`, { headers });
       const data = await res.json();
       return data.data?.tickets || data.data || [];
     } catch (e) {
@@ -428,7 +430,7 @@ export const apiClient = {
     try {
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/support/tickets/my/${encodeURIComponent(id)}`, { headers });
+      const res = await appFetch(`${API_BASE_URL}/support/tickets/my/${encodeURIComponent(id)}`, { headers });
       if (!res.ok) return null;
       const data = await res.json();
       return data.data?.ticket || data.ticket || null;
@@ -442,7 +444,7 @@ export const apiClient = {
   async sendSupportMessage(id, message, token = '') {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/support/tickets/my/${encodeURIComponent(id)}/messages`, {
+    const res = await appFetch(`${API_BASE_URL}/support/tickets/my/${encodeURIComponent(id)}/messages`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ message })
@@ -458,7 +460,7 @@ export const apiClient = {
     try {
       const headers = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/owner/businesses`, { headers });
+      const res = await appFetch(`${API_BASE_URL}/owner/businesses`, { headers });
       const data = await res.json();
       return data.data?.businesses || data.data || [];
     } catch (e) {
@@ -473,7 +475,7 @@ export const apiClient = {
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(`${API_BASE_URL}/owner/businesses`, {
+      const res = await appFetch(`${API_BASE_URL}/owner/businesses`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -510,7 +512,7 @@ export const apiClient = {
     console.log('📡 [API CALL] PATCH /owner/businesses/' + id, payload);
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/owner/businesses/${id}`, {
+    const res = await appFetch(`${API_BASE_URL}/owner/businesses/${id}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({
@@ -541,7 +543,7 @@ export const apiClient = {
   async uploadBusinessCardImage(id, side, imageData, token = '') {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch(`${API_BASE_URL}/owner/businesses/${id}/card-image`, {
+    const res = await appFetch(`${API_BASE_URL}/owner/businesses/${id}/card-image`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ side, image_data: imageData })
@@ -551,3 +553,11 @@ export const apiClient = {
     return data.data || data;
   }
 };
+
+/** One public listing by id (used when a listing link is opened directly). */
+export async function fetchListing(id) {
+  const res = await appFetch(`${API_BASE_URL}/businesses/${encodeURIComponent(id)}`);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error?.message || 'Listing not found');
+  return data?.data?.business || data?.data || data;
+}

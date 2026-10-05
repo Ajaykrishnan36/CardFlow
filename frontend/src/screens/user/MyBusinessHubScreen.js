@@ -7,11 +7,18 @@ import { Button } from '../../components/Button';
 import { CardStyleModal } from '../../components/CardStyleModal';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAuth } from '../../context/AuthContext';
+import { useCrm } from '../../context/CrmContext';
 
 const FREE_BUSINESS_LIMIT = 2;
 
-export function MyBusinessHubScreen({ onSelectBusiness }) {
-  const { myBusinesses, addMyBusiness, isPremiumActive } = useAuth();
+export function MyBusinessHubScreen({ onSelectBusiness, onNewBusiness }) {
+  const { myBusinesses, addMyBusiness, isPremiumActive, loadMyBusinesses } = useAuth();
+  // A business created in the CRM gets its listing on the server: show it as soon as it exists.
+  const { businesses } = useCrm();
+  React.useEffect(() => {
+    loadMyBusinesses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businesses.length]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [styleBusiness, setStyleBusiness] = useState(null);
@@ -36,6 +43,11 @@ export function MyBusinessHubScreen({ onSelectBusiness }) {
   };
 
   const openAddModal = () => {
+    // A new business is created once, in the CRM; its listing and cards come with it.
+    if (onNewBusiness) {
+      onNewBusiness();
+      return;
+    }
     if (!isPremiumActive && myBusinesses.length >= FREE_BUSINESS_LIMIT) {
       setShowUpgrade(true);
       return;
@@ -81,8 +93,8 @@ export function MyBusinessHubScreen({ onSelectBusiness }) {
           <Text style={styles.subtitle}>
             {myBusinesses.length > 0
               ? `${myBusinesses.length} business${myBusinesses.length > 1 ? 'es' : ''}`
-              : 'Showcase your business on CardFlow'}
-            {!isPremiumActive ? ` · ${Math.max(0, FREE_BUSINESS_LIMIT - myBusinesses.length)} free left` : ''}
+              : 'Your digital card, original card and directory listing'}
+
           </Text>
         </View>
         <Button title="+ Add" onPress={() => openAddModal()} size="sm" />
@@ -95,7 +107,7 @@ export function MyBusinessHubScreen({ onSelectBusiness }) {
       {myBusinesses.length === 0 ? (
         <View style={styles.emptyInline}>
           <Text style={styles.emptyTitle}>No business yet</Text>
-          <Text style={styles.emptySub}>Add your listing to appear in Browse.</Text>
+          <Text style={styles.emptySub}>Create your business to get its digital card and a listing in Browse.</Text>
           <Button title="Add Business" onPress={() => openAddModal()} size="sm" style={{ marginTop: spacing.md, alignSelf: 'flex-start' }} />
         </View>
       ) : (
@@ -210,7 +222,7 @@ export function MyBusinessHubScreen({ onSelectBusiness }) {
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
         title="Business limit reached"
-        message="Free plan allows up to 2 businesses. Upgrade to CardFlow Premium for unlimited business listings."
+        message="Free plan allows up to 2 businesses. Upgrade to Pro for unlimited business listings."
       />
     </ScrollView>
   );

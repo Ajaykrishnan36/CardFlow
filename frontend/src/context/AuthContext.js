@@ -1,23 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { mockBusinesses } from '../data/mockData';
-import { apiClient } from '../services/api';
-import { crmApi, isUnifiedToken } from '../services/crmApi';
+import { apiClient, currentSessionToken } from '../services/api';
+import { crmApi } from '../services/crmApi';
 import { syncAuthNotifications } from '../utils/pushNotifications';
 import * as subscriptionService from '../services/subscription/subscriptionService';
 
 const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
+// The signed-in person's app profile (cards, listings, premium) for the phone layout.
+// Signing in and out happens once for the whole site (D-104): this provider starts from
+// the session that already exists and asks the site to end it.
+//   onUnavailable — there is no app profile for this session (the phone layout can't run)
+//   onSignOut     — end the session and go to the sign-in page
+export function AuthProvider({ children, onUnavailable, onSignOut }) {
   const [user, setUser] = useState(null);
   const [role, setRoleState] = useState(null); // 'user' | 'owner'
   // The app has no admin console (the CRM manages the app); an account still marked
   // "admin" on the server gets the normal user flow.
   const setRole = (r) => setRoleState(r === 'admin' ? 'user' : r);
   const [token, setToken] = useState(null);
-  const [activeBusinessId, setActiveBusinessId] = useState('biz-1');
   const [isLoading, setIsLoading] = useState(false);
-  const [pendingPhone, setPendingPhone] = useState('');
-  const [isNewUser, setIsNewUser] = useState(false);
   const [savedCards, setSavedCards] = useState([]);
   const [myBusinesses, setMyBusinesses] = useState([]);
   // Global paywall overlay — any screen can call openSubscription() to show
@@ -44,7 +45,7 @@ export function AuthProvider({ children }) {
     }
   }, [token]);
 
-  // Load user's owned businesses (multiple per user supported)
+  // The person's public listings (one per business). The server is the only source.
   const loadMyBusinesses = useCallback(async (authToken, currentUser) => {
     const currentToken = authToken || token;
     const u = currentUser || user;
@@ -54,31 +55,9 @@ export function AuthProvider({ children }) {
     }
     try {
       const list = await apiClient.getMyBusinesses(currentToken);
-      if (list && Array.isArray(list) && list.length > 0) {
-        setMyBusinesses(list);
-        try {
-          localStorage.setItem(`cf_biz_${u.phone}`, JSON.stringify(list));
-        } catch (e) {}
-        return;
-      }
+      setMyBusinesses(Array.isArray(list) ? list : []);
     } catch (e) {
       console.warn('Could not load businesses from API', e);
-    }
-    // Fallback: dev owner accounts or localStorage
-    try {
-      const cached = localStorage.getItem(`cf_biz_${u.phone}`);
-      if (cached) {
-        setMyBusinesses(JSON.parse(cached));
-        return;
-      }
-    } catch (e) {}
-    // Seed businesses for dev owner test accounts
-    if (u.ownedBusinessIds?.length) {
-      const seeded = mockBusinesses.filter(
-        (b) => u.ownedBusinessIds.includes(b.id) || b.ownerPhone === u.phone || b.ownerPhone === `+91${u.phone}`
-      );
-      setMyBusinesses(seeded);
-    } else {
       setMyBusinesses([]);
     }
   }, [token]);
@@ -105,19 +84,7 @@ export function AuthProvider({ children }) {
       card_image_url: bizData.front_image_data || '',
       card_back_image_url: bizData.back_image_data || ''
     };
-    setMyBusinesses((prev) => {
-      const updated = [newBiz, ...prev];
-      try {
-        localStorage.setItem(`cf_biz_${user?.phone}`, JSON.stringify(updated.map((b) => ({
-          ...b,
-          card_image_url: b.card_image_url ? '[stored]' : '',
-          card_back_image_url: b.card_back_image_url ? '[stored]' : '',
-          front_image_data: undefined,
-          back_image_data: undefined
-        }))));
-      } catch (e) {}
-      return updated;
-    });
+    setMyBusinesses((prev) => [newBiz, ...prev]);
     return newBiz;
   }, [token, user]);
 
@@ -154,209 +121,82 @@ export function AuthProvider({ children }) {
   const sessionRestoredRef = useRef(false);
   const [authReady, setAuthReady] = useState(false);
 
-  // Restore session once on app startup — must NOT depend on loadUserVault/loadMyBusinesses
-  // (those callbacks change when token/user updates, which caused an infinite API loop)
+  // Start from the site's session: ask the server who this is. Nothing about the session
+  // is kept in the browser's storage.
   useEffect(() => {
     if (sessionRestoredRef.current) return;
     sessionRestoredRef.current = true;
-
-    try {
-      const savedUser = localStorage.getItem('cf_user');
-      const savedToken = localStorage.getItem('cf_token');
-      if (savedUser && savedToken) {
-        const parsed = JSON.parse(savedUser);
-        setUser(parsed);
-        setRole(parsed.role);
-        setToken(savedToken);
-        if (parsed.role === 'owner' && parsed.ownedBusinessIds?.length) {
-          setActiveBusinessId(parsed.ownedBusinessIds[0]);
-        }
-        // Pass token/user explicitly — do not rely on stale closure state
-        apiClient.getCards(savedToken).then((cards) => {
-          if (cards && Array.isArray(cards)) setSavedCards(cards);
-        });
-        apiClient.getMyBusinesses(savedToken).then((list) => {
-          if (list && Array.isArray(list) && list.length > 0) {
-            setMyBusinesses(list);
-            return;
-          }
-          try {
-            const cached = localStorage.getItem(`cf_biz_${parsed.phone}`);
-            if (cached) {
-              setMyBusinesses(JSON.parse(cached));
-              return;
-            }
-          } catch (e) {}
-          if (parsed.ownedBusinessIds?.length) {
-            setMyBusinesses(
-              mockBusinesses.filter(
-                (b) => parsed.ownedBusinessIds.includes(b.id) || b.ownerPhone === parsed.phone || b.ownerPhone === `+91${parsed.phone}`
-              )
-            );
-          }
-        }).catch(() => {});
+    const sessionToken = currentSessionToken();
+    (async () => {
+      try {
+        const [profile, me] = await Promise.all([apiClient.getMe(sessionToken), crmApi.me().catch(() => null)]);
+        const account = {
+          id: profile.id || null,
+          phone: String(profile.phone || '').replace('+91', ''),
+          role: 'user',
+          name: me?.identity?.displayName || profile.name || '',
+          email: me?.identity?.email || '',
+          emailVerified: Boolean(me?.identity?.emailVerified),
+          phoneVerified: Boolean(me?.identity?.phoneVerified),
+          hasPassword: Boolean(me?.identity?.hasPassword),
+          city: profile.city || '',
+          state: profile.state || '',
+          plan: profile.plan || 'free',
+          freeScansRemaining: profile.free_scans_remaining != null ? profile.free_scans_remaining : 30,
+          credits: profile.credit_balance != null ? profile.credit_balance : 0,
+          isIdVerified: profile.is_id_verified || false,
+          isSubscribed: profile.is_subscribed || false,
+          subscriptionPlanId: profile.subscription_plan_id || null,
+          subscriptionExpiresAt: profile.subscription_expires_at || null
+        };
+        setUser(account);
+        setRole('user');
+        setToken(sessionToken);
+        loadUserVault(sessionToken);
+        loadMyBusinesses(sessionToken, account);
+      } catch (e) {
+        // Signed out, or signed in without an app profile (an email-only account).
+        if (onUnavailable) onUnavailable();
+      } finally {
+        setAuthReady(true);
       }
-    } catch (e) {
-      console.warn('Could not read session storage', e);
-    } finally {
-      setAuthReady(true);
-    }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Re-read name, email and what is verified after the person changes them.
+  const refreshAccount = useCallback(async () => {
+    const me = await crmApi.me();
+    setUser((u) => (u ? {
+      ...u,
+      name: me.identity.displayName || u.name,
+      email: me.identity.email || '',
+      phone: String(me.identity.phone || u.phone || '').replace('+91', ''),
+      emailVerified: Boolean(me.identity.emailVerified),
+      phoneVerified: Boolean(me.identity.phoneVerified),
+      hasPassword: Boolean(me.identity.hasPassword)
+    } : u));
+    return me;
   }, []);
 
   const [lastSentOtp, setLastSentOtp] = useState('');
 
+  // A code for changing the mobile number on the account (sign-in codes are the sign-in page's job).
   const sendOtp = async (phone) => {
     setIsLoading(true);
-    setPendingPhone(phone);
     try {
-      const res = await apiClient.sendOtp(phone);
-      if (res?.status === 'error' || res?.error) {
-        setIsLoading(false);
-        return {
-          success: false,
-          error: res?.error?.message || res?.error || "Couldn't send OTP. Please try again."
-        };
-      }
-      const code = res?.data?.otp_preview || res?.otp_preview || '';
-      setLastSentOtp(code);
-      setIsLoading(false);
-      return { success: true, message: 'OTP sent successfully', otp: code };
+      const res = await crmApi.requestPhoneChange(phone);
+      setLastSentOtp(res?.devCode || '');
+      return { success: true, message: 'OTP sent successfully', otp: res?.devCode || '' };
     } catch (e) {
+      return { success: false, error: (e.fieldErrors && Object.values(e.fieldErrors)[0]) || e.message || "Couldn't send OTP. Please try again." };
+    } finally {
       setIsLoading(false);
-      return { success: false, error: "Couldn't send OTP. Please try again." };
-    }
-  };
-
-  const verifyOtp = async (phone, enteredOtp, options = {}) => {
-    setIsLoading(true);
-    try {
-      const apiRes = await apiClient.verifyOtp(phone, enteredOtp);
-      const errMsg = apiRes?.error?.message || apiRes?.error || null;
-      const hasToken = !!(apiRes?.data?.access_token || apiRes?.access_token || apiRes?.data?.user || apiRes?.user);
-      if (!apiRes || apiRes.status === 'error' || (errMsg && !hasToken)) {
-        setIsLoading(false);
-        return {
-          success: false,
-          error: typeof errMsg === 'string' ? errMsg : 'Invalid OTP. Please check the code and try again.'
-        };
-      }
-
-      // Build session only from API / database user payload
-      let matchedAccount = null;
-      let isBrandNew = false;
-
-      const apiUser = apiRes?.data?.user || apiRes?.user;
-      if (apiUser) {
-        matchedAccount = {
-          id: apiUser.id || null,
-          phone: (apiUser.phone || phone).replace('+91', ''),
-          role: apiUser.role || 'user',
-          name: apiUser.name || 'CardFlow User',
-          city: apiUser.city || 'Coimbatore',
-          state: apiUser.state || 'Tamil Nadu',
-          plan: apiUser.plan || 'free',
-          freeScansRemaining: apiUser.free_scans_remaining != null ? apiUser.free_scans_remaining : 30,
-          credits: apiUser.credit_balance != null ? apiUser.credit_balance : 10,
-          isIdVerified: apiUser.is_id_verified || false,
-          isSubscribed: apiUser.is_subscribed || false,
-          subscriptionPlanId: apiUser.subscription_plan_id || null,
-          subscriptionExpiresAt: apiUser.subscription_expires_at || null,
-          isNewUser: apiRes?.data?.is_new_user || apiRes?.is_new_user || false,
-          // A business created from someone scanning this person's card is now theirs.
-          suggestedName: apiRes?.data?.suggested_name || '',
-          claimedBusinesses: apiRes?.data?.claimed_businesses || []
-        };
-        isBrandNew = matchedAccount.isNewUser;
-      }
-
-      if (!matchedAccount) {
-        isBrandNew = !!(apiRes?.data?.is_new_user || apiRes?.is_new_user);
-        matchedAccount = {
-          phone,
-          role: 'user',
-          name: 'CardFlow User',
-          city: 'Coimbatore',
-          state: 'Tamil Nadu',
-          plan: 'free',
-          freeScansRemaining: 30,
-          credits: 10,
-          isIdVerified: false,
-          isSubscribed: false,
-          subscriptionPlanId: null,
-          subscriptionExpiresAt: null,
-          isNewUser: isBrandNew
-        };
-      }
-
-      if (typeof options.beforeCommit === 'function') {
-        await options.beforeCommit();
-      }
-
-      // The unified session token works for the app API and the CRM API (D-93). The
-      // legacy access token is only a fallback for an older server.
-      const liveJwt = apiRes?.data?.session_token || apiRes?.session_token || apiRes?.data?.access_token || apiRes?.access_token || '';
-      if (!liveJwt) {
-        setIsLoading(false);
-        return { success: false, error: 'Could not start your session. Please try again.' };
-      }
-      matchedAccount.hasBusiness = !!(apiRes?.data?.has_business ?? apiRes?.has_business);
-      setUser(matchedAccount);
-      setRole(matchedAccount.role);
-      setToken(liveJwt);
-      setIsNewUser(isBrandNew);
-
-      if (matchedAccount.role === 'owner' && matchedAccount.ownedBusinessIds?.length) {
-        setActiveBusinessId(matchedAccount.ownedBusinessIds[0]);
-      }
-
-      try {
-        localStorage.setItem('cf_user', JSON.stringify(matchedAccount));
-        localStorage.setItem('cf_token', liveJwt);
-      } catch (e) {}
-
-      loadUserVault(liveJwt);
-      loadMyBusinesses(liveJwt, matchedAccount);
-
-      setIsLoading(false);
-      return { success: true, user: matchedAccount, isNewUser: isBrandNew };
-    } catch (e) {
-      setIsLoading(false);
-      return { success: false, error: 'Something went wrong. Please try again.' };
-    }
-  };
-
-  const completeOnboarding = async (profileData) => {
-    const updatedUser = {
-      ...user,
-      name: profileData.name || user?.name || 'CardFlow User',
-      role: user?.role || 'user',
-      isNewUser: false
-    };
-
-    setUser(updatedUser);
-    setRole(updatedUser.role);
-    setIsNewUser(false);
-
-    try {
-      localStorage.setItem('cf_user', JSON.stringify(updatedUser));
-    } catch (e) {}
-
-    if (token) {
-      try {
-        await apiClient.updateProfile({ name: updatedUser.name }, token);
-      } catch (e) {
-        console.warn('Could not persist onboarding name', e);
-      }
     }
   };
 
   const updateProfile = useCallback(async (fields) => {
-    const payload = {
-      name: fields.name,
-      email: fields.email || null,
-      city: fields.city,
-      state: fields.state
-    };
+    const payload = { name: fields.name, city: fields.city, state: fields.state };
     let updated = null;
     if (token) {
       updated = await apiClient.updateProfile(payload, token);
@@ -364,14 +204,10 @@ export function AuthProvider({ children }) {
     const merged = {
       ...user,
       name: updated?.name ?? fields.name ?? user?.name,
-      email: updated?.email ?? fields.email ?? user?.email,
       city: updated?.city ?? fields.city ?? user?.city,
       state: updated?.state ?? fields.state ?? user?.state
     };
     setUser(merged);
-    try {
-      localStorage.setItem('cf_user', JSON.stringify(merged));
-    } catch (e) {}
     return merged;
   }, [user, token]);
 
@@ -379,16 +215,13 @@ export function AuthProvider({ children }) {
   // distinct from sendOtp/verifyOtp (login), this never changes the session.
   const changePhone = useCallback(async (newPhone, otpCode) => {
     const updated = await apiClient.changePhone(newPhone, otpCode, token);
-    const merged = { ...user, phone: updated?.phone ?? user?.phone };
+    const merged = { ...user, phone: String(updated?.phone ?? user?.phone ?? '').replace('+91', '') };
     setUser(merged);
-    try {
-      localStorage.setItem('cf_user', JSON.stringify(merged));
-    } catch (e) {}
     return merged;
   }, [user, token]);
 
   // ---------------------------------------------------------------------
-  // CardFlow Premium (RevenueCat)
+  // Pro (RevenueCat)
   // The RevenueCat App User ID is the signed-in CardFlow user id (returned by
   // the server). Premium access comes from the server's stored state, which
   // it builds from RevenueCat webhooks / REST — the client never grants it.
@@ -412,9 +245,6 @@ export function AuthProvider({ children }) {
         subscriptionPlanId: st.product_id || null,
         subscriptionExpiresAt: st.expires_at || null
       };
-      try {
-        localStorage.setItem('cf_user', JSON.stringify(merged));
-      } catch (e) {}
       return merged;
     });
   }, []);
@@ -658,60 +488,16 @@ export function AuthProvider({ children }) {
     return saved;
   };
 
-  const logout = (opts = {}) => {
-    // Revoke the session on the server too (skipped when the server already refused it).
-    const current = token;
-    if (current && !opts.expired && isUnifiedToken(current)) {
-      crmApi.logout(current).catch(() => {});
-    }
+  const logout = () => {
     subscriptionService.reset();
     setSubscription(null);
     setUser(null);
     setRole(null);
     setToken(null);
-    setPendingPhone('');
-    setIsNewUser(false);
     setSavedCards([]);
     setMyBusinesses([]);
-    try {
-      localStorage.removeItem('cf_user');
-      localStorage.removeItem('cf_token');
-    } catch (e) {}
-  };
-
-  const switchActiveBusiness = (bizId) => {
-    setActiveBusinessId(bizId);
-  };
-
-  const switchToOwnerMode = (newBizData = null) => {
-    const updated = {
-      ...user,
-      role: 'owner',
-      plan: user?.plan === 'free' ? 'plus' : user?.plan || 'plus',
-      ownedBusinessIds: user?.ownedBusinessIds && user.ownedBusinessIds.length > 0
-        ? user.ownedBusinessIds
-        : ['biz-1', 'biz-3']
-    };
-    if (newBizData && newBizData.businessName) {
-      updated.businessName = newBizData.businessName;
-    }
-    setUser(updated);
-    setRole('owner');
-    try {
-      localStorage.setItem('cf_user', JSON.stringify(updated));
-    } catch (e) {}
-  };
-
-  const switchToUserMode = () => {
-    const updated = {
-      ...user,
-      role: 'user'
-    };
-    setUser(updated);
-    setRole('user');
-    try {
-      localStorage.setItem('cf_user', JSON.stringify(updated));
-    } catch (e) {}
+    // The site ends the session on the server and shows the sign-in page.
+    if (onSignOut) onSignOut();
   };
 
   return (
@@ -721,11 +507,10 @@ export function AuthProvider({ children }) {
         role,
         token,
         isAuthenticated: !!user,
-        isNewUser,
+        authReady,
+        refreshAccount,
         isLoading,
-        pendingPhone,
         lastSentOtp,
-        activeBusinessId,
         savedCards,
         myBusinesses,
         isBusinessSaved,
@@ -738,8 +523,6 @@ export function AuthProvider({ children }) {
         addMyBusiness,
         updateMyBusiness,
         sendOtp,
-        verifyOtp,
-        completeOnboarding,
         updateProfile,
         changePhone,
         isPremiumActive,
@@ -754,9 +537,6 @@ export function AuthProvider({ children }) {
         openSubscription,
         closeSubscription,
         logout,
-        switchActiveBusiness,
-        switchToOwnerMode,
-        switchToUserMode,
         setUser
       }}
     >

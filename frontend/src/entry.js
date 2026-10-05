@@ -1,7 +1,3 @@
-// Picks which app to boot for this URL. CardFlow (src/index.js) is unchanged; Ajay's CRM
-// owns everything under /crm. Both are separate lazy chunks.
-if (/^\/crm(\/|$)/.test(window.location.pathname)) {
-  import('./crm/main');
-} else {
-  import('./index');
-}
+// One app for every URL (D-104): the same sign-in, the same addresses, and after
+// sign-in the phone layout or the desktop layout depending on the screen.
+import('./crm/main');

@@ -95,7 +95,7 @@ func TestMain(m *testing.M) {
 	for k, v := range map[string]string{
 		"DATABASE_URL": u.String(), "ENV": "development", "CRM_APP_ENV": "local", "SMS_PROVIDER": "preview",
 		"CRM_SMTP_HOST": "", "CRM_BREVO_API_KEY": "", "CRM_SEED_DEMO": "true", "REDIS_URL": "", "S3_ENDPOINT": "",
-		"CRM_CARDFLOW_SYNC": "true", "CRM_SYNC_INTERVAL": "24h",
+		"CRM_CARDFLOW_SYNC": "true", "CRM_SYNC_INTERVAL": "24h", "CRM_OWNER_EMAIL": "", "CRM_OWNER_BOOTSTRAP_PASSWORD": "", "CRM_FRESH_START": "",
 	} {
 		os.Setenv(k, v)
 	}

@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/api/crm/:path*",
-      "destination": "https://cardflow-api-fsij.onrender.com/api/crm/:path*"
+      "source": "/api/:path*",
+      "destination": "https://cardflow-api-fsij.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",

@@ -42,7 +42,7 @@ export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
   // Magic link from the sign-in email: ?method=code&email=…&code=… opens the code tab.
   const asked = searchParams.get('method');
   const [picked, setMethod] = useState<'phone' | 'password' | 'code'>(
-    asked === 'code' ? 'code' : asked === 'password' || audience === 'owner' || searchParams.get('expired') ? 'password' : 'phone'
+    asked === 'code' ? 'code' : asked === 'password' || audience === 'owner' ? 'password' : 'phone'
   );
   const method = tabs.includes(picked) ? picked : tabs[0];
   const providers = (['google', 'microsoft', 'linkedin'] as const).filter((p) => allowed.includes(p) && providersQ.data?.[p] && (audience === 'workspace' || p !== 'linkedin'));

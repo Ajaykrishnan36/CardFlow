@@ -128,7 +128,7 @@ export function ThemeSettings({ onBack }) {
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
         title="Unlock every accent color"
-        message="Royal Purple and Indigo are free. Upgrade to CardFlow Premium to use all 10 accent colors."
+        message="Royal Purple and Indigo are free. Upgrade to Pro to use all 10 accent colors."
       />
     </ScrollView>
   );

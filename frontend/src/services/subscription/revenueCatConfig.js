@@ -8,7 +8,7 @@ import { Capacitor } from '@capacitor/core';
 // While the store accounts aren't set up, put the RevenueCat Test Store key
 // (test_...) in these variables; swap in the real appl_ / goog_ / rcb_ keys later.
 
-// CardFlow Premium is one entitlement. Never check product ids for access.
+// Pro is one entitlement. Never check product ids for access.
 export const PREMIUM_ENTITLEMENT = 'premium';
 
 const KEYS = {

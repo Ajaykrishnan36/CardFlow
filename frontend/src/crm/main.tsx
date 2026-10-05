@@ -4,11 +4,15 @@ import './styles/crm.css';
 import './i18n';
 import { CrmApp } from './app';
 
-// Shares CardFlow's index.html, so adjust only what the CRM needs, only on /crm pages.
+import { IS_NATIVE } from './api/client';
+
+// One app for every URL (D-104).
 document.documentElement.classList.add('crm-page');
 document.documentElement.lang = 'en';
-// CardFlow disables pinch-zoom for its native shell; the CRM keeps it (WCAG 2.2 AA).
-document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover');
+// The native shell disables pinch-zoom; in a browser it stays (WCAG 2.2 AA).
+if (!IS_NATIVE) {
+  document.querySelector('meta[name="viewport"]')?.setAttribute('content', 'width=device-width, initial-scale=1, viewport-fit=cover');
+}
 
 const host = document.getElementById('root');
 if (host) {

@@ -14,7 +14,7 @@ export const CARD_TEMPLATES = [
   { id: 'boutique', name: 'Boutique Frame' }
 ];
 
-// Locked behind CardFlow Premium — everything else is free.
+// Locked behind Pro — everything else is free.
 export const PREMIUM_TEMPLATE_IDS = ['dark', 'emboss', 'boutique'];
 
 function initialOf(name) {

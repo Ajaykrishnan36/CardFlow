@@ -23,6 +23,9 @@ import { NotificationSettings } from '../../components/NotificationSettings';
 import { SubscriptionScreen } from '../../components/SubscriptionScreen';
 import { ChangePhoneModal } from '../../components/ChangePhoneModal';
 import { useAuth } from '../../context/AuthContext';
+import { useCrm } from '../../context/CrmContext';
+import { AccountSecurity, VerifiedBadge } from '../crm/AccountSecurity';
+import { PlanScreen } from '../crm/PlanScreen';
 
 function formatPhoneDisplay(phone) {
   if (!phone) return '';
@@ -32,8 +35,10 @@ function formatPhoneDisplay(phone) {
   return digits;
 }
 
-export function ProfileScreen({ onNavigate, onBack }) {
-  const { user, logout, myBusinesses, updateProfile } = useAuth();
+export function ProfileScreen({ onNavigate, onBack, onSignOut }) {
+  const { user, logout, updateProfile } = useAuth();
+  const { businesses, active } = useCrm();
+  const [showPlan, setShowPlan] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
@@ -58,6 +63,13 @@ export function ProfileScreen({ onNavigate, onBack }) {
   if (showSubscription) {
     return <SubscriptionScreen onBack={() => setShowSubscription(false)} />;
   }
+  if (showPlan) {
+    return <PlanScreen onBack={() => setShowPlan(false)} onUpgrade={() => { setShowPlan(false); setShowSubscription(true); }} />;
+  }
+  const flash = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 3000);
+  };
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -77,15 +89,15 @@ export function ProfileScreen({ onNavigate, onBack }) {
   };
 
   const primaryItems = [
-    { icon: Crown, label: 'Subscription', sub: 'Go Premium', action: () => setShowSubscription(true) },
+    { icon: Crown, label: 'Plan', sub: active ? `${active.name} — plan, usage and upgrades` : 'Plans for your business', action: () => setShowPlan(true) },
     { icon: Headphones, label: 'Support', action: () => onNavigate?.('user_support') }
   ];
 
   const settingsItems = [
     { icon: Palette, label: 'Theme', sub: 'Colors & appearance', action: () => setShowTheme(true) },
     { icon: Bell, label: 'Notifications', action: () => setShowNotifications(true) },
-    { icon: Shield, label: 'Privacy', action: () => alert('Privacy settings coming soon.') },
-    { icon: FileText, label: 'Terms & Conditions', action: () => alert('Terms & Conditions — CardFlow v1.0') }
+    { icon: Shield, label: 'Privacy', sub: 'Your records are private to each business', action: () => alert('Records, cards and files belong to the business they were saved in. Only its members see them, according to their role. Your public listing is the only thing other people can find.') },
+    { icon: FileText, label: 'Terms & Conditions', action: () => alert('Terms & Conditions are available from support on request.') }
   ];
 
   const renderMenuCard = (items) => (
@@ -130,12 +142,12 @@ export function ProfileScreen({ onNavigate, onBack }) {
             <Text style={styles.avatarText}>{name?.[0]?.toUpperCase() || 'U'}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName}>{name || 'CardFlow User'}</Text>
+            <Text style={styles.userName}>{name || 'Your name'}</Text>
             <Text style={styles.userPhone}>+91 {phoneDisplay}</Text>
-            {myBusinesses?.length > 0 && (
+            {businesses.length > 0 && (
               <View style={styles.bizBadge}>
                 <Briefcase size={12} color={colors.primary} />
-                <Text style={styles.bizBadgeText}>Business Member · {myBusinesses.length}</Text>
+                <Text style={styles.bizBadgeText}>{businesses.length === 1 ? businesses[0].name : `${businesses.length} businesses`}</Text>
               </View>
             )}
           </View>
@@ -152,11 +164,13 @@ export function ProfileScreen({ onNavigate, onBack }) {
             <Text style={styles.changeLink}>Change Number</Text>
           </TouchableOpacity>
         </View>
-        <Input
-          value={phoneDisplay ? `+91 ${phoneDisplay}` : ''}
-          editable={false}
-          leftIcon={Phone}
-        />
+        <View style={styles.verifiedBox}>
+          <Phone size={18} color={colors.textSecondary} />
+          <Text style={styles.verifiedValue}>{phoneDisplay ? `+91 ${phoneDisplay}` : ''}</Text>
+          <VerifiedBadge verified={user?.phoneVerified !== false} />
+        </View>
+
+        <AccountSecurity onToast={flash} />
 
         {nameChanged ? (
           <Button title="Save Changes" onPress={handleSave} loading={saving} icon={Save} size="lg" style={{ marginTop: spacing.sm }} />
@@ -172,7 +186,7 @@ export function ProfileScreen({ onNavigate, onBack }) {
         {renderMenuCard(settingsItems)}
       </View>
 
-      <TouchableOpacity style={styles.logoutBtn} onPress={logout} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.logoutBtn} onPress={onSignOut || logout} activeOpacity={0.7}>
         <LogOut size={18} color={colors.danger} style={{ marginRight: spacing.sm }} />
         <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
@@ -187,6 +201,8 @@ export function ProfileScreen({ onNavigate, onBack }) {
 }
 
 const styles = StyleSheet.create({
+  verifiedBox: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: colors.border, borderRadius: radii.input, paddingHorizontal: 14, paddingVertical: 13, backgroundColor: colors.bgMuted },
+  verifiedValue: { flex: 1, fontSize: 15, color: colors.textPrimary },
   container: { flex: 1, backgroundColor: colors.bgMuted },
   scrollContent: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   pageTitle: { fontSize: 24, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.md },

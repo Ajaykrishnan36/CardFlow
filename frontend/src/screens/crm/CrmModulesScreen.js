@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
-import { Search, ChevronDown, X, Store, Settings } from 'lucide-react';
+import { Search, ChevronDown, X, Store, Settings, Building2 } from 'lucide-react';
 import { colors, spacing, radii, shadows } from '../../theme';
 import { useCrm } from '../../context/CrmContext';
 import { crmApi } from '../../services/crmApi';
@@ -20,7 +20,7 @@ const GROUP_ORDER = ['CRM', 'Service', 'Sales', 'Finance'];
  * My CRM: everything this person can work with in the open business, grouped like the
  * web sidebar, with one search across leads, contacts, accounts, deals, tasks and cases.
  */
-export function CrmModulesScreen({ onOpenList, onOpenRecord, onOpenSwitcher, onOpenCards, onOpenListing }) {
+export function CrmModulesScreen({ onOpenList, onOpenRecord, onOpenSwitcher, onOpenCards, onOpenListing, onOpenTeam, onOpenBusinessProfile }) {
   const { active, activeCode, navigation, context, has } = useCrm();
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
@@ -130,8 +130,9 @@ export function CrmModulesScreen({ onOpenList, onOpenRecord, onOpenSwitcher, onO
           {groups.length === 0 ? <Text style={styles.empty}>Your role in this business has no CRM modules yet. Ask its administrator for access.</Text> : null}
           <SectionTitle>More</SectionTitle>
           <Panel>
-            <Row icon={Store} title="Public listing" subtitle="Your business in the directory, QR and enquiries" onPress={onOpenListing} />
-            <Row icon={Settings} title="Team, roles & settings" subtitle="Open the CRM on a computer to manage them" />
+            <Row icon={Store} title="My business card & listing" subtitle="Digital card, original card, QR and your directory listing" onPress={onOpenListing} />
+            <Row icon={Building2} title="Business profile" subtitle="Name, contact and tax details" onPress={onOpenBusinessProfile} />
+            <Row icon={Settings} title="Team, roles & access" subtitle="Add teammates and decide what each role can do" onPress={onOpenTeam} />
           </Panel>
         </>
       )}

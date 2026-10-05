@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { configureCrm, crmApi, isUnifiedToken, newIdempotencyKey } from '../services/crmApi';
+import { crmApi, newIdempotencyKey } from '../services/crmApi';
 
 // The CRM side of the app: which businesses the person belongs to, which one is open,
 // and what they may do in it. A business is a CRM workspace; switching it switches every
@@ -18,34 +18,16 @@ function readActive() {
 }
 
 export function CrmProvider({ children }) {
-  const { token, isAuthenticated, logout } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [businesses, setBusinesses] = useState([]);
   const [canCreate, setCanCreate] = useState(false);
   const [activeCode, setActiveCode] = useState(readActive);
   const [context, setContext] = useState(null);
-  // loading | ready | needs_signin (old session) | error
+  // loading | ready | error
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
-  const tokenRef = useRef(token);
-  tokenRef.current = token;
-  const logoutRef = useRef(logout);
-  logoutRef.current = logout;
-
-  useEffect(() => {
-    configureCrm({
-      getToken: () => tokenRef.current,
-      // The server no longer accepts this session: sign out so the person signs in again.
-      onSessionExpired: () => logoutRef.current({ expired: true })
-    });
-  }, []);
-
   const load = useCallback(async () => {
-    if (!isAuthenticated || !token) return;
-    if (!isUnifiedToken(token)) {
-      // A session from before the unified sign-in: the app keeps working, the CRM needs a fresh sign-in.
-      setStatus('needs_signin');
-      return;
-    }
+    if (!isAuthenticated) return;
     setStatus((s) => (s === 'ready' ? s : 'loading'));
     try {
       const res = await crmApi.businesses();
@@ -60,7 +42,7 @@ export function CrmProvider({ children }) {
       setError(e.message || 'Could not load your businesses.');
       setStatus('error');
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {

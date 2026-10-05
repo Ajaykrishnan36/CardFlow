@@ -1,9 +1,12 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { isApiError, setUnauthorizedHandler } from '@crm/api/client';
-import { homeFor, meKey, RedirectIfSignedIn, RequireOwner, RequireSession, useCapabilities, useMe } from '@crm/auth/session';
+import { homeFor, isOwnerSession, meKey, OwnerLoginGate, RedirectIfSignedIn, RequireOwner, RequireSession, useCapabilities, useMe } from '@crm/auth/session';
+import { PhoneLayout, usePhoneLayout } from './mobile-shell';
+// @ts-expect-error — a JavaScript module without type declarations
+import { phoneHandles } from '../navigation/routes';
 import { TooltipProvider } from '@crm/components/ui/menu';
 import { FullPageLoader } from '@crm/components/states';
 import { safeReturnTo } from '@crm/lib/utils';
@@ -83,7 +86,8 @@ function UnauthorizedBridge() {
       qc.clear();
       qc.setQueryData(meKey, null);
       const returnTo = safeReturnTo(location.pathname + location.search);
-      navigate(`/crm/login?expired=1${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`, { replace: true });
+      const login = location.pathname.startsWith('/crm/owner') ? '/crm/owner/login' : '/crm/login';
+      navigate(`${login}?expired=1${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`, { replace: true });
     });
     return () => setUnauthorizedHandler(null);
   }, [qc, navigate, location]);
@@ -117,8 +121,12 @@ function AppRoutes() {
         <Route path="/crm" element={<RootRedirect />} />
 
         <Route element={<RedirectIfSignedIn />}>
+          {/* "/" and "/crm/login" are the same sign-in (D-104). */}
+          <Route path="/" element={<LoginPage />} />
           <Route path="/crm/login" element={<LoginPage />} />
           <Route path="/crm/signup" element={<SignupPage />} />
+        </Route>
+        <Route element={<OwnerLoginGate />}>
           <Route path="/crm/owner/login" element={<OwnerLoginPage />} />
         </Route>
         <Route path="/crm/forgot-password" element={<ForgotPasswordPage />} />
@@ -139,8 +147,13 @@ function AppRoutes() {
             <Route path="/crm/home" element={<WorkspaceHomePage />} />
             <Route path="/crm/home/*" element={<WorkspaceHomePage />} />
             {/* Member workspace app: navigation and permissions come from GET /w/{code}/context. */}
+            {/* Phone-layout addresses, opened on a desktop. */}
+            <Route path="/crm/browse/*" element={<RootRedirect />} />
+            <Route path="/crm/me/support/*" element={<Navigate to="/crm/me" replace />} />
             <Route path="/crm/w/:ws" element={<WorkspaceLayout />}>
               <Route index element={<WorkspaceIndexRedirect />} />
+              <Route path="menu" element={<Navigate to="../home" relative="path" replace />} />
+              <Route path="listing" element={<Navigate to="../settings/business" relative="path" replace />} />
               <Route path="home" element={<WorkspaceDashboardPage />} />
               <Route path="settings/access" element={<WorkspaceAccessPage />} />
               <Route path="settings/business" element={<BusinessProfilePage />} />
@@ -218,6 +231,32 @@ function ObjectRoute({ page }: { page: 'list' | 'detail' | 'layout' }) {
   return <LayoutEditorPage key={object} object={object} />;
 }
 
+/** Auth pages that are the same on every screen size. */
+const SHARED_PAGES = /^\/crm\/(login|signup|forgot-password|reset-password|accept-invite|join|mfa|change-password|owner)(\/|$)/;
+
+/**
+ * One app, two layouts (D-104). A signed-in customer on a phone-sized screen (or in the
+ * native app) gets the phone layout for every address it has a screen for; everything
+ * else — desktop screens, the owner console, sign-in pages, and CRM pages the phone
+ * layout doesn't have — is the desktop CRM, which is responsive.
+ */
+function Shell() {
+  const { data: me } = useMe();
+  const location = useLocation();
+  const phone = usePhoneLayout();
+  const [noAppProfile, setNoAppProfile] = useState(false);
+  // Signing in as someone else gets a fresh chance at the phone layout.
+  const identityId = me?.identity.id;
+  useEffect(() => setNoAppProfile(false), [identityId]);
+
+  const shared = SHARED_PAGES.test(location.pathname);
+  const publicCard = location.pathname.startsWith('/share/');
+  const customer = Boolean(me) && !me!.next.startsWith('/crm/mfa') && me!.next !== '/crm/change-password' && !isOwnerSession(me!);
+  const usePhone = publicCard || (phone && customer && !noAppProfile && !shared && phoneHandles(location.pathname, location.search));
+  if (usePhone) return <PhoneLayout onUnavailable={() => setNoAppProfile(true)} />;
+  return <AppRoutes />;
+}
+
 export function CrmApp() {
   const resolvedDark = useUI((s) => s.theme);
   return (
@@ -226,7 +265,7 @@ export function CrmApp() {
         <BrowserRouter>
           <ThemeController />
           <UnauthorizedBridge />
-          <AppRoutes />
+          <Shell />
         </BrowserRouter>
         <Toaster position="bottom-right" richColors closeButton theme={resolvedDark === 'system' ? 'system' : resolvedDark} />
       </TooltipProvider>

@@ -92,7 +92,7 @@ func RunMigrations(ctx context.Context, db *DB) error {
 		}
 	}
 
-	slog.Info("Applying initial seed data (Categories & DEV Test Users)...")
+	slog.Info("Applying reference data (categories)...")
 	if _, err := db.Pool.Exec(ctx, seedSQL); err != nil {
 		slog.Warn("Seed migration execution note", "error", err)
 	} else {

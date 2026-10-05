@@ -5,13 +5,12 @@ import { colors, radii, spacing } from '../../theme';
 import { Card } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { Snackbar } from '../../components/Snackbar';
-import { LoginScreen } from '../auth/LoginScreen';
-import { OtpScreen } from '../auth/OtpScreen';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient, fetchPublicCardImageUrl } from '../../services/api';
 
 // Shown when someone opens a "cardflow.app/share/{id}" link — a card another
-// user scanned/saved and shared. Not logged in? OTP-login inline, then this
+// user scanned/saved and shared. Not signed in? The shared sign-in page, then this
 // same screen re-renders straight into the card view (no detour to Home).
 export function SharedCardScreen({ cardId, onDone }) {
   const { isAuthenticated, isSharedCardSaved, saveSharedCardToVault } = useAuth();
@@ -19,8 +18,7 @@ export function SharedCardScreen({ cardId, onDone }) {
   const [imageUrl, setImageUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [authStep, setAuthStep] = useState('login');
-  const [phone, setPhone] = useState('');
+  const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
 
@@ -68,7 +66,7 @@ export function SharedCardScreen({ cardId, onDone }) {
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>{error || 'This card could not be found.'}</Text>
-        <Button title="Go to CardFlow" onPress={onDone} style={{ marginTop: spacing.lg }} />
+        <Button title="Go to the app" onPress={onDone} style={{ marginTop: spacing.lg }} />
       </View>
     );
   }
@@ -78,15 +76,13 @@ export function SharedCardScreen({ cardId, onDone }) {
       <View style={{ flex: 1 }}>
         <View style={styles.shareBanner}>
           <Text style={styles.shareBannerText}>
-            {(card.person_name || card.company || 'Someone')} shared a business card with you on CardFlow.
-            Login with OTP to view and save it.
+            {(card.person_name || card.company || 'Someone')} shared a business card with you.
+            Sign in with your mobile number to view and save it.
           </Text>
         </View>
-        {authStep === 'login' ? (
-          <LoginScreen onOtpRequested={(p) => { setPhone(p); setAuthStep('otp'); }} />
-        ) : (
-          <OtpScreen phone={phone} onBackToPhone={() => setAuthStep('login')} />
-        )}
+        <View style={{ padding: spacing.lg }}>
+          <Button title="Sign in to view and save" size="lg" onPress={() => navigate(`/crm/login?returnTo=${encodeURIComponent(`/share/${cardId}`)}`)} />
+        </View>
       </View>
     );
   }

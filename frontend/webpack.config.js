@@ -31,8 +31,7 @@ function loadRevenueCatKeys() {
 const crmDir = path.resolve(__dirname, 'src/crm');
 
 module.exports = {
-  // entry.js lazy-loads either CardFlow (src/index.js, unchanged) or Ajay's CRM (/crm/*),
-  // so neither app downloads the other's code.
+  // One app for every URL; the phone layout is a lazy chunk (src/MobileRoot.js).
   entry: path.resolve(__dirname, 'src/entry.js'),
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -80,7 +79,7 @@ module.exports = {
     new webpack.DefinePlugin(loadRevenueCatKeys()),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html'),
-      title: 'CardFlow — Business Discovery & Digital Card Vault'
+      title: "Ajay's CRM"
     })
   ],
   watchOptions: {
@@ -92,10 +91,11 @@ module.exports = {
     port: 3000,
     historyApiFallback: true,
     hot: true,
-    // Same-origin CRM API in dev so its HttpOnly session cookie works (CRM DECISIONS D-05).
+    // Same-origin API in dev so the HttpOnly session cookie works for the CRM API and
+    // the app API alike (CRM DECISIONS D-05, D-104).
     proxy: [
       {
-        context: ['/api/crm'],
+        context: ['/api'],
         target: 'http://127.0.0.1:8080'
       }
     ],

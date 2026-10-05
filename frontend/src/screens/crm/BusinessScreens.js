@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal } from 'react-native';
-import { Building2, Check, Plus, X, LogOut } from 'lucide-react';
+import { Building2, Check, Plus, X } from 'lucide-react';
 import { colors, spacing, radii, typography } from '../../theme';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
@@ -79,17 +79,7 @@ export function BusinessForm({ onCreated, onCancel, first }) {
  */
 export function BusinessGate({ children }) {
   const { status, error, businesses, canCreate, reload } = useCrm();
-  const { logout } = useAuth();
   if (status === 'loading') return <Loading text="Opening your business…" />;
-  if (status === 'needs_signin') {
-    return (
-      <View style={styles.gate}>
-        <Text style={styles.title}>Sign in again to open your CRM</Text>
-        <Text style={styles.subtitle}>The app was updated. Your cards are safe — signing in again connects them to your business CRM.</Text>
-        <Button title="Sign in again" icon={LogOut} onPress={() => logout({ expired: true })} style={{ marginTop: spacing.lg }} />
-      </View>
-    );
-  }
   if (status === 'error') return <ErrorBox message={error} onRetry={reload} />;
   if (businesses.length === 0) {
     if (!canCreate) {
@@ -107,7 +97,7 @@ export function BusinessGate({ children }) {
 }
 
 /** Bottom sheet: every business the person belongs to, with "new business". */
-export function BusinessSwitcher({ visible, onClose }) {
+export function BusinessSwitcher({ visible, onClose, onSwitched }) {
   const { businesses, activeCode, switchBusiness, canCreate } = useCrm();
   const [creating, setCreating] = useState(false);
   const close = () => {
@@ -126,7 +116,13 @@ export function BusinessSwitcher({ visible, onClose }) {
             </TouchableOpacity>
           </View>
           {creating ? (
-            <BusinessForm onCreated={close} onCancel={() => setCreating(false)} />
+            <BusinessForm
+              onCreated={(biz) => {
+                if (biz?.code) onSwitched?.(biz.code);
+                close();
+              }}
+              onCancel={() => setCreating(false)}
+            />
           ) : (
             <ScrollView style={{ maxHeight: 420 }}>
               {businesses.map((b) => (
@@ -135,6 +131,7 @@ export function BusinessSwitcher({ visible, onClose }) {
                   style={styles.bizRow}
                   onPress={() => {
                     switchBusiness(b.code);
+                    onSwitched?.(b.code);
                     close();
                   }}
                 >

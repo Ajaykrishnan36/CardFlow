@@ -758,7 +758,7 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
         title="Card vault is full"
-        message="Free plan allows up to 5 saved cards. Upgrade to CardFlow Premium to save unlimited cards."
+        message="Free plan allows up to 5 saved cards. Upgrade to Pro to save unlimited cards."
       />
     </View>
   );
