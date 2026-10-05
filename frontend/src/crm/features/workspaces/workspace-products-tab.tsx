@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowUpRight, Boxes, Plus, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Boxes, Sparkles } from 'lucide-react';
 import { productsApi, workspacesApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { WorkspaceDetail, WorkspaceProduct } from '@crm/api/types';
@@ -59,9 +59,6 @@ export function WorkspaceProductsTab({ workspace }: { workspace: WorkspaceDetail
             <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
               <Sparkles /> {t('workspaces.products.createNew')}
             </Button>
-            <Button size="sm" onClick={() => setAssignOpen(true)}>
-              <Plus /> {t('workspaces.products.assign')}
-            </Button>
           </div>
         }
       />
@@ -71,8 +68,8 @@ export function WorkspaceProductsTab({ workspace }: { workspace: WorkspaceDetail
           title={t('workspaces.products.emptyTitle')}
           body={t('workspaces.products.emptyBody')}
           action={
-            <Button onClick={() => setAssignOpen(true)}>
-              <Plus /> {t('workspaces.products.assign')}
+            <Button onClick={() => setCreateOpen(true)}>
+              <Sparkles /> {t('workspaces.products.createNew')}
             </Button>
           }
         />

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { arrange, type UILayout } from '../../../navigation/layout-items';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { businessApi, type BusinessDashboardSummary } from '@crm/api/endpoints';
@@ -32,7 +33,7 @@ export function money(amount: number, currency: string): string {
  * and income / expenses / net. Only what the member may read is shown; nothing is
  * sample data. The same endpoint feeds the mobile Home screen.
  */
-export function SummarySection({ code }: { code: string }) {
+export function SummarySection({ code, layout }: { code: string; layout?: UILayout | null }) {
   const [range, setRange] = useState<RangeKey>('month');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -48,20 +49,21 @@ export function SummarySection({ code }: { code: string }) {
   const can = (k: string) => Boolean(s?.can[`${k}.read`]);
   const m = (k: string) => s?.metrics[k] ?? 0;
 
-  type Tile = { label: string; value: string; hint?: string; to?: string; show: boolean; tone?: 'good' | 'bad' };
-  const tiles: Tile[] = s
+  type Tile = { key: string; label: string; value: string; hint?: string; to?: string; show: boolean; tone?: 'good' | 'bad' };
+  const allTiles: Tile[] = s
     ? ([
-        { label: 'Active leads', value: String(m('activeLeads')), hint: `${m('newLeads')} new · ${m('convertedLeads')} converted`, to: `${base}/leads`, show: can('leads') },
-        { label: 'Follow-ups due', value: String(m('followUpsToday')), hint: 'leads to call today', to: `${base}/leads`, show: can('leads') },
-        { label: 'Contacts', value: String(m('activeContacts')), hint: `${m('newContacts')} new`, to: `${base}/contacts`, show: can('contacts') },
-        { label: 'Accounts', value: String(m('activeAccounts')), hint: `${m('newAccounts')} new`, to: `${base}/accounts`, show: can('accounts') },
-        { label: 'Open deals', value: String(m('openOpportunities')), hint: money(m('pipelineValue'), s.currency) + ' in pipeline', to: `${base}/opportunities`, show: can('opportunities') },
-        { label: 'Won', value: money(m('wonValue'), s.currency), hint: `${m('wonDeals')} deals · ${Math.round(m('winRate'))}% win rate`, to: `${base}/opportunities`, show: can('opportunities'), tone: 'good' },
-        { label: 'Tasks due today', value: String(m('tasksDueToday')), hint: `${m('overdueTasks')} overdue`, to: `${base}/tasks`, show: can('tasks'), tone: m('overdueTasks') > 0 ? 'bad' : undefined },
-        { label: 'Open cases', value: String(m('openCases')), hint: `${m('newCases')} new`, to: `${base}/cases`, show: can('cases') },
-        { label: 'Income', value: money(s.finance?.income ?? 0, s.finance?.currency ?? s.currency), to: `${base}/income`, show: Boolean(s.finance), tone: 'good' },
-        { label: 'Expenses', value: money(s.finance?.expenses ?? 0, s.finance?.currency ?? s.currency), to: `${base}/expenses`, show: Boolean(s.finance) },
+        { key: 'summary:activeLeads', label: 'Active leads', value: String(m('activeLeads')), hint: `${m('newLeads')} new · ${m('convertedLeads')} converted`, to: `${base}/leads`, show: can('leads') },
+        { key: 'summary:followUps', label: 'Follow-ups due', value: String(m('followUpsToday')), hint: 'leads to call today', to: `${base}/leads`, show: can('leads') },
+        { key: 'summary:contacts', label: 'Contacts', value: String(m('activeContacts')), hint: `${m('newContacts')} new`, to: `${base}/contacts`, show: can('contacts') },
+        { key: 'summary:accounts', label: 'Accounts', value: String(m('activeAccounts')), hint: `${m('newAccounts')} new`, to: `${base}/accounts`, show: can('accounts') },
+        { key: 'summary:openDeals', label: 'Open deals', value: String(m('openOpportunities')), hint: money(m('pipelineValue'), s.currency) + ' in pipeline', to: `${base}/opportunities`, show: can('opportunities') },
+        { key: 'summary:won', label: 'Won', value: money(m('wonValue'), s.currency), hint: `${m('wonDeals')} deals · ${Math.round(m('winRate'))}% win rate`, to: `${base}/opportunities`, show: can('opportunities'), tone: 'good' },
+        { key: 'summary:tasks', label: 'Tasks due today', value: String(m('tasksDueToday')), hint: `${m('overdueTasks')} overdue`, to: `${base}/tasks`, show: can('tasks'), tone: m('overdueTasks') > 0 ? 'bad' : undefined },
+        { key: 'summary:cases', label: 'Open cases', value: String(m('openCases')), hint: `${m('newCases')} new`, to: `${base}/cases`, show: can('cases') },
+        { key: 'summary:income', label: 'Income', value: money(s.finance?.income ?? 0, s.finance?.currency ?? s.currency), to: `${base}/income`, show: Boolean(s.finance), tone: 'good' },
+        { key: 'summary:expenses', label: 'Expenses', value: money(s.finance?.expenses ?? 0, s.finance?.currency ?? s.currency), to: `${base}/expenses`, show: Boolean(s.finance) },
         {
+          key: 'summary:net',
           label: 'Net income',
           value: money(s.finance?.net ?? 0, s.finance?.currency ?? s.currency),
           hint: 'income − expenses',
@@ -70,6 +72,7 @@ export function SummarySection({ code }: { code: string }) {
         }
       ] as Tile[]).filter((t) => t.show)
     : [];
+  const tiles = arrange(allTiles, (t) => t.key, layout);
 
   return (
     <section aria-label="Business summary" className="mb-6">

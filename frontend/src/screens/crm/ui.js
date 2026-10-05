@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { crmApi } from '../../services/crmApi';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import {
   UserPlus, Contact, Briefcase, Handshake, CheckSquare, Calendar, LifeBuoy, StickyNote, MessageSquare, Banknote, FileText, ShoppingCart,
@@ -168,3 +169,17 @@ export const ui = StyleSheet.create({
   retry: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: radii.button, backgroundColor: colors.primaryLight, marginTop: 4 },
   retryText: { fontSize: 13, fontWeight: '700', color: colors.primary }
 });
+
+/** The business's saved arrangement for phones (D-130): { dashboard, nav }, each { order, hidden } or undefined. */
+export function useMobileLayouts(code) {
+  const [layouts, setLayouts] = useState({});
+  useEffect(() => {
+    let live = true;
+    if (!code) return undefined;
+    crmApi.uiLayout(code).then((r) => {
+      if (live) setLayouts({ dashboard: r.layouts?.dashboard?.mobile, nav: r.layouts?.nav?.mobile });
+    }).catch(() => {});
+    return () => { live = false; };
+  }, [code]);
+  return layouts;
+}

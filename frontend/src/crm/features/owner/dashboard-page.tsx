@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { EditLayoutButton, useLayout, type Device } from '@crm/features/shell/ui-layout';
+import { arrange, isHidden, OWNER_SECTIONS } from '../../../navigation/layout-items';
 import { navIcon } from '@crm/features/shell/nav-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
@@ -36,6 +38,12 @@ export function OwnerDashboardPage() {
   const q = useQuery({ queryKey: ['platform', 'dashboard', filter.product, filter.app], queryFn: () => platformApi.dashboard(ownerFilterParams(filter)), staleTime: 60_000 });
   const firstName = me?.identity.displayName.split(' ')[0] ?? '';
   const greetingKey = { morning: 'greetingMorning', afternoon: 'greetingAfternoon', evening: 'greetingEvening' }[timeOfDayGreeting()];
+  // The owner console's own arrangement of this page (D-130).
+  const { layout } = useLayout('/platform', 'dashboard');
+  const ownerGroups = (_d: Device) => [
+    { title: 'Sections', items: OWNER_SECTIONS },
+    { title: 'Totals', items: (q.data?.kpis ?? []).map((k) => ({ key: `kpi:${k.key}`, label: k.label })) }
+  ];
 
   return (
     <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -54,12 +62,14 @@ export function OwnerDashboardPage() {
               {t('owner.dashboard.refreshedAt', { time: relativeTime(q.data.refreshedAt) })}
             </span>
           ) : null}
+          <EditLayoutButton prefix="/platform" surface="dashboard" title="Edit dashboard layout" groups={ownerGroups} />
           <Button variant="outline" size="sm" onClick={() => void q.refetch()} loading={q.isFetching && !q.isPending}>
             {!q.isFetching || q.isPending ? <RefreshCw /> : null} {t('owner.dashboard.refresh')}
           </Button>
         </div>
       </div>
 
+      {isHidden(layout, 'section:quick') ? null : (
       <nav aria-label={t('owner.dashboard.quickActions')} className="-mt-2 mb-6 hidden flex-wrap items-center gap-2 sm:flex">
         <Button asChild variant="outline" size="sm">
           <Link to="/crm/owner/leads?new=1">
@@ -72,6 +82,7 @@ export function OwnerDashboardPage() {
           </Link>
         </Button>
       </nav>
+      )}
 
       {q.isError ? (
         <Card>
@@ -84,14 +95,20 @@ export function OwnerDashboardPage() {
         </Card>
       ) : (
         <div className="space-y-6">
-          <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" aria-label={t('owner.dashboard.keyMetrics')}>
-            {q.data ? q.data.kpis.map((k) => <KpiCard key={k.key} kpi={k} />) : Array.from({ length: 6 }).map((_, i) => <KpiSkeleton key={i} />)}
-          </section>
-
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
-            <Checklist steps={q.data?.checklist} />
-            <RecentWorkspaces rows={q.data?.recentWorkspaces} />
-          </div>
+          {arrange(OWNER_SECTIONS.filter((x) => x.key !== 'section:quick'), (x) => x.key, layout).map((x, i, shown) =>
+            x.key === 'section:kpis' ? (
+              <section key={x.key} className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" aria-label={t('owner.dashboard.keyMetrics')}>
+                {q.data ? arrange(q.data.kpis, (k) => `kpi:${k.key}`, layout).map((k) => <KpiCard key={k.key} kpi={k} />) : Array.from({ length: 6 }).map((_, n) => <KpiSkeleton key={n} />)}
+              </section>
+            ) : shown[i - 1] && shown[i - 1]!.key !== 'section:kpis' ? null : (
+              // The checklist and the recent products sit side by side when they follow each other.
+              <div key={x.key} className={shown[i + 1] && shown[i + 1]!.key !== 'section:kpis' ? 'grid gap-6 xl:grid-cols-2' : undefined}>
+                {[x, shown[i + 1] && shown[i + 1]!.key !== 'section:kpis' ? shown[i + 1]! : null].map((y) =>
+                  !y ? null : y.key === 'section:checklist' ? <Checklist key={y.key} steps={q.data?.checklist} /> : <RecentWorkspaces key={y.key} rows={q.data?.recentWorkspaces} />
+                )}
+              </div>
+            )
+          )}
         </div>
       )}
     </div>

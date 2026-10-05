@@ -962,3 +962,56 @@ func TestSampleDataForOneBusiness(t *testing.T) {
 		t.Errorf("sample data reached another business: %d records", got)
 	}
 }
+
+// A business arranges its dashboard and menu, separately for desktop and phones (D-130).
+func TestDashboardAndMenuLayouts(t *testing.T) {
+	boss := signIn(t, freshPhone(), "Arranger")
+	ws := newBusiness(t, boss, "Layout Co")
+	base := crmAPI + "/w/" + ws
+	first := call(t, "GET", base+"/ui-layout", boss, nil)
+	want(t, first, 200, "layouts")
+	if first.at("canEdit") != true || first.at("layouts", "nav", "desktop") != nil {
+		t.Fatalf("a new business has the standard layout and its admin may change it: %s", first.Raw)
+	}
+	save := func(token string, body map[string]any) resp { return call(t, "PUT", base+"/ui-layout", token, body) }
+	want(t, save(boss, map[string]any{"surface": "nav", "device": "desktop", "order": []string{"opportunities", "lead"}, "hidden": []string{"notes"}}), 200, "desktop menu")
+	r := save(boss, map[string]any{"surface": "nav", "device": "mobile", "order": []string{"cases"}, "hidden": []string{"quotes", "forecasts"}})
+	want(t, r, 200, "mobile menu")
+	// The two are kept apart.
+	if len(r.list("layouts", "nav", "desktop", "hidden")) != 1 || len(r.list("layouts", "nav", "mobile", "hidden")) != 2 || r.list("layouts", "nav", "mobile", "order")[0] != "cases" {
+		t.Fatalf("desktop and mobile layouts must be stored separately: %s", r.Raw)
+	}
+	want(t, save(boss, map[string]any{"surface": "dashboard", "device": "mobile", "order": []string{"section:quick"}, "hidden": []string{"summary:won"}}), 200, "mobile dashboard")
+	want(t, save(boss, map[string]any{"surface": "nav", "device": "desktop", "hidden": []string{"home"}}), 422, "hiding the dashboard entry")
+	want(t, save(boss, map[string]any{"surface": "nav", "device": "tablet"}), 422, "an unknown device")
+	want(t, save(boss, map[string]any{"surface": "footer", "device": "desktop"}), 422, "an unknown surface")
+	// Staff see the arrangement but can't change it.
+	rep, _ := staffOf(t, boss, ws, "Viewer")
+	seen := call(t, "GET", base+"/ui-layout", rep, nil)
+	if seen.at("canEdit") != false || len(seen.list("layouts", "nav", "desktop", "hidden")) != 1 {
+		t.Fatalf("staff read the layout: %s", seen.Raw)
+	}
+	want(t, save(rep, map[string]any{"surface": "nav", "device": "desktop", "hidden": []string{"lead"}}), 403, "staff changing the layout")
+	want(t, call(t, "DELETE", base+"/ui-layout?surface=nav&device=mobile", rep, nil), 403, "staff resetting the layout")
+	// Reset one of them.
+	back := call(t, "DELETE", base+"/ui-layout?surface=nav&device=mobile", boss, nil)
+	want(t, back, 200, "reset mobile menu")
+	if back.at("layouts", "nav", "mobile") != nil || back.at("layouts", "nav", "desktop") == nil {
+		t.Fatalf("only the mobile menu goes back to standard: %s", back.Raw)
+	}
+	// Another business has its own, untouched.
+	other := signIn(t, freshPhone(), "Neighbour")
+	otherWS := newBusiness(t, other, "Other Layout")
+	if o := call(t, "GET", crmAPI+"/w/"+otherWS+"/ui-layout", other, nil); o.at("layouts", "nav", "desktop") != nil || o.at("layouts", "dashboard", "mobile") != nil {
+		t.Fatalf("a layout leaked across businesses: %s", o.Raw)
+	}
+	want(t, call(t, "GET", base+"/ui-layout", other, nil), 403, "outsider reading a layout")
+	want(t, save(other, map[string]any{"surface": "nav", "device": "desktop"}), 403, "outsider saving a layout")
+	// The owner console has its own.
+	owner := ownerSignIn(t)
+	want(t, call(t, "PUT", crmAPI+"/platform/ui-layout", owner, map[string]any{"surface": "dashboard", "device": "desktop", "hidden": []string{"section:checklist"}}), 200, "owner console layout")
+	if o := call(t, "GET", crmAPI+"/platform/ui-layout", owner, nil); len(o.list("layouts", "dashboard", "desktop", "hidden")) != 1 {
+		t.Fatalf("owner console layout: %s", o.Raw)
+	}
+	want(t, call(t, "GET", crmAPI+"/platform/ui-layout", boss, nil), 403, "a customer reading the owner console layout")
+}

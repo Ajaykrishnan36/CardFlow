@@ -5,7 +5,8 @@ import { colors, spacing, radii, shadows } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { useCrm } from '../../context/CrmContext';
 import { crmApi } from '../../services/crmApi';
-import { Chip, SectionTitle, Row, Panel, Loading, ErrorBox, money, iconFor } from './ui';
+import { Chip, SectionTitle, Row, Panel, Loading, ErrorBox, money, iconFor, useMobileLayouts } from './ui';
+import { arrange, isHidden } from '../../navigation/layout-items';
 import { GettingStartedCard } from './GettingStarted';
 
 const RANGES = [
@@ -79,17 +80,21 @@ export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCre
 
   const tiles = data
     ? [
-        can('leads.read') && { label: 'Active leads', value: m('activeLeads'), hint: `${m('newLeads')} new`, object: 'leads' },
-        can('leads.read') && { label: 'Follow-ups today', value: m('followUpsToday'), hint: 'leads to call', object: 'leads' },
-        can('contacts.read') && { label: 'Contacts', value: m('activeContacts'), hint: `${m('newContacts')} new`, object: 'contacts' },
-        can('accounts.read') && { label: 'Accounts', value: m('activeAccounts'), hint: `${m('newAccounts')} new`, object: 'accounts' },
-        can('opportunities.read') && { label: 'Open deals', value: m('openOpportunities'), hint: money(m('pipelineValue'), cur), object: 'opportunities' },
-        can('opportunities.read') && { label: 'Won', value: money(m('wonValue'), cur), hint: `${m('wonDeals')} deals`, object: 'opportunities' },
-        can('tasks.read') && { label: 'Tasks today', value: m('tasksDueToday'), hint: `${m('overdueTasks')} overdue`, object: 'tasks', bad: m('overdueTasks') > 0 },
-        can('events.read') && { label: 'Meetings ahead', value: m('upcomingMeetings'), hint: 'next 7 days', object: 'events' },
-        can('cases.read') && { label: 'Open cases', value: m('openCases'), hint: `${m('newCases')} new`, object: 'cases' }
+        can('leads.read') && { key: 'summary:activeLeads', label: 'Active leads', value: m('activeLeads'), hint: `${m('newLeads')} new`, object: 'leads' },
+        can('leads.read') && { key: 'summary:followUps', label: 'Follow-ups today', value: m('followUpsToday'), hint: 'leads to call', object: 'leads' },
+        can('contacts.read') && { key: 'summary:contacts', label: 'Contacts', value: m('activeContacts'), hint: `${m('newContacts')} new`, object: 'contacts' },
+        can('accounts.read') && { key: 'summary:accounts', label: 'Accounts', value: m('activeAccounts'), hint: `${m('newAccounts')} new`, object: 'accounts' },
+        can('opportunities.read') && { key: 'summary:openDeals', label: 'Open deals', value: m('openOpportunities'), hint: money(m('pipelineValue'), cur), object: 'opportunities' },
+        can('opportunities.read') && { key: 'summary:won', label: 'Won', value: money(m('wonValue'), cur), hint: `${m('wonDeals')} deals`, object: 'opportunities' },
+        can('tasks.read') && { key: 'summary:tasks', label: 'Tasks today', value: m('tasksDueToday'), hint: `${m('overdueTasks')} overdue`, object: 'tasks', bad: m('overdueTasks') > 0 },
+        can('events.read') && { key: 'summary:meetings', label: 'Meetings ahead', value: m('upcomingMeetings'), hint: 'next 7 days', object: 'events' },
+        can('cases.read') && { key: 'summary:cases', label: 'Open cases', value: m('openCases'), hint: `${m('newCases')} new`, object: 'cases' }
       ].filter(Boolean)
     : [];
+  // What this business chose to show on phones, and in what order (D-130).
+  const { dashboard: layout } = useMobileLayouts(activeCode);
+  const shownTiles = isHidden(layout, 'section:summary') ? [] : arrange(tiles, (t) => t.key, layout);
+  const shown = (key) => !isHidden(layout, key);
 
   return (
     <ScrollView
@@ -115,9 +120,11 @@ export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCre
 
       <Text style={styles.greeting}>{greeting()}{firstName && firstName !== 'New' && firstName !== 'CardFlow' ? `, ${firstName}` : ''}</Text>
 
-      <View style={{ marginTop: spacing.md }}>
-        <GettingStartedCard code={activeCode} onGo={onStart} />
-      </View>
+      {shown('section:start') ? (
+        <View style={{ marginTop: spacing.md }}>
+          <GettingStartedCard code={activeCode} onGo={onStart} />
+        </View>
+      ) : null}
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ranges}>
         {RANGES.map((r) => (
@@ -139,7 +146,7 @@ export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCre
         <Loading text="Loading your numbers…" />
       ) : (
         <>
-          {data.finance ? (
+          {data.finance && shown('section:summary') && shown('summary:finance') ? (
             <Panel style={styles.financeCard}>
               <View style={styles.financeTop}>
                 <View style={styles.financeIcon}>
@@ -170,7 +177,7 @@ export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCre
           ) : null}
 
           <View style={styles.grid}>
-            {tiles.map((t) => (
+            {shownTiles.map((t) => (
               <TouchableOpacity key={t.label} style={[styles.tile, shadows.sm]} onPress={() => onOpenList(t.object)} activeOpacity={0.8}>
                 <Text style={styles.tileLabel} numberOfLines={1}>{t.label}</Text>
                 <Text style={styles.tileValue} numberOfLines={1}>{t.value}</Text>
@@ -179,6 +186,8 @@ export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCre
             ))}
           </View>
 
+          {shown('section:quick') ? (
+            <>
           <SectionTitle>Quick add</SectionTitle>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <TouchableOpacity style={[styles.quick, styles.quickPrimary]} onPress={onScan}>
@@ -192,8 +201,10 @@ export function CrmHomeScreen({ onOpenProfile, onOpenSwitcher, onOpenList, onCre
               </TouchableOpacity>
             ))}
           </ScrollView>
+            </>
+          ) : null}
 
-          {(data.lists || []).filter((l) => l.rows?.length).map((l) => {
+          {(shown('section:recent') ? arrange((data.lists || []).filter((l) => l.rows?.length), (l) => `recent:${l.object}`, layout) : []).map((l) => {
             const Icon = iconFor(l.object);
             return (
               <View key={l.key || l.label}>

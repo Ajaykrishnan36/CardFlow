@@ -110,6 +110,9 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 	r.Patch(prefix+"/crm/meta/{object}/fields/{key}", h.handleUpdateField)
 	r.Delete(prefix+"/crm/meta/{object}/fields/{key}", h.handleDeleteField)
 
+	r.Get(prefix+"/ui-layout", h.handleGetUILayout)
+	r.Put(prefix+"/ui-layout", h.handleSaveUILayout)
+	r.Delete(prefix+"/ui-layout", h.handleResetUILayout)
 	r.Get(prefix+"/crm/{object}", h.handleList)
 	r.Post(prefix+"/crm/{object}", h.handleCreate)
 	r.Get(prefix+"/crm/{object}/groups", h.handleGroups)

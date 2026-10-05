@@ -4,7 +4,8 @@ import { Search, ChevronDown, X, Store, Settings, Building2 } from 'lucide-react
 import { colors, spacing, radii, shadows } from '../../theme';
 import { useCrm } from '../../context/CrmContext';
 import { crmApi } from '../../services/crmApi';
-import { iconFor, Panel, Row, Loading, SectionTitle } from './ui';
+import { iconFor, Panel, Row, Loading, SectionTitle, useMobileLayouts } from './ui';
+import { arrange } from '../../navigation/layout-items';
 
 const SEARCHABLE = [
   { object: 'leads', label: 'Leads' },
@@ -52,7 +53,9 @@ export function CrmModulesScreen({ onOpenList, onOpenPath, onOpenRecord, onOpenS
     return () => clearTimeout(timer);
   }, [q, activeCode, has]);
 
-  const modules = navigation.filter((n) => GROUP_ORDER.includes(n.group));
+  // The menu as this business arranged it for phones (D-130).
+  const { nav: navLayout } = useMobileLayouts(activeCode);
+  const modules = arrange(navigation.filter((n) => GROUP_ORDER.includes(n.group)), (n) => n.key, navLayout);
   const groups = GROUP_ORDER.map((g) => ({ name: g, items: modules.filter((n) => n.group === g) })).filter((g) => g.items.length);
 
   return (

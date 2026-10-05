@@ -54,6 +54,8 @@ var keptConfig = map[string]bool{
 	"api_keys": true, "invite_links": true, "assignment_state": true,
 	// The built-in relationship types (no workspace) are part of the product (D-111).
 	"relationship_types": true,
+	// A kept business keeps the way it arranged its dashboard and menu (D-130).
+	"ui_layouts": true,
 }
 
 // keptWhole are tables this pass never deletes from directly (no customer data, or rows

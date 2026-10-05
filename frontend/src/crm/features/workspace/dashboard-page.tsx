@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { EditLayoutButton, useLayout, type Device } from '@crm/features/shell/ui-layout';
+import { arrange, isHidden, DASHBOARD_SECTIONS, SUMMARY_TILES } from '../../../navigation/layout-items';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
 import { ArrowRight, ChevronRight, LayoutGrid, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
@@ -21,6 +23,8 @@ import { SummarySection } from './summary-section';
 import { GettingStartedPanel } from './getting-started';
 
 /** /crm/w/:ws/home — the member's dashboard (or the first module when dashboard.view isn't granted). */
+const wsPrefix = (code: string) => `/w/${encodeURIComponent(code)}`;
+
 export function WorkspaceDashboardPage() {
   const { code, context } = useWorkspace();
   const readable = readableObjects(context);
@@ -47,6 +51,16 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
   const creatable = readable.filter((o) => scope.can(o, 'create') && inApp(listHref(scope, o)));
   const noModules = readable.length === 0 && !ticketAccess(context).read;
   const isAdmin = canAdminister(context);
+  // The business's own arrangement of this page (D-130).
+  const { layout, device } = useLayout(wsPrefix(code), 'dashboard');
+  const kpis = q.data ? arrange(q.data.kpis.filter((k) => inApp(k.path)), (k) => `kpi:${k.key}`, layout) : undefined;
+  const dashboardGroups = (d: Device) => [
+    { title: 'Sections', items: DASHBOARD_SECTIONS[d] },
+    { title: 'Business summary', items: SUMMARY_TILES[d] },
+    ...(d === 'desktop' ? [{ title: 'Record counts', items: (q.data?.kpis ?? []).filter((k) => inApp(k.path)).map((k) => ({ key: `kpi:${k.key}`, label: k.label })) }] : []),
+    { title: d === 'desktop' ? 'Recent records' : 'Lists', hint: d === 'mobile' ? 'Lists show on the phone when they have something in them.' : undefined,
+      items: readable.filter((o) => inApp(listHref(scope, o))).map((o) => ({ key: `recent:${o}`, label: humanizeObject(o) })) }
+  ];
 
   // Lost dashboard.view since the context loaded: fall through to the first module.
   if (isApiError(q.error) && q.error.status === 403) {
@@ -65,13 +79,16 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
           </p>
         </div>
         {!noModules ? (
-          <Button variant="outline" size="sm" onClick={() => void q.refetch()} loading={q.isFetching && !q.isPending}>
-            {!q.isFetching || q.isPending ? <RefreshCw /> : null} {t('workspaceApp.dashboard.refresh')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <EditLayoutButton prefix={wsPrefix(code)} surface="dashboard" title="Edit dashboard layout" groups={dashboardGroups} />
+            <Button variant="outline" size="sm" onClick={() => void q.refetch()} loading={q.isFetching && !q.isPending}>
+              {!q.isFetching || q.isPending ? <RefreshCw /> : null} {t('workspaceApp.dashboard.refresh')}
+            </Button>
+          </div>
         ) : null}
       </div>
 
-      {creatable.length || isAdmin ? (
+      {(creatable.length || isAdmin) && !isHidden(layout, 'section:quick') ? (
         <nav aria-label={t('workspaceApp.dashboard.quickActions')} className="-mt-2 mb-6 flex flex-wrap items-center gap-2">
           {creatable.map((o) => (
             <Button key={o} asChild variant="outline" size="sm">
@@ -103,14 +120,25 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
         </Card>
       ) : (
         <div className="space-y-6">
-          <GettingStartedPanel code={code} />
-          <SummarySection code={code} />
-          {!q.data || q.data.kpis.length ? (
-            <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4" aria-label={t('workspaceApp.dashboard.keyMetrics')}>
-              {q.data ? q.data.kpis.filter((k) => inApp(k.path)).map((k) => <KpiCard key={k.key} kpi={k} />) : Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)}
-            </section>
-          ) : null}
-          <RecentGrid data={q.data ? { ...q.data, recent: q.data.recent.filter((g) => inApp(listHref(scope, g.object))) } : undefined} readable={readable} />
+          {arrange(DASHBOARD_SECTIONS[device].filter((s) => s.key !== 'section:quick'), (s) => s.key, layout).map((s) =>
+            s.key === 'section:start' ? (
+              <GettingStartedPanel key={s.key} code={code} />
+            ) : s.key === 'section:summary' ? (
+              <SummarySection key={s.key} code={code} layout={layout} />
+            ) : s.key === 'section:kpis' ? (
+              !kpis || kpis.length ? (
+                <section key={s.key} className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4" aria-label={t('workspaceApp.dashboard.keyMetrics')}>
+                  {kpis ? kpis.map((k) => <KpiCard key={k.key} kpi={k} />) : Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={i} />)}
+                </section>
+              ) : null
+            ) : s.key === 'section:recent' ? (
+              <RecentGrid
+                key={s.key}
+                data={q.data ? { ...q.data, recent: arrange(q.data.recent.filter((g) => inApp(listHref(scope, g.object))), (g) => `recent:${g.object}`, layout) } : undefined}
+                readable={arrange(readable, (o) => `recent:${o}`, layout)}
+              />
+            ) : null
+          )}
         </div>
       )}
     </div>
@@ -244,4 +272,9 @@ function singular(plural: string): string {
   if (w.endsWith('ies')) return `${w.slice(0, -3)}y`;
   if (w.endsWith('ses') || w.endsWith('xes')) return w.slice(0, -2);
   return w.endsWith('s') ? w.slice(0, -1) : w;
+}
+
+function humanizeObject(o: string): string {
+  const s = o.replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

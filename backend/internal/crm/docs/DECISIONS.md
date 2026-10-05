@@ -847,6 +847,21 @@ cards and other businesses are not touched. Because no backup can be taken from 
 row is first copied to `crm.deleted_workspace_archive` (migration 0023) in the same
 transaction. Afterwards "Ajay traders" gets the sample records of D-128.
 
+### D-130 — Dashboard and menu layouts, per screen size
+
+A business — and the owner console — can arrange its dashboard and its side menu: order
+and show/hide, saved for everyone there, separately for desktop and for phones
+(`crm.ui_layouts`: workspace, surface `dashboard` | `nav`, device `desktop` | `mobile`,
+`{order, hidden}`; the owner console uses the platform workspace). Only the arrangement is
+stored: permissions still decide what a person sees, and an item added to the product later
+appears at the end. The Dashboard entry, Users & access and Profile & security can't be
+hidden. Editing needs "Customize page layouts & fields" (Super Admin by default) through
+"Edit menu" in the sidebar and "Edit layout" on the dashboard; one dialog has a Desktop and
+a Mobile tab and saves both. The phone layout reads the mobile arrangement; it is edited
+from the desktop dialog. Menu entries move within their section; sections keep their order.
+The "Add existing app" button was removed from a product's Apps tab in the owner console
+(a new app is still created there).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

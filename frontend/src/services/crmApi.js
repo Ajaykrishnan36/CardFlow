@@ -52,6 +52,7 @@ export const crmApi = {
   update: (code, object, id, values, expectedVersion) =>
     crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}`, { method: 'PATCH', body: { values, expectedVersion } }),
   remove: (code, object, id) => crm(`${w(code)}/crm/${object}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uiLayout: (code) => crm(`${w(code)}/ui-layout`),
   documentLines: (code, object, id) => crm(`${w(code)}/${object}/${encodeURIComponent(id)}/lines`),
   convertQuote: (code, id) => crm(`${w(code)}/quotes/${encodeURIComponent(id)}/convert`, { method: 'POST' }),
   invoiceOrder: (code, id) => crm(`${w(code)}/sales_orders/${encodeURIComponent(id)}/invoice`, { method: 'POST' }),

@@ -9,6 +9,8 @@ import { Skeleton } from '@crm/components/ui/spinner';
 import { cn, initials } from '@crm/lib/utils';
 import { useUI } from '@crm/lib/ui-store';
 import { navIcon } from './nav-icons';
+import { EditLayoutButton, useLayout, type Device } from './ui-layout';
+import { arrange, LOCKED_NAV } from '../../../navigation/layout-items';
 import { UserMenu } from './user-menu';
 import { setSelectedApp } from '@crm/features/workspace/selected-app';
 import { FavoritesNav } from './live';
@@ -44,6 +46,11 @@ interface SidebarProps {
 
 export function SidebarContent({ me, navigation, loading, workspace, workspaceCode, collapsed, onNavigate, className, apiPrefix }: SidebarProps) {
   const filteredPaths = (navigation ?? []).filter((n) => n.path.includes('?')).map((n) => n.path);
+  // The business's own arrangement of the menu (D-130): order and hidden entries, per screen size.
+  const { layout: navLayout } = useLayout(apiPrefix, 'nav');
+  const arranged = navigation ? arrange(navigation, (n) => n.key, navLayout) : navigation;
+  const menuGroups = (_d: Device) =>
+    groupNav(navigation ?? []).map((g) => ({ title: g.name ?? 'Main', items: g.items.map((n) => ({ key: n.key, label: n.label })), locked: LOCKED_NAV }));
   const { t } = useTranslation();
   const toggleSidebar = useUI((s) => s.toggleSidebar);
   const setCommandOpen = useUI((s) => s.setCommandOpen);
@@ -107,14 +114,14 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
       {/* Navigation */}
       <nav className="crm-scroll flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
         {apiPrefix ? <FavoritesNav prefix={apiPrefix} collapsed={collapsed} onNavigate={onNavigate} /> : null}
-        {loading || !navigation ? (
+        {loading || !arranged ? (
           <div className="space-y-2 px-1">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-7" />
             ))}
           </div>
         ) : (
-          groupNav(navigation).map((group) => (
+          groupNav(arranged).map((group) => (
             <div key={group.name ?? 'root'} className="mb-4 last:mb-0">
               {group.name && !collapsed ? (
                 <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">{group.name}</p>
@@ -137,6 +144,15 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
       <div className={cn('shrink-0 border-t p-2', collapsed && 'flex flex-col items-center gap-1')}>
         {workspace?.viewerIsOwner ? <OwnerConsoleLink workspaceId={workspace.workspace.id} collapsed={collapsed} onNavigate={onNavigate} /> : null}
         <UserMenu me={me} collapsed={collapsed} />
+        <EditLayoutButton
+          prefix={apiPrefix}
+          surface="nav"
+          title="Edit menu"
+          label="Edit menu"
+          groups={menuGroups}
+          compact={collapsed}
+          className={collapsed ? 'mt-1 hidden size-9 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground md:grid' : 'mt-1 w-full justify-start border-0 px-2 text-xs font-normal text-muted-foreground shadow-none'}
+        />
         <button
           type="button"
           onClick={toggleSidebar}
