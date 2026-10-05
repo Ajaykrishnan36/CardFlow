@@ -79,6 +79,15 @@ func (h *Handler) Routes(r chi.Router) {
 		h.paymentRoutes(r)
 		h.forecastRoutes(r)
 		h.serviceRoutes(r)
+		// Commercial, sales-execution and service model (D-118…D-127).
+		h.currencyRoutes(r)
+		h.pricingRoutes(r)
+		h.approvalRoutes(r)
+		h.financeRoutes(r)
+		h.roleTeamRoutes(r)
+		h.territoryRoutes(r)
+		h.campaignMemberRoutes(r)
+		h.fieldServiceRoutes(r)
 		h.mountRecords(r, "")
 		for _, ext := range h.extensions {
 			if ext.MemberRoutes != nil {

@@ -46,6 +46,7 @@ import (
 //	GET  /w/{code}/forecast/settings   PUT …        {fiscalStartMonth}
 
 func (h *Handler) forecastRoutes(r chi.Router) {
+	r.Get("/forecast/history", h.handleForecastHistory)
 	r.Get("/forecast", h.handleForecast)
 	r.Get("/forecast/periods", h.handleForecastPeriods)
 	r.Put("/forecast/quotas", h.handleSetQuota)
@@ -237,12 +238,21 @@ func canManageForecast(sc *Scope) bool {
 
 // forecastByOwner is the one aggregate everything else is built from.
 func (h *Handler) forecastByOwner(ctx context.Context, ws uuid.UUID, p ForecastPeriod, pipeline string, owners []uuid.UUID) (map[uuid.UUID]ForecastNumbers, error) {
-	amt := money(`o.custom->>'amount'`)
+	return h.forecastBy(ctx, ws, p, pipeline, owners, `o.owner_id`)
+}
+
+// forecastTerritoryExpr groups deals by their sales territory (D-124).
+const forecastTerritoryExpr = `(CASE WHEN o.custom->>'territoryId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (o.custom->>'territoryId')::uuid END)`
+
+// forecastBy sums the deals of a period by one dimension. Amounts are in the business's
+// base currency: a deal in another currency counts at the rate fixed on it (D-118).
+func (h *Handler) forecastBy(ctx context.Context, ws uuid.UUID, p ForecastPeriod, pipeline string, owners []uuid.UUID, group string) (map[uuid.UUID]ForecastNumbers, error) {
+	amt := money(`COALESCE(NULLIF(o.custom->>'baseAmount', ''), o.custom->>'amount')`)
 	prob := `(CASE WHEN o.custom->>'probability' ~ '^[0-9]+(\.[0-9]+)?$' THEN (o.custom->>'probability')::numeric ELSE 0 END)`
 	cat := `COALESCE(NULLIF(o.custom->>'forecastCategory', ''), 'pipeline')`
 	open := `COALESCE(o.status, '') NOT IN ('closed_won', 'closed_lost')`
 	rows, err := h.store.Pool.Query(ctx, `
-		SELECT COALESCE(o.owner_id, '00000000-0000-0000-0000-000000000000'::uuid),
+		SELECT COALESCE(`+group+`, '00000000-0000-0000-0000-000000000000'::uuid),
 		       COALESCE(sum(`+amt+`) FILTER (WHERE o.status = 'closed_won'), 0)::float8,
 		       COALESCE(sum(`+amt+`) FILTER (WHERE o.status = 'closed_lost'), 0)::float8,
 		       COALESCE(sum(`+amt+`) FILTER (WHERE `+open+` AND `+cat+` IN ('commit', 'closed')), 0)::float8,
@@ -304,7 +314,7 @@ func (h *Handler) handleForecast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	groupBy := q.Get("groupBy")
-	if groupBy != "team" {
+	if groupBy != "team" && groupBy != "territory" && groupBy != "role" {
 		groupBy = "owner"
 	}
 	pipeline := strings.TrimSpace(q.Get("pipeline"))
@@ -409,7 +419,14 @@ func (h *Handler) handleForecast(w http.ResponseWriter, r *http.Request) {
 	}
 	out.Totals.derive()
 
-	if groupBy == "owner" {
+	if groupBy == "territory" || groupBy == "role" {
+		rows, err := h.forecastDimension(ctx, sc, period, pipeline, owners, groupBy, people)
+		if err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+		out.Rows = rows
+	} else if groupBy == "owner" {
 		for id, n := range people {
 			row := ForecastRow{ID: id.String(), Name: names[id], ForecastNumbers: n, Submission: subs[id]}
 			if id == uuid.Nil {
@@ -626,6 +643,12 @@ func (h *Handler) handleSubmitForecast(w http.ResponseWriter, r *http.Request) {
 			RETURNING id`, sc.WS, period.Key, me, pipeline, n.Closed, n.Commit, n.BestCase, n.Pipeline, amount, quota, strings.TrimSpace(in.Comment)).Scan(&id); err != nil {
 			return err
 		}
+		// Every submission is kept: the row above is the latest, the history is all of them.
+		if _, err := tx.Exec(ctx, `INSERT INTO crm.forecast_history (workspace_id, period_key, owner_id, pipeline, event, closed_won, commit_amount, best_case, pipeline_amount, forecast_amount, quota, comment, actor_id)
+			VALUES ($1, $2, $3, $4, 'submitted', round($5::numeric, 2), round($6::numeric, 2), round($7::numeric, 2), round($8::numeric, 2), round($9::numeric, 2), COALESCE($10, 0), $11, $3)`,
+			sc.WS, period.Key, me, pipeline, n.Closed, n.Commit, n.BestCase, n.Pipeline, amount, quota, strings.TrimSpace(in.Comment)); err != nil {
+			return err
+		}
 		// Tell the people who review forecasts (Super Admins and holders of forecast.manage).
 		rows, err := tx.Query(ctx, `SELECT m.id, m.identity_id FROM crm.memberships m WHERE m.workspace_id = $1 AND m.status = 'active' AND m.identity_id <> $2`, sc.WS, me)
 		if err != nil {
@@ -720,6 +743,11 @@ func (h *Handler) handleReviewForecast(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, err := tx.Exec(ctx, `UPDATE crm.forecast_submissions SET status = $3, override_amount = $4, manager_comment = $5, approved_at = now(), approved_by = $6
 			WHERE id = $1 AND workspace_id = $2`, id, sc.WS, in.Status, in.OverrideAmount, strings.TrimSpace(in.Comment), me); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO crm.forecast_history (workspace_id, period_key, owner_id, pipeline, event, closed_won, commit_amount, best_case, pipeline_amount, forecast_amount, override_amount, quota, comment, actor_id)
+			SELECT workspace_id, period_key, owner_id, pipeline, $3, closed_won, commit_amount, best_case, pipeline_amount, forecast_amount, override_amount, COALESCE(quota, 0), manager_comment, $4
+			FROM crm.forecast_submissions WHERE id = $1 AND workspace_id = $2`, id, sc.WS, in.Status, me); err != nil {
 			return err
 		}
 		h.notify(ctx, tx, sc.WS, owner, "forecast."+in.Status, "Your forecast was "+in.Status, period, "/crm/w/"+sc.Code+"/forecasts?period="+period, &me)

@@ -182,6 +182,8 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	}
 	// Invoices marked paid before payments existed get a payment record (once).
 	go m.records.BackfillOpeningPayments(context.Background())
+	go m.records.BackfillRefunds(context.Background())
+	go m.records.BackfillTerritories(context.Background())
 	slog.Info("CRM module ready", "env", cfg.AppEnv, "base_url", cfg.BaseURL)
 	return m
 }

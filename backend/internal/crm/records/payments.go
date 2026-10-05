@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -86,9 +87,10 @@ func (h *Handler) paymentSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a a
 			SELECT $1, $2, $3, least(pay.unapplied, inv.balance), $4
 			FROM (SELECT `+money(`p.custom->>'amount'`)+` - COALESCE((SELECT sum(amount) FROM crm.payment_allocations WHERE payment_id = p.id), 0) AS unapplied
 			      FROM crm.object_records p WHERE p.id = $2 AND p.workspace_id = $1) pay,
-			     (SELECT `+money(`i.custom->>'total'`)+` - COALESCE((SELECT sum(al.amount) FROM crm.payment_allocations al
+			     (SELECT CASE WHEN i.custom ? 'balanceDue' THEN `+money(`i.custom->>'balanceDue'`)+`
+			                  ELSE `+money(`i.custom->>'total'`)+` - COALESCE((SELECT sum(al.amount) FROM crm.payment_allocations al
 			              JOIN crm.object_records q ON q.id = al.payment_id AND q.deleted_at IS NULL AND q.status NOT IN ('failed', 'cancelled', 'refunded')
-			              WHERE al.invoice_id = i.id), 0) AS balance
+			              WHERE al.invoice_id = i.id), 0) END AS balance
 			      FROM crm.object_records i WHERE i.id = $3 AND i.workspace_id = $1 AND i.object_key = 'invoices' AND i.deleted_at IS NULL) inv
 			WHERE least(pay.unapplied, inv.balance) > 0
 			ON CONFLICT (payment_id, invoice_id) DO NOTHING`, ws, id, invoiceID, a.ID); err != nil {
@@ -133,13 +135,19 @@ func (h *Handler) fillPaymentFromInvoice(ctx context.Context, tx pgx.Tx, ws, pay
 	return err
 }
 
-// refreshPayment writes the payment's "applied" and "not yet applied" amounts.
+// refreshPayment re-derives everything that hangs off a payment's allocations: which
+// invoices its refunds come off (crm.refund_allocations) and its "applied" and "not yet
+// applied" amounts. Money refunded comes out of the unapplied part first.
 func (h *Handler) refreshPayment(ctx context.Context, tx pgx.Tx, ws, id uuid.UUID) error {
+	if err := h.rebuildRefundAllocations(ctx, tx, ws, id); err != nil {
+		return err
+	}
 	_, err := tx.Exec(ctx, `
 		UPDATE crm.object_records p SET custom = p.custom || jsonb_build_object(
 		  'allocatedAmount', x.applied,
-		  'unappliedAmount', greatest(`+money(`p.custom->>'amount'`)+` - `+money(`p.custom->>'refundedAmount'`)+` - x.applied, 0))
-		FROM (SELECT COALESCE(sum(amount), 0) AS applied FROM crm.payment_allocations WHERE payment_id = $1 AND workspace_id = $2) x
+		  'unappliedAmount', greatest(`+money(`p.custom->>'amount'`)+` - x.applied - greatest(`+money(`p.custom->>'refundedAmount'`)+` - x.refunded_off_invoices, 0), 0))
+		FROM (SELECT COALESCE((SELECT sum(amount) FROM crm.payment_allocations WHERE payment_id = $1 AND workspace_id = $2), 0) AS applied,
+		             COALESCE((SELECT sum(amount) FROM crm.refund_allocations WHERE payment_id = $1 AND workspace_id = $2), 0) AS refunded_off_invoices) x
 		WHERE p.id = $1 AND p.workspace_id = $2 AND p.object_key = 'payments'`, id, ws)
 	return err
 }
@@ -147,11 +155,10 @@ func (h *Handler) refreshPayment(ctx context.Context, tx pgx.Tx, ws, id uuid.UUI
 // invoicePaid is what has really been received for an invoice: the applied part of every
 // payment whose money arrived, less the refunded share of each.
 const invoicePaidSQL = `
-	SELECT COALESCE(sum(round(al.amount * greatest(pay.amount - pay.refunded, 0) / NULLIF(pay.amount, 0), 2)), 0)
+	SELECT COALESCE(sum(al.amount - COALESCE((SELECT sum(ra.amount) FROM crm.refund_allocations ra
+	                                           WHERE ra.payment_id = al.payment_id AND ra.invoice_id = al.invoice_id), 0)), 0)
 	FROM crm.payment_allocations al
-	JOIN LATERAL (SELECT ` + `(CASE WHEN p.custom->>'amount' ~ '^-?[0-9]+(\.[0-9]+)?$' THEN round((p.custom->>'amount')::numeric, 2) ELSE 0 END) AS amount,
-	                     (CASE WHEN p.custom->>'refundedAmount' ~ '^-?[0-9]+(\.[0-9]+)?$' THEN round((p.custom->>'refundedAmount')::numeric, 2) ELSE 0 END) AS refunded
-	              FROM crm.object_records p WHERE p.id = al.payment_id AND p.deleted_at IS NULL AND p.status IN ` + paymentCounts + `) pay ON true
+	JOIN crm.object_records pay ON pay.id = al.payment_id AND pay.deleted_at IS NULL AND pay.status IN ` + paymentCounts + `
 	WHERE al.invoice_id = $1 AND al.workspace_id = $2`
 
 // recomputeInvoice sets an invoice's paid amount, balance and paid status from its payments.
@@ -180,7 +187,14 @@ func (h *Handler) recomputeInvoice(ctx context.Context, tx pgx.Tx, ws, invoiceID
 	if !hasAllocations {
 		paid = wasPaid
 	}
-	balance := total - paid
+	// Credit notes and write-offs lower what is owed, debit notes raise it (D-126). Each is
+	// a record of its own; nothing here is typed onto the invoice.
+	extra, err := h.invoiceExtras(ctx, tx, ws, invoiceID)
+	if err != nil {
+		return err
+	}
+	credited, debited, writtenOff := extra.credited.Float(), extra.debited.Float(), extra.writtenOff.Float()
+	balance := math.Round((total+debited-paid-credited-writtenOff)*100) / 100
 	if balance < 0 {
 		balance = 0
 	}
@@ -188,17 +202,22 @@ func (h *Handler) recomputeInvoice(ctx context.Context, tx pgx.Tx, ws, invoiceID
 	if paid != wasPaid {
 		values["amountPaid"] = paid
 	}
+	for key, v := range map[string]Cents{"creditedAmount": extra.credited, "debitedAmount": extra.debited, "writtenOffAmount": extra.writtenOff} {
+		if had, ok := parseCents(extra.stored[key]); had != v || (!ok && v != 0) {
+			values[key] = v.Float()
+		}
+	}
 	if balance != wasBalance || !hadBalance {
 		values["balanceDue"] = balance
 	}
 	next := status
 	switch {
 	case status == "draft" || status == "void":
-	case total > 0 && paid >= total:
+	case total > 0 && balance <= 0:
 		next = "paid"
 	case status == "overdue":
 		// Still owed and past due: a part payment doesn't make it less late.
-	case paid > 0:
+	case paid > 0 || credited > 0 || writtenOff > 0:
 		next = "partially_paid"
 	case status == "paid" || status == "partially_paid":
 		next = "sent" // the payment was removed, failed or fully refunded
@@ -409,77 +428,47 @@ func (h *Handler) handleUnallocate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleRefund records money given back. The payment becomes "partially refunded" or
-// "refunded" and the invoices it paid lose that share.
+// handleRefund records money given back on a payment: it creates a refund record (D-126),
+// and everything else — the payment's refunded amount and status, which invoices lose the
+// money — follows from that record.
 func (h *Handler) handleRefund(w http.ResponseWriter, r *http.Request) {
 	sc, pay, err := h.paymentScope(r, "update")
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
+	if specFor("refunds") == nil || !sc.Can("refunds", "create") {
+		shared.WriteError(w, r, errForbidden)
+		return
+	}
 	var in struct {
-		Amount float64 `json:"amount"`
-		Reason string  `json:"reason"`
+		Amount    any    `json:"amount"`
+		Reason    string `json:"reason"`
+		Reference string `json:"reference"`
 	}
 	if err := shared.DecodeJSON(w, r, &in); err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
+	amount, ok := parseCents(in.Amount)
+	if !ok || amount <= 0 {
+		shared.WriteError(w, r, shared.Validation(map[string]string{"amount": "Enter an amount up to what is left of this payment."}))
+		return
+	}
 	ctx := r.Context()
 	a := actorFromRequest(r, "ui")
 	var out *Row
+	var refund *Row
 	err = h.store.WithTx(ctx, func(tx pgx.Tx) error {
-		var amount, refunded float64
-		var status string
-		if err := tx.QueryRow(ctx, `SELECT `+money(`custom->>'amount'`)+`::float8, `+money(`custom->>'refundedAmount'`)+`::float8, COALESCE(status, '')
-			FROM crm.object_records WHERE id = $1 AND workspace_id = $2 FOR UPDATE`, pay.uuid(), sc.WS).Scan(&amount, &refunded, &status); err != nil {
-			return err
+		v := map[string]any{"name": "Refund of " + pay.Code, "paymentId": pay.ID, "amount": amount.Float(), "refundDate": time.Now().Format("2006-01-02")}
+		if s := strings.TrimSpace(in.Reason); s != "" {
+			v["reason"] = clipText(s, 300)
 		}
-		if status != "paid" && status != "partially_refunded" {
-			return shared.NewError(http.StatusUnprocessableEntity, "not_refundable", "Only a payment that was received can be refunded.")
+		if s := strings.TrimSpace(in.Reference); s != "" {
+			v["reference"] = clipText(s, 120)
 		}
-		if in.Amount <= 0 || in.Amount > amount-refunded+0.004 {
-			return shared.Validation(map[string]string{"amount": "Enter an amount up to what is left of this payment."})
-		}
-		total := refunded + in.Amount
-		next := "partially_refunded"
-		if total >= amount-0.004 {
-			next, total = "refunded", amount
-		}
-		// Written as the payments system so the hook doesn't treat it as an edit; the
-		// person who refunded is on the audit event and the timeline.
-		sys := systemActor(sourcePayments)
-		if _, err := h.updateValues(ctx, tx, sc.WS, specFor("payments"), pay.uuid(), sys, map[string]any{"refundedAmount": total, "status": next}, nil, nil); err != nil {
-			return err
-		}
-		if err := h.refreshPayment(ctx, tx, sc.WS, pay.uuid()); err != nil {
-			return err
-		}
-		rows, err := tx.Query(ctx, `SELECT invoice_id FROM crm.payment_allocations WHERE payment_id = $1 AND workspace_id = $2`, pay.uuid(), sc.WS)
-		if err != nil {
-			return err
-		}
-		var invoices []uuid.UUID
-		for rows.Next() {
-			var id uuid.UUID
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return err
-			}
-			invoices = append(invoices, id)
-		}
-		rows.Close()
-		for _, inv := range invoices {
-			if err := h.recomputeInvoice(ctx, tx, sc.WS, inv); err != nil {
-				return err
-			}
-		}
-		pid := pay.uuid()
-		if err := insertActivity(ctx, tx, sc.WS, "payments", pid, "payment.refunded", "Refunded", map[string]any{"amount": in.Amount, "reason": strings.TrimSpace(in.Reason)}, a.ID); err != nil {
-			return err
-		}
-		if err := shared.WriteAudit(ctx, tx, a.audit(sc.WS, "payment.refunded", "payment", &pid,
-			map[string]any{"refundedAmount": refunded, "status": status}, map[string]any{"refundedAmount": total, "status": next, "reason": strings.TrimSpace(in.Reason)})); err != nil {
+		var err error
+		if refund, err = h.createRecord(ctx, tx, sc.WS, specFor("refunds"), a, v); err != nil {
 			return err
 		}
 		out, _, err = h.getRow(ctx, tx, sc.WS, specFor("payments"), pay.uuid(), nil)
@@ -487,6 +476,8 @@ func (h *Handler) handleRefund(w http.ResponseWriter, r *http.Request) {
 	})
 	if err == nil {
 		h.bus.Kick()
+		out.Values["refundId"] = refund.ID
+		out.Values["refundStatus"] = refund.text("status")
 	}
 	respond(w, r, http.StatusOK, out, err)
 }
@@ -528,28 +519,42 @@ func (h *Handler) handleInvoiceLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := struct {
-		Total      float64      `json:"total"`
-		Paid       float64      `json:"paid"`
-		Balance    float64      `json:"balance"`
-		Status     string       `json:"status"`
-		Payments   []ledgerLine `json:"payments"`
-		CanPay     bool         `json:"canRecordPayment"`
-		CanSee     bool         `json:"canSeePayments"`
-		InvoiceRef string       `json:"invoice"`
+		Total       float64       `json:"total"`
+		Paid        float64       `json:"paid"`
+		Balance     float64       `json:"balance"`
+		Status      string        `json:"status"`
+		Payments    []ledgerLine  `json:"payments"`
+		Credited    Cents         `json:"credited"`
+		Debited     Cents         `json:"debited"`
+		WrittenOff  Cents         `json:"writtenOff"`
+		Adjustments []ledgerExtra `json:"adjustments"`
+		CanPay      bool          `json:"canRecordPayment"`
+		CanSee      bool          `json:"canSeePayments"`
+		InvoiceRef  string        `json:"invoice"`
 	}{Payments: []ledgerLine{}, CanPay: sc.Enabled("payments") && sc.Can("payments", "create"), CanSee: sc.Enabled("payments") && sc.Can("payments", "read"), InvoiceRef: inv.Code}
 	if err := h.store.Pool.QueryRow(ctx, `SELECT `+money(`custom->>'total'`)+`::float8, `+money(`custom->>'amountPaid'`)+`::float8, COALESCE(status, '')
 		FROM crm.object_records WHERE id = $1 AND workspace_id = $2`, id, sc.WS).Scan(&out.Total, &out.Paid, &out.Status); err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
-	out.Balance = out.Total - out.Paid
+	extra, err := h.invoiceExtras(ctx, h.store.Pool, sc.WS, id)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	out.Credited, out.Debited, out.WrittenOff = extra.credited, extra.debited, extra.writtenOff
+	out.Balance = math.Round((out.Total+extra.debited.Float()-out.Paid-extra.credited.Float()-extra.writtenOff.Float())*100) / 100
 	if out.Balance < 0 {
 		out.Balance = 0
 	}
+	out.Adjustments = extra.lines
 	if out.CanSee {
 		rows, err := h.store.Pool.Query(ctx, `
 			SELECT p.id::text, p.code, p.name, COALESCE(p.status, ''), COALESCE(p.custom->>'paymentDate', ''), COALESCE(p.custom->>'paymentMethod', ''),
-			       `+money(`p.custom->>'amount'`)+`::float8, al.amount::float8, `+money(`p.custom->>'refundedAmount'`)+`::float8, p.status IN `+paymentCounts+`
+			       `+money(`p.custom->>'amount'`)+`::float8,
+			       (al.amount - COALESCE((SELECT sum(ra.amount) FROM crm.refund_allocations ra WHERE ra.payment_id = al.payment_id AND ra.invoice_id = al.invoice_id), 0))::float8,
+			       COALESCE((SELECT sum(ra.amount) FROM crm.refund_allocations ra WHERE ra.payment_id = al.payment_id AND ra.invoice_id = al.invoice_id), 0)::float8,
+			       p.status IN `+paymentCounts+`
 			FROM crm.payment_allocations al JOIN crm.object_records p ON p.id = al.payment_id AND p.deleted_at IS NULL
 			WHERE al.invoice_id = $1 AND al.workspace_id = $2 ORDER BY p.custom->>'paymentDate', p.created_at`, id, sc.WS)
 		if err != nil {

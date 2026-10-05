@@ -53,7 +53,7 @@ func (h *Handler) relationshipTypes(ctx context.Context, q querier, ws uuid.UUID
 	// A business's own type wins over a built-in one with the same key.
 	rows, err := q.Query(ctx, `
 		SELECT DISTINCT ON (key) key, label, inverse_label, COALESCE(source_object, ''), COALESCE(target_object, ''), cardinality, workspace_id IS NULL
-		FROM crm.relationship_types WHERE workspace_id IS NULL OR workspace_id = $1
+		FROM crm.relationship_types WHERE (workspace_id IS NULL OR workspace_id = $1) AND key <> 'contact_role'
 		ORDER BY key, (workspace_id IS NULL)`, ws)
 	if err != nil {
 		return nil, err
@@ -199,10 +199,10 @@ func (h *Handler) relationshipsOf(ctx context.Context, sc *Scope, me uuid.UUID, 
 	}
 	rows, err := h.store.Pool.Query(ctx, `
 		SELECT id::text, type_key, 'out', target_object, target_id, note, created_at FROM crm.record_relationships
-		WHERE workspace_id = $1 AND source_object = $2 AND source_id = $3
+		WHERE workspace_id = $1 AND source_object = $2 AND source_id = $3 AND type_key <> 'contact_role'
 		UNION ALL
 		SELECT id::text, type_key, 'in', source_object, source_id, note, created_at FROM crm.record_relationships
-		WHERE workspace_id = $1 AND target_object = $2 AND target_id = $3
+		WHERE workspace_id = $1 AND target_object = $2 AND target_id = $3 AND type_key <> 'contact_role'
 		ORDER BY 7`, sc.WS, object, id)
 	if err != nil {
 		return nil, err
@@ -334,7 +334,7 @@ func (h *Handler) handleCreateRelationship(w http.ResponseWriter, r *http.Reques
 	targetSpec := specFor(in.TargetObject)
 	targetID, idErr := uuid.Parse(in.TargetID)
 	switch {
-	case typ == nil:
+	case typ == nil || typ.Key == "contact_role": // contact roles have their own API (D-122)
 		fe["type"] = "Choose a relationship."
 	case targetSpec == nil || !sc.Enabled(in.TargetObject) || idErr != nil:
 		fe["targetId"] = "Choose a record to link."

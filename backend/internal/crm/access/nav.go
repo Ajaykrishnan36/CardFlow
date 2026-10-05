@@ -118,7 +118,9 @@ var navGroups = map[string]string{
 	"subscriptions": "Sales operations",
 	"cases":         "Service", "appointments": "Service", "entitlements": "Service", "sla_policies": "Service", "solutions": "Service",
 	"purchase_orders": "Purchasing",
-	"income":          "Finance", "expenses": "Finance", "payments": "Finance",
+	"income":          "Finance", "expenses": "Finance", "payments": "Finance", "refunds": "Finance", "credit_notes": "Finance",
+	"debit_notes": "Finance", "adjustments": "Finance",
+	"territories": "Sales operations", "work_orders": "Service", "service_resources": "Service", "resource_absences": "Service",
 }
 
 // navGroup is the sidebar section of an object.

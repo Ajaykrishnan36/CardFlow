@@ -79,7 +79,8 @@ var (
 	reservedKeys  = map[string]bool{"leads": true, "accounts": true, "contacts": true, "users": true, "products": true, "workspaces": true,
 		"activities": true, "tickets": true, "meta": true, "objects": true, "support": true, "home": true, "settings": true, "setup": true,
 		"dashboard": true, "context": true, "admin": true, "app": true, "businesses": true, "business": true, "cards": true,
-		"forecast": true, "forecasts": true, "relationships": true, "finance": true, "vendors": true, "services": true, "menu": true, "listing": true}
+		"forecast": true, "forecasts": true, "relationships": true, "finance": true, "vendors": true, "services": true, "menu": true, "listing": true,
+		"pricing": true, "approvals": true, "scheduling": true, "currencies": true, "attribution": true, "price-book-entries": true}
 	reservedFields = map[string]bool{"id": true, "name": true, "status": true, "code": true, "ownerId": true, "createdAt": true,
 		"createdBy": true, "updatedAt": true, "updatedBy": true, "version": true, "custom": true, "title": true}
 	reservedPrefixes = map[string]bool{"L": true, "A": true, "C": true}
@@ -342,6 +343,96 @@ func standardObjects() []ObjectDefinition {
 					ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("caseId", "Case", "cases"),
 					of("notes", "Notes", "textarea"), of("cancellationReason", "Cancellation reason", "text"),
 					ofLookup("rescheduledFrom", "Rescheduled from", "appointments")}}},
+
+		// ---- commercial, sales-execution and service model (D-118…D-127) ----
+		// A sales territory. The tree is parentTerritoryId; who and which accounts belong
+		// to it is crm.territory_assignments.
+		{Key: "territories", Module: "opportunities", Singular: "Territory", Plural: "Territories", Icon: "map-pin", Prefix: "TER",
+			Description: "Sales territories as a tree: regions, states, areas or segments, with their accounts and people.",
+			ObjectBody: ObjectBody{NameLabel: "Territory name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("active", "Active", "success"), st("inactive", "Inactive", "neutral")},
+				Fields: []ObjectField{
+					of("territoryCode", "Short code", "text"), ofLookup("parentTerritoryId", "Parent territory", "territories"),
+					ofSelect("territoryType", "Type", opts("global", "Global", "region", "Region", "country", "Country", "state", "State", "area", "Area", "segment", "Segment", "industry", "Industry")),
+					ofLookup("managerId", "Manager", "users"), of("priority", "Priority", "number"),
+					of("effectiveFrom", "Effective from", "date"), of("effectiveTo", "Effective to", "date"), of("description", "Description", "textarea")}}},
+		// Money given back on a payment. The payment's refunded amount is the sum of its
+		// succeeded refunds; which invoices lose it is crm.refund_allocations.
+		{Key: "refunds", Module: "finance", Singular: "Refund", Plural: "Refunds", Icon: "banknote", Prefix: "RF",
+			Description: "Money returned to a customer against a payment they made.",
+			ObjectBody: ObjectBody{NameLabel: "Refund", StatusLabel: "Status", Statuses: []StatusOption{
+				st("pending", "Pending approval", "warning"), st("processing", "Processing", "primary"), st("succeeded", "Succeeded", "success"),
+				st("failed", "Failed", "danger"), st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofReq(ofLookup("paymentId", "Payment", "payments")), ofReq(of("amount", "Amount", "currency")), of("currency", "Currency", "text"),
+					ofReq(of("refundDate", "Refund date", "date")), of("reason", "Reason", "text"), of("reference", "Reference number", "text"),
+					of("externalId", "External transaction ID", "text"), ofLookup("accountId", "Account", "accounts"), of("notes", "Notes", "textarea")}}},
+		// A credit given to a customer, applied to invoices through crm.credit_allocations.
+		{Key: "credit_notes", Module: "finance", Singular: "Credit note", Plural: "Credit notes", Icon: "file-text", Prefix: "CN",
+			Description: "Credit given to a customer: applied to an invoice, or kept on account for a later one.",
+			ObjectBody: ObjectBody{NameLabel: "Credit note", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("pending_approval", "Pending approval", "warning"), st("issued", "Issued", "primary"),
+				st("partially_applied", "Partially applied", "warning"), st("applied", "Fully applied", "success"), st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("invoiceId", "Invoice", "invoices"),
+					of("issueDate", "Issue date", "date"), of("currency", "Currency", "text"),
+					of("subtotal", "Subtotal", "currency"), of("tax", "Tax", "currency"), ofReq(of("total", "Total", "currency")),
+					of("appliedAmount", "Applied", "currency"), of("remainingAmount", "Remaining", "currency"),
+					of("reason", "Reason", "text"), of("description", "Notes", "textarea")}}},
+		// An extra charge on an invoice already issued.
+		{Key: "debit_notes", Module: "finance", Singular: "Debit note", Plural: "Debit notes", Icon: "file-text", Prefix: "DN",
+			Description: "An additional charge to a customer on an invoice that was already issued.",
+			ObjectBody: ObjectBody{NameLabel: "Debit note", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("pending_approval", "Pending approval", "warning"), st("issued", "Issued", "primary"), st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofReq(ofLookup("invoiceId", "Invoice", "invoices")), ofLookup("accountId", "Account", "accounts"),
+					of("issueDate", "Issue date", "date"), of("currency", "Currency", "text"), ofReq(of("total", "Amount", "currency")),
+					of("reason", "Reason", "text"), of("description", "Notes", "textarea")}}},
+		// A write-off or other correction to what an invoice still owes.
+		{Key: "adjustments", Module: "finance", Singular: "Adjustment", Plural: "Adjustments", Icon: "clipboard", Prefix: "ADJ",
+			Description: "Write-offs and corrections to what an invoice still owes, each with a reason.",
+			ObjectBody: ObjectBody{NameLabel: "Adjustment", StatusLabel: "Status", Statuses: []StatusOption{
+				st("draft", "Draft", "neutral"), st("pending_approval", "Pending approval", "warning"), st("approved", "Approved", "success"),
+				st("rejected", "Rejected", "danger"), st("cancelled", "Cancelled", "neutral")},
+				Fields: []ObjectField{
+					ofReq(ofLookup("invoiceId", "Invoice", "invoices")), ofLookup("accountId", "Account", "accounts"),
+					ofSelect("adjustmentType", "Type", opts("write_off", "Write-off", "rounding", "Rounding", "discount", "Late discount", "other", "Other")),
+					ofReq(of("amount", "Amount", "currency")), of("currency", "Currency", "text"), of("adjustmentDate", "Date", "date"),
+					ofReq(of("reason", "Reason", "text")), of("reference", "Reference", "text"), of("description", "Notes", "textarea")}}},
+		// Work to be done for a customer, usually from a case.
+		{Key: "work_orders", Module: "tickets", Singular: "Work order", Plural: "Work orders", Icon: "wrench", Prefix: "WO",
+			Description: "Work to carry out for a customer: what, where, when, by whom and what it cost.",
+			ObjectBody: ObjectBody{NameLabel: "Subject", StatusLabel: "Status", Statuses: []StatusOption{
+				st("new", "New", "primary"), st("planned", "Planned", "primary"), st("scheduled", "Scheduled", "primary"), st("in_progress", "In progress", "warning"),
+				st("on_hold", "On hold", "neutral"), st("completed", "Completed", "success"), st("cancelled", "Cancelled", "danger")},
+				Fields: []ObjectField{
+					ofSelect("priority", "Priority", opts("critical", "Critical", "high", "High", "medium", "Medium", "low", "Low")),
+					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("caseId", "Case", "cases"),
+					ofLookup("assetId", "Asset", "assets"), ofLookup("contractId", "Contract", "contracts"), ofLookup("entitlementId", "Entitlement", "entitlements"),
+					ofLookup("resourceId", "Assigned resource", "service_resources"), ofLookup("territoryId", "Service territory", "territories"),
+					of("scheduledStart", "Scheduled start", "datetime"), of("scheduledEnd", "Scheduled end", "datetime"),
+					of("actualStart", "Actual start", "datetime"), of("actualEnd", "Actual end", "datetime"), of("location", "Location", "text"),
+					of("estimatedCost", "Estimated cost", "currency"), of("actualCost", "Actual cost", "currency"), of("total", "Billable total", "currency"),
+					ofLookup("invoiceId", "Invoice", "invoices"), of("description", "Description", "richtext"), of("completionNotes", "Completion notes", "textarea")}}},
+		// A person, crew or outside provider who can be booked for work and appointments.
+		{Key: "service_resources", Module: "tickets", Singular: "Service resource", Plural: "Service resources", Icon: "truck", Prefix: "RES",
+			Description: "Technicians, crews and outside providers that can be booked: skills, working hours and capacity.",
+			ObjectBody: ObjectBody{NameLabel: "Resource name", StatusLabel: "Status", Statuses: []StatusOption{
+				st("active", "Active", "success"), st("inactive", "Inactive", "neutral")},
+				Fields: []ObjectField{
+					ofSelect("resourceType", "Type", opts("technician", "Technician", "employee", "Employee", "crew", "Crew", "external", "External provider")),
+					ofLookup("userId", "User", "users"), of("skills", "Skills (comma separated)", "text"), ofLookup("territoryId", "Service territory", "territories"),
+					of("workStart", "Working hours start (HH:MM)", "text"), of("workEnd", "Working hours end (HH:MM)", "text"),
+					of("workDays", "Working days (mon,tue,…)", "text"), of("holidays", "Days off (YYYY-MM-DD, comma separated)", "textarea"),
+					of("capacity", "Jobs at the same time", "number"), of("phone", "Phone", "phone"), of("homeLocation", "Base location", "text"),
+					of("description", "Notes", "textarea")}}},
+		// Time a resource can't be booked (leave, training, travel).
+		{Key: "resource_absences", Module: "tickets", Singular: "Resource absence", Plural: "Resource absences", Icon: "calendar", Prefix: "ABS",
+			Description: "Periods when a service resource can't be booked.",
+			ObjectBody: ObjectBody{NameLabel: "Reason", Statuses: []StatusOption{},
+				Fields: []ObjectField{
+					ofReq(ofLookup("resourceId", "Resource", "service_resources")), ofReq(of("startsAt", "From", "datetime")), ofReq(of("endsAt", "Until", "datetime")),
+					of("description", "Notes", "textarea")}}},
 	}
 }
 
@@ -384,14 +475,76 @@ func standardUpgrades() map[string]objectUpgrade {
 	}
 }
 
-// upgradeStandardObjects applies standardUpgrades once (marker in crm.connector_state).
+// upgradeStandardObjects applies each batch of upgrades once (marker in crm.connector_state).
 func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
-	const marker = "objects:enterprise-v1"
+	if err := applyObjectUpgrades(ctx, tx, "objects:enterprise-v1", standardUpgrades()); err != nil {
+		return err
+	}
+	return applyObjectUpgrades(ctx, tx, "objects:commercial-v1", commercialUpgrades())
+}
+
+// commercialUpgrades (D-118…D-127): the fields the commercial and service model adds to
+// objects that already exist.
+func commercialUpgrades() map[string]objectUpgrade {
+	money := func(base string) []ObjectField {
+		return []ObjectField{of("currency", "Currency", "text"), of("exchangeRate", "Exchange rate", "number"), of(base, "Amount in base currency", "currency")}
+	}
+	approval := ofSelect("approvalStatus", "Approval", opts("not_required", "Not required", "pending", "Pending", "approved", "Approved", "rejected", "Rejected"))
+	return map[string]objectUpgrade{
+		"opportunities": {fields: append([]ObjectField{ofLookup("territoryId", "Sales territory", "territories")}, money("baseAmount")...)},
+		"quotes": {fields: append([]ObjectField{of("discountPercent", "Largest discount", "percent"), approval, of("quoteVersion", "Version", "number"),
+			ofLookup("previousQuoteId", "Previous version", "quotes")}, money("baseTotal")...)},
+		"sales_orders": {fields: append([]ObjectField{of("discount", "Discount", "currency"), ofLookup("priceBookId", "Price book", "price_books")}, money("baseTotal")...)},
+		"invoices": {fields: append([]ObjectField{of("discount", "Discount", "currency"), ofLookup("priceBookId", "Price book", "price_books"),
+			ofLookup("quoteId", "Quote", "quotes"), ofLookup("workOrderId", "Work order", "work_orders"),
+			of("creditedAmount", "Credited", "currency"), of("debitedAmount", "Debit notes", "currency"), of("writtenOffAmount", "Written off", "currency"),
+			of("finalizedAt", "Finalized on", "datetime")}, money("baseTotal")...)},
+		"payments":  {fields: []ObjectField{of("exchangeRate", "Exchange rate", "number"), of("baseAmount", "Amount in base currency", "currency")}},
+		"expenses":  {fields: money("baseAmount")},
+		"income":    {fields: money("baseAmount")},
+		"contracts": {fields: []ObjectField{of("exchangeRate", "Exchange rate", "number"), of("baseValue", "Value in base currency", "currency"), ofLookup("priceBookId", "Price book", "price_books")}},
+		"price_books": {fields: []ObjectField{of("currency", "Currency", "text"), of("isDefault", "Default price book", "boolean"),
+			ofLookup("accountId", "Only for this customer", "accounts")}},
+		"line_items": {fields: []ObjectField{
+			of("listPrice", "List price", "currency"), of("discountAmount", "Discount amount", "currency"), of("taxRate", "Tax rate", "percent"),
+			of("taxAmount", "Tax", "currency"), of("unitCost", "Unit cost", "currency"), of("priceBookEntryId", "Price book entry", "text"),
+			of("pricingNote", "How it was priced", "text"), ofLookup("bundleLineId", "Part of bundle line", "line_items"),
+			ofLookup("workOrderId", "Work order", "work_orders"), ofLookup("creditNoteId", "Credit note", "credit_notes"),
+			of("startDate", "Starts", "date"), of("endDate", "Ends", "date"),
+			ofSelect("billingFrequency", "Billed", opts("one_time", "One time", "hourly", "Hourly", "monthly", "Monthly", "quarterly", "Quarterly", "yearly", "Yearly")),
+			of("durationMinutes", "Duration (minutes)", "number"), of("sortOrder", "Order", "number"),
+		}},
+		"catalog_items": {fields: []ObjectField{
+			of("family", "Product family", "text"), of("isBundle", "Sold as a bundle", "boolean"), of("cost", "Cost", "currency"),
+			of("serviceCategory", "Service category", "text"), of("skillsRequired", "Skills needed (comma separated)", "text"),
+			of("capacity", "Bookings at the same time", "number"),
+			ofSelect("serviceLocation", "Where it is delivered", opts("on_site", "At the customer", "in_store", "At our place", "remote", "Remote")),
+			of("workOrderEligible", "Can be put on a work order", "boolean"),
+		}},
+		"appointments": {fields: []ObjectField{
+			ofLookup("resourceId", "Resource", "service_resources"), ofLookup("workOrderId", "Work order", "work_orders"),
+			of("durationMinutes", "Duration (minutes)", "number"),
+			ofSelect("bookingSource", "Booked through", opts("staff", "Staff", "phone", "Phone", "web", "Website", "app", "App", "walk_in", "Walk-in")),
+		}},
+		"sla_policies": {fields: []ObjectField{
+			of("assignmentMinutes", "Assign within (minutes)", "number"), of("customerUpdateMinutes", "Update the customer every (minutes)", "number"),
+			of("warnPercent", "Warn at (% of time used)", "number"), ofLookup("escalateTo", "Escalate to", "users"),
+		}},
+		"entitlements": {fields: []ObjectField{
+			of("hoursIncluded", "Service hours included", "number"), of("casesUsed", "Cases used", "number"), of("hoursUsed", "Hours used", "number"),
+			ofSelect("overagePolicy", "When the allowance is used up", opts("allow", "Allow and flag", "block", "Block new cases")),
+		}},
+		"cases":  {fields: []ObjectField{of("assignedAt", "Assigned on", "datetime"), of("lastCustomerUpdateAt", "Customer last updated", "datetime"), of("entitlementExceeded", "Over entitlement", "boolean")}},
+		"assets": {fields: []ObjectField{ofLookup("workOrderId", "Last work order", "work_orders"), of("replacedOn", "Replaced on", "date")}},
+	}
+}
+
+func applyObjectUpgrades(ctx context.Context, tx pgx.Tx, marker string, upgrades map[string]objectUpgrade) error {
 	var done bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.connector_state WHERE key = $1)`, marker).Scan(&done); err != nil || done {
 		return err
 	}
-	for key, up := range standardUpgrades() {
+	for key, up := range upgrades {
 		var raw []byte
 		err := tx.QueryRow(ctx, `SELECT definition FROM crm.object_definitions WHERE key = $1 AND is_standard`, key).Scan(&raw)
 		if errors.Is(err, pgx.ErrNoRows) {

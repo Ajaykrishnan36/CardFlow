@@ -159,6 +159,16 @@ const (
 	CapCampaigns     = "campaigns.manage"
 	// CapForecast: set sales targets and approve or override the team's forecasts (D-112).
 	CapForecast = "forecast.manage"
+	// CapPricing: price book entries, bundles, pricing and discount rules, exchange rates (D-118…D-120).
+	CapPricing = "pricing.manage"
+	// CapApprovals: set approval thresholds; decide any approval request (D-121).
+	CapApprovals = "approvals.manage"
+	// CapTerritories: who and which accounts belong to a territory (D-124).
+	CapTerritories = "territory.manage"
+	// CapRecordTeams: add people to the team of a record they don't own (D-123).
+	CapRecordTeams = "record_teams.manage"
+	// CapScheduling: book and move appointments for any resource (D-127).
+	CapScheduling = "scheduling.manage"
 )
 
 var CapabilityCatalog = []CatalogEntry{
@@ -171,6 +181,11 @@ var CapabilityCatalog = []CatalogEntry{
 	{Key: CapEmailSend, Label: "Send email", Description: "Send emails from records, from a connected mailbox or the CRM's address."},
 	{Key: CapCampaigns, Label: "Manage email campaigns", Description: "Send one email to many contacts at once."},
 	{Key: CapForecast, Label: "Manage forecasts", Description: "Set sales targets for people and teams, and approve or adjust submitted forecasts."},
+	{Key: CapPricing, Label: "Manage pricing", Description: "Edit price book entries, bundles, pricing and discount rules, and exchange rates; override a price on a quote."},
+	{Key: CapApprovals, Label: "Manage approvals", Description: "Set the limits above which discounts, refunds, credit notes and write-offs need approval, and decide any request."},
+	{Key: CapTerritories, Label: "Manage territories", Description: "Assign accounts, people and teams to sales territories."},
+	{Key: CapRecordTeams, Label: "Manage record teams", Description: "Add or remove people on the team of any account, deal, case or contract."},
+	{Key: CapScheduling, Label: "Manage scheduling", Description: "Book, move and cancel appointments for any service resource."},
 	{Key: CapMembersManage, Label: "Manage users",
 		Description: "Invite users and change their access in this workspace — never beyond their own access."},
 }

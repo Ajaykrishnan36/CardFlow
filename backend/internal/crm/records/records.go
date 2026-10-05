@@ -240,7 +240,9 @@ func whereFor(spec *objectSpec, fields []Field, ws uuid.UUID, p listParams, b *s
 		where += " AND (" + strings.Join(parts, " OR ") + ")"
 	}
 	if p.Owners != nil {
-		where += " AND t.owner_id = ANY(" + b.arg(p.Owners) + "::uuid[])"
+		// Own records, those of the roles below, and records whose team the viewer is on (D-123).
+		o := b.arg(p.Owners)
+		where += " AND (t.owner_id = ANY(" + o + "::uuid[]) OR " + teamMemberSQL(spec, o) + ")"
 	}
 	if p.Status != "" && spec.StatusField != "" {
 		f, _ := spec.field(spec.StatusField)
@@ -381,7 +383,7 @@ func (h *Handler) getRow(ctx context.Context, q querier, wsID uuid.UUID, spec *o
 		return nil, nil, err
 	}
 	var raw []byte
-	err = q.QueryRow(ctx, "SELECT to_jsonb(r) FROM ("+selectSQL(spec)+" WHERE t.id = $1 AND t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3))) r", id, wsID, owners).Scan(&raw)
+	err = q.QueryRow(ctx, "SELECT to_jsonb(r) FROM ("+selectSQL(spec)+" WHERE t.id = $1 AND t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3) OR "+teamMemberSQL(spec, "$3")+")) r", id, wsID, owners).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil, shared.NotFound("record_not_found")
 	}

@@ -62,6 +62,8 @@ var keptWhole = map[string]bool{
 	"schema_migrations": true, "platform_settings": true, "products": true, "product_versions": true, "plans": true,
 	"connector_state": true, "workspaces": true, "identities": true, "verified_identifiers": true, "password_credentials": true,
 	"mfa_methods": true, "workflow_versions": true,
+	// The currency list is part of the product (D-118).
+	"currencies": true,
 }
 
 func keepPhone() string {

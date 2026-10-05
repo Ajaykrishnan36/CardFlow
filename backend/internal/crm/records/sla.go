@@ -149,8 +149,13 @@ type slaPolicy struct {
 	Name          string
 	FirstResponse int
 	Resolution    int
-	AutoEscalate  bool
-	Hours         Hours
+	// More milestones (D-127): assign the case within N minutes; update the customer every N minutes.
+	Assignment     int
+	CustomerUpdate int
+	WarnPercent    int       // warn when this share of the time is used (default 80)
+	EscalateTo     uuid.UUID // who is told (besides the owner) when a clock runs out
+	AutoEscalate   bool
+	Hours          Hours
 }
 
 func intOf(v any) int {
@@ -179,6 +184,13 @@ func (h *Handler) loadPolicy(ctx context.Context, q querier, ws, id uuid.UUID) (
 	c := map[string]any{}
 	_ = json.Unmarshal(raw, &c)
 	p := &slaPolicy{ID: id, Name: name, FirstResponse: intOf(c["firstResponseMinutes"]), Resolution: intOf(c["resolutionMinutes"])}
+	p.Assignment, p.CustomerUpdate = intOf(c["assignmentMinutes"]), intOf(c["customerUpdateMinutes"])
+	if p.WarnPercent = intOf(c["warnPercent"]); p.WarnPercent < 1 || p.WarnPercent > 99 {
+		p.WarnPercent = 80
+	}
+	if s, ok := c["escalateTo"].(string); ok {
+		p.EscalateTo, _ = uuid.Parse(s)
+	}
 	p.AutoEscalate, _ = c["autoEscalate"].(bool)
 	p.Hours.TZ = tz
 	p.Hours.BusinessOnly, _ = c["businessHoursOnly"].(bool)
@@ -201,7 +213,7 @@ func (h *Handler) loadPolicy(ctx context.Context, q querier, ws, id uuid.UUID) (
 			}
 		}
 	}
-	if p.FirstResponse <= 0 && p.Resolution <= 0 {
+	if p.FirstResponse <= 0 && p.Resolution <= 0 && p.Assignment <= 0 && p.CustomerUpdate <= 0 {
 		return nil, nil
 	}
 	return p, nil
@@ -309,6 +321,22 @@ func (h *Handler) caseSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a acto
 				}
 			}
 		}
+		// Assignment: the case got another owner, or was picked up.
+		if (before.text("ownerId") != after.text("ownerId") || (was == "new" && status != "new")) && after.text("assignedAt") == "" {
+			tag, err := tx.Exec(ctx, `UPDATE crm.sla_timers SET completed_at = $3 WHERE case_id = $1 AND workspace_id = $2 AND milestone = 'assignment' AND completed_at IS NULL`, id, ws, now)
+			if err != nil {
+				return nil, err
+			}
+			if tag.RowsAffected() > 0 {
+				set["assignedAt"] = now.UTC().Format(time.RFC3339)
+			}
+		}
+		// Customer update: each update starts the clock for the next one.
+		if before.text("lastCustomerUpdateAt") != after.text("lastCustomerUpdateAt") && after.text("lastCustomerUpdateAt") != "" {
+			if err := h.restartTimer(ctx, tx, ws, id, "customer_update", now); err != nil {
+				return nil, err
+			}
+		}
 		if was != status {
 			// First response: the case left "New".
 			if was == "new" && status != "new" && after.text("firstRespondedAt") == "" {
@@ -359,19 +387,20 @@ func (h *Handler) caseSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a acto
 func (h *Handler) startTimers(ctx context.Context, tx pgx.Tx, ws, caseID uuid.UUID, p *slaPolicy, start time.Time, set map[string]any) error {
 	hours, _ := json.Marshal(p.Hours)
 	set["slaPolicyId"] = p.ID.String()
-	for milestone, minutes := range map[string]int{"first_response": p.FirstResponse, "resolution": p.Resolution} {
+	for milestone, minutes := range map[string]int{"first_response": p.FirstResponse, "resolution": p.Resolution, "assignment": p.Assignment, "customer_update": p.CustomerUpdate} {
 		if minutes <= 0 {
 			continue
 		}
 		due := p.Hours.Add(start, minutes)
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO crm.sla_timers (workspace_id, case_id, policy_id, milestone, target_minutes, hours, started_at, due_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (case_id, milestone) DO NOTHING`, ws, caseID, p.ID, milestone, minutes, hours, start, due); err != nil {
+			INSERT INTO crm.sla_timers (workspace_id, case_id, policy_id, milestone, target_minutes, hours, started_at, due_at, warn_percent)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (case_id, milestone) DO NOTHING`, ws, caseID, p.ID, milestone, minutes, hours, start, due, p.WarnPercent); err != nil {
 			return err
 		}
-		if milestone == "first_response" {
+		switch milestone {
+		case "first_response":
 			set["firstResponseDueAt"] = due.UTC().Format(time.RFC3339)
-		} else {
+		case "resolution":
 			set["slaDueAt"] = due.UTC().Format(time.RFC3339)
 		}
 	}
@@ -414,10 +443,7 @@ func (h *Handler) retargetTimers(ctx context.Context, tx pgx.Tx, ws, caseID uuid
 	}
 	rows.Close()
 	for _, t := range list {
-		minutes := p.Resolution
-		if t.milestone == "first_response" {
-			minutes = p.FirstResponse
-		}
+		minutes := map[string]int{"first_response": p.FirstResponse, "resolution": p.Resolution, "assignment": p.Assignment, "customer_update": p.CustomerUpdate}[t.milestone]
 		if minutes <= 0 {
 			continue
 		}
@@ -427,9 +453,10 @@ func (h *Handler) retargetTimers(ctx context.Context, tx pgx.Tx, ws, caseID uuid
 			WHERE case_id = $1 AND workspace_id = $2 AND milestone = $7`, caseID, ws, p.ID, minutes, hours, due, t.milestone); err != nil {
 			return err
 		}
-		if t.milestone == "first_response" {
+		switch t.milestone {
+		case "first_response":
 			set["firstResponseDueAt"] = due.UTC().Format(time.RFC3339)
-		} else {
+		case "resolution":
 			set["slaDueAt"] = due.UTC().Format(time.RFC3339)
 		}
 	}
@@ -470,9 +497,10 @@ func (h *Handler) resumeTimers(ctx context.Context, tx pgx.Tx, ws, caseID uuid.U
 			t.id, due, int(now.Sub(t.paused).Seconds())); err != nil {
 			return err
 		}
-		if t.milestone == "first_response" {
+		switch t.milestone {
+		case "first_response":
 			set["firstResponseDueAt"] = due.UTC().Format(time.RFC3339)
-		} else {
+		case "resolution":
 			set["slaDueAt"] = due.UTC().Format(time.RFC3339)
 		}
 	}
@@ -584,7 +612,7 @@ func (h *Handler) StartSweeps(ctx context.Context) {
 			wait := time.Hour
 			var next *time.Time
 			if err := h.store.Pool.QueryRow(ctx, `
-				SELECT min(CASE WHEN warned_at IS NULL THEN started_at + (due_at - started_at) * 0.8 ELSE due_at END)
+				SELECT min(CASE WHEN warned_at IS NULL THEN started_at + (due_at - started_at) * (warn_percent / 100.0) ELSE due_at END)
 				FROM crm.sla_timers WHERE completed_at IS NULL AND breached_at IS NULL AND paused_at IS NULL`).Scan(&next); err == nil && next != nil {
 				if d := time.Until(*next) + 2*time.Second; d < wait {
 					wait = d
@@ -656,7 +684,7 @@ func (h *Handler) sweepSLA(ctx context.Context) error {
 		SELECT t.id, t.workspace_id, t.case_id, t.policy_id, t.milestone, t.due_at <= now()
 		FROM crm.sla_timers t
 		WHERE t.completed_at IS NULL AND t.breached_at IS NULL AND t.paused_at IS NULL
-		  AND (t.due_at <= now() OR (t.warned_at IS NULL AND now() >= t.started_at + (t.due_at - t.started_at) * 0.8))
+		  AND (t.due_at <= now() OR (t.warned_at IS NULL AND now() >= t.started_at + (t.due_at - t.started_at) * (t.warn_percent / 100.0)))
 		ORDER BY t.due_at LIMIT 500`)
 	if err != nil {
 		return err
@@ -671,7 +699,7 @@ func (h *Handler) sweepSLA(ctx context.Context) error {
 		hits = append(hits, x)
 	}
 	rows.Close()
-	what := map[string]string{"first_response": "first response", "resolution": "resolution"}
+	what := map[string]string{"first_response": "first response", "resolution": "resolution", "assignment": "assignment", "customer_update": "customer update"}
 	for _, x := range hits {
 		err := h.store.WithTx(ctx, func(tx pgx.Tx) error {
 			c, _, err := h.getRow(ctx, tx, x.ws, specFor("cases"), x.caseID, nil)
@@ -697,8 +725,12 @@ func (h *Handler) sweepSLA(ctx context.Context) error {
 			set := map[string]any{"slaBreached": true}
 			escalate := false
 			if x.policy != nil {
-				if p, _ := h.loadPolicy(ctx, tx, x.ws, *x.policy); p != nil && p.AutoEscalate {
-					escalate = true
+				if p, _ := h.loadPolicy(ctx, tx, x.ws, *x.policy); p != nil {
+					escalate = p.AutoEscalate
+					// The escalation contact of the policy hears about every breach.
+					if p.EscalateTo != uuid.Nil && p.EscalateTo != owner {
+						h.notify(ctx, tx, x.ws, p.EscalateTo, "sla.breached", "SLA breached: "+c.Title, "The "+what[x.milestone]+" time for "+c.Code+" has passed.", link, nil)
+					}
 				}
 			}
 			if st := c.text("status"); escalate && caseOpen[st] && st != "escalated" {
@@ -845,4 +877,23 @@ func (h *Handler) sweepInvoices(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// restartTimer begins a repeating milestone again from now (the customer was just updated).
+func (h *Handler) restartTimer(ctx context.Context, tx pgx.Tx, ws, caseID uuid.UUID, milestone string, now time.Time) error {
+	var id uuid.UUID
+	var minutes int
+	var raw []byte
+	err := tx.QueryRow(ctx, `SELECT id, target_minutes, hours FROM crm.sla_timers WHERE case_id = $1 AND workspace_id = $2 AND milestone = $3 FOR UPDATE`, caseID, ws, milestone).Scan(&id, &minutes, &raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var hours Hours
+	_ = json.Unmarshal(raw, &hours)
+	_, err = tx.Exec(ctx, `UPDATE crm.sla_timers SET started_at = $2, due_at = $3, paused_at = NULL, paused_seconds = 0, completed_at = NULL, warned_at = NULL, breached_at = NULL, escalated_at = NULL
+		WHERE id = $1`, id, now, hours.Add(now, minutes))
+	return err
 }

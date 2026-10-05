@@ -595,6 +595,8 @@ func (h *Handler) sendCampaignBatch(ctx context.Context, ws uuid.UUID, c *Campai
 			continue
 		}
 		_, _ = h.store.Pool.Exec(ctx, `UPDATE crm.campaign_recipients SET status = 'sent', sent_at = now() WHERE campaign_id = $1 AND record_id = $2`, c.ID, p.id)
+		// A lead or contact the campaign reached is a member of it (D-125).
+		h.touchCampaignMember(ctx, ws, c.ID, c.Object, p.id)
 	}
 	// Stats and completion.
 	var pendingLeft int
