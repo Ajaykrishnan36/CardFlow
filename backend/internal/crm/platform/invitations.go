@@ -23,6 +23,7 @@ func normalizeEmail(raw string) (string, bool) { return identity.NormalizeEmail(
 type InviteInput struct {
 	Name             string      `json:"name"`
 	Email            string      `json:"email"`
+	Phone            string      `json:"phone"` // optional
 	RoleKey          string      `json:"roleKey"`
 	ProductIDs       []uuid.UUID `json:"productIds"`
 	PermissionSetIDs []uuid.UUID `json:"permissionSetIds"`
@@ -53,6 +54,13 @@ func (h *Handler) InviteTx(ctx context.Context, tx pgx.Tx, actor, workspaceID uu
 	}
 	if strings.TrimSpace(in.RoleKey) == "" {
 		fields[fieldPrefix+"roleKey"] = "Pick a role."
+	}
+	phone := ""
+	if strings.TrimSpace(in.Phone) != "" {
+		var ok bool
+		if phone, ok = identity.NormalizePhone(in.Phone); !ok {
+			fields[fieldPrefix+"phone"] = "Enter a valid phone number."
+		}
 	}
 	if len(fields) > 0 {
 		return nil, shared.Validation(fields)
@@ -112,8 +120,32 @@ func (h *Handler) InviteTx(ctx context.Context, tx pgx.Tx, actor, workspaceID uu
 			INSERT INTO crm.verified_identifiers (identity_id, kind, value_normalized) VALUES ($1, 'email', $2)`, identityID, email); err != nil {
 			return nil, err
 		}
+		if phone != "" {
+			// The number is theirs once they sign in with a code sent to it.
+			tag, err := tx.Exec(ctx, `
+				INSERT INTO crm.verified_identifiers (identity_id, kind, value_normalized) VALUES ($1, 'phone', $2)
+				ON CONFLICT DO NOTHING`, identityID, phone)
+			if err != nil {
+				return nil, err
+			}
+			if tag.RowsAffected() == 0 {
+				return nil, shared.Validation(map[string]string{fieldPrefix + "phone": "This phone number already belongs to another person."})
+			}
+		}
 	} else if err != nil {
 		return nil, err
+	} else if phone != "" {
+		// Someone who already has a login keeps their own number: only refuse one that is somebody else's.
+		var other bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM crm.verified_identifiers
+			               WHERE kind = 'phone' AND namespace = 'global' AND value_normalized = $1 AND identity_id <> $2)`,
+			phone, identityID).Scan(&other); err != nil {
+			return nil, err
+		}
+		if other {
+			return nil, shared.Validation(map[string]string{fieldPrefix + "phone": "This phone number already belongs to another person."})
+		}
 	}
 
 	var membershipID uuid.UUID

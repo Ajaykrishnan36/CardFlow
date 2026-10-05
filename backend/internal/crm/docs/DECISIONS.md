@@ -862,6 +862,18 @@ from the desktop dialog. Menu entries move within their section; sections keep t
 The "Add existing app" button was removed from a product's Apps tab in the owner console
 (a new app is still created there).
 
+## D-131 — Phone number on the owner's "Invite admin"
+
+The owner console's invite dialog takes an optional phone number next to name and email
+(`POST /platform/workspaces/{id}/invitations`, field `phone`).
+
+- A new person gets the number as a phone identifier, unverified: it becomes theirs when they
+  sign in with a code sent to it, the same rule as adding a member by phone.
+- A number that already belongs to somebody else is refused with a field error; nothing is saved.
+- Someone who already has a login keeps their own number. The invitation never changes it,
+  because a number is a way to sign in and only its holder should add one to a live account.
+- The invitation itself is still delivered by email.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

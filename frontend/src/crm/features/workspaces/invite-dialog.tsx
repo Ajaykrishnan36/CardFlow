@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AtSign, CircleCheck } from 'lucide-react';
+import { AtSign, CircleCheck, Phone } from 'lucide-react';
 import { workspacesApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { Invitation, RoleKey, WorkspaceDetail } from '@crm/api/types';
@@ -16,6 +16,7 @@ import { RoleField } from '@crm/features/access/role-permissions';
 import { InviteStatusBadge, isOpenInvite } from './workspace-ui';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^\+?[\d\s()-]{8,20}$/;
 
 export function InviteDialog({ open, onOpenChange, workspace }: { open: boolean; onOpenChange: (o: boolean) => void; workspace: WorkspaceDetail }) {
   return (
@@ -39,6 +40,7 @@ function InviteForm({ workspace, onDone }: { workspace: WorkspaceDetail; onDone:
   const activeProducts = workspace.productList.filter((p) => p.status === 'active');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [roleKey, setRoleKey] = useState<RoleKey>(() => defaultRole(workspace));
   const [productIds, setProductIds] = useState<string[]>(() => activeProducts.map((p) => p.productId));
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -46,7 +48,7 @@ function InviteForm({ workspace, onDone }: { workspace: WorkspaceDetail; onDone:
   const [sent, setSent] = useState<Invitation | null>(null);
 
   const invite = useMutation({
-    mutationFn: () => workspacesApi.invite(workspace.id, { name: name.trim(), email: email.trim(), roleKey, productIds }),
+    mutationFn: () => workspacesApi.invite(workspace.id, { name: name.trim(), email: email.trim(), phone: phone.trim() || undefined, roleKey, productIds }),
     onSuccess: (inv) => {
       void qc.invalidateQueries({ queryKey: ['workspace', workspace.id] });
       void qc.invalidateQueries({ queryKey: ['workspaces'] });
@@ -56,7 +58,7 @@ function InviteForm({ workspace, onDone }: { workspace: WorkspaceDetail; onDone:
       if (isApiError(e) && Object.keys(e.fieldErrors).length > 0) {
         const fe = e.fieldErrors;
         setErrors(fe);
-        const known = ['name', 'email', 'roleKey', 'productIds'].some((k) => fe[k]);
+        const known = ['name', 'email', 'phone', 'roleKey', 'productIds'].some((k) => fe[k]);
         setFormError(known ? null : e.message);
         return;
       }
@@ -69,6 +71,7 @@ function InviteForm({ workspace, onDone }: { workspace: WorkspaceDetail; onDone:
     const e: Record<string, string> = {};
     if (!name.trim()) e.name = t('workspaces.invite.nameRequired');
     if (!EMAIL_RE.test(email.trim())) e.email = t('workspaces.provision.adminEmailInvalid');
+    if (phone.trim() && !PHONE_RE.test(phone.trim())) e.phone = t('workspaces.invite.phoneInvalid');
     setErrors(e);
     setFormError(null);
     if (Object.keys(e).length > 0) return;
@@ -79,6 +82,7 @@ function InviteForm({ workspace, onDone }: { workspace: WorkspaceDetail; onDone:
     setSent(null);
     setName('');
     setEmail('');
+    setPhone('');
     setErrors({});
     setFormError(null);
   };
@@ -129,6 +133,9 @@ function InviteForm({ workspace, onDone }: { workspace: WorkspaceDetail; onDone:
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" autoCapitalize="none" leading={<AtSign />} />
           </Field>
         </div>
+        <Field label={t('workspaces.invite.phone')} hint={t('workspaces.invite.phoneHint')} error={errors.phone}>
+          <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} autoComplete="off" inputMode="tel" leading={<Phone />} />
+        </Field>
         <RoleField workspaceId={workspace.id} label={t('workspaces.invite.role')} value={roleKey} onChange={setRoleKey} error={errors.roleKey} />
         <fieldset>
           <legend className="mb-2 text-[13px] font-medium text-foreground">{t('workspaces.invite.products')}</legend>

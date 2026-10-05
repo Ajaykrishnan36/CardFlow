@@ -324,6 +324,7 @@ export interface WorkspaceUpdateBody {
 export interface InviteBody {
   name: string;
   email: string;
+  phone?: string;
   roleKey: RoleKey;
   productIds?: string[];
 }
