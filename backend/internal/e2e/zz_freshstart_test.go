@@ -69,6 +69,16 @@ func TestFreshStartKeepsOnlyTheOwnerAndOneBusiness(t *testing.T) {
 		t.Fatalf("audit entries of erased records remain")
 	}
 	ownerSignIn(t)
+	// Test setups and objects the owner made are gone; the standard ones stay.
+	if n := count(`SELECT count(*) FROM crm.products WHERE key NOT IN ('standard_crm', 'business_card_snap')`); n != 0 {
+		t.Fatalf("unused setups left behind = %d", n)
+	}
+	if n := count(`SELECT count(*) FROM crm.products WHERE key = 'standard_crm'`); n != 1 {
+		t.Fatalf("the standard setup must stay")
+	}
+	if n := count(`SELECT count(*) FROM crm.object_definitions WHERE NOT is_standard`); n != 0 {
+		t.Fatalf("test objects left behind = %d", n)
+	}
 
 	// The kept person is still signed in and finds exactly their one business, intact.
 	list := call(t, "GET", crmAPI+"/businesses", ajay, nil)

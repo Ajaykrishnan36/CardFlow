@@ -103,6 +103,12 @@ func (m *Module) FreshStart(ctx context.Context) {
 		return
 	}
 	slog.Warn("crm: fresh start erased customer data", "steps", len(counts), "rows", sum(counts))
+	if m.records != nil {
+		// Objects that no longer exist must leave the running server's registry too.
+		if err := m.records.LoadObjects(ctx); err != nil {
+			slog.Warn("crm: fresh start — object registry not reloaded (a restart fixes it)", "error", err)
+		}
+	}
 	if err := m.ensureKeptAccount(ctx); err != nil {
 		slog.Error("crm: fresh start — the kept account is incomplete", "error", err)
 		return
@@ -277,10 +283,26 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 		if err := rows.Err(); err != nil {
 			return err
 		}
+		// Setups ("apps") nobody uses any more and objects the owner made for testing go too:
+		// only the standard setup, the app connector's setup and the built-in objects stay.
+		unusedSetups := `SELECT id FROM crm.products WHERE key NOT IN ($1, $2) AND id NOT IN (SELECT product_id FROM crm.workspace_products)`
+		setupKeys := []any{platform.StandardSetupKey, cardflow.ProductKey}
+		var customObjects []string
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(key), '{}') FROM crm.object_definitions
+			WHERE NOT is_standard AND (workspace_id IS NULL OR workspace_id <> ALL($1))`, keepSetup).Scan(&customObjects); err != nil {
+			return err
+		}
 		steps = append(steps,
 			eraseStep{"workspaces", `DELETE FROM crm.workspaces WHERE id <> ALL($1)`, []any{keepSetup}},
 			eraseStep{"connector cursor", `DELETE FROM crm.connector_state WHERE key = 'cardflow'`, nil},
+			eraseStep{"leads → unused setup", `UPDATE crm.leads SET product_id = NULL WHERE product_id IN (` + unusedSetups + `)`, setupKeys},
+			eraseStep{"unused setup versions", `DELETE FROM crm.product_versions WHERE product_id IN (` + unusedSetups + `)`, setupKeys},
+			eraseStep{"unused setups", `DELETE FROM crm.products WHERE id IN (` + unusedSetups + `)`, setupKeys},
+			eraseStep{"test objects", `DELETE FROM crm.object_definitions WHERE key = ANY($1)`, []any{customObjects}},
 		)
+		for _, key := range customObjects {
+			steps = append(steps, eraseStep{"view of " + key, `DROP VIEW IF EXISTS ` + pgx.Identifier{"crm", "obj_" + key}.Sanitize(), nil})
+		}
 		// Rows that stay may name a person who doesn't ("created by", "owner"): inside the
 		// kept business they pass to its owner, elsewhere to the platform owner.
 		refs, err := tx.Query(ctx, `
