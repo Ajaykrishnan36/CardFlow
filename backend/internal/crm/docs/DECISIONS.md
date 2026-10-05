@@ -833,6 +833,20 @@ normal record code path, are owned by the business's first member, and say "Samp
 in their description. This replaces the "no sample data" rule of D-108 for the business the
 owner names — nothing is seeded anywhere unless asked.
 
+### D-129 — One-time removal of the test businesses on live (owner's instruction, 5 Oct 2026)
+
+The owner asked for "Gova test", "surya work space" and "Business Card Snap" to be removed
+from live with everything in them, without setting anything on the host. `crm/retire.go` does
+it at start-up, once (marker `cleanup:test-workspaces-2026-10-05`), and only in a database
+that has `gova-test` or `surya-work-space` — so it is a no-op locally and in other databases.
+It is narrower than a fresh start: only rows of those three workspaces go (every `crm` table
+with a `workspace_id`), their public listings are hidden, setups no business uses are
+removed, and the app connector is retired (marker `connector:cardflow-retired`;
+`CRM_CARDFLOW_SYNC=force` brings it back) so its workspace isn't recreated. People, saved
+cards and other businesses are not touched. Because no backup can be taken from here, every
+row is first copied to `crm.deleted_workspace_archive` (migration 0023) in the same
+transaction. Afterwards "Ajay traders" gets the sample records of D-128.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

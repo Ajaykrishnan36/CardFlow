@@ -203,7 +203,7 @@ backend/
                            email, workflows, reports, dashboards, API keys, webhooks, SSO, recycle bin
     connectors/cardflow/   Business Card Snap sync (app users, cards, tickets ↔ Cases)
     mail/, oauth/, shared/ email senders, OAuth providers, helpers
-    store/migrations/      CRM database migrations (0001 … 0022), applied at startup
+    store/migrations/      CRM database migrations (0001 … 0023), applied at startup
     docs/DECISIONS.md      every design decision, D-01 … D-127 — read this first
 frontend/
   src/crm/

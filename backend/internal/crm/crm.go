@@ -169,7 +169,11 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		return m.disable("role hierarchy migration failed: " + err.Error())
 	}
 	// Connected app: Business Card Snap (CardFlow) users, sign-ins and support tickets (D-36).
-	if os.Getenv("CRM_CARDFLOW_SYNC") != "false" {
+	// The owner's one-time clean-up of test businesses (D-129) comes first: it also retires the connector.
+	cleanCtx, cancelClean := context.WithTimeout(context.Background(), 120*time.Second)
+	m.RetireTestWorkspaces(cleanCtx)
+	cancelClean()
+	if m.connectorEnabled(context.Background()) {
 		m.cardflow = cardflow.New(st, cfg, m.platform)
 		m.records.Extend(m.cardflow.Extension())
 		m.cardflow.Start(context.Background())

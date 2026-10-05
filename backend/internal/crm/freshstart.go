@@ -64,6 +64,8 @@ var keptWhole = map[string]bool{
 	"mfa_methods": true, "workflow_versions": true,
 	// The currency list is part of the product (D-118).
 	"currencies": true,
+	// Copies of businesses removed on the owner's instruction (D-129).
+	"deleted_workspace_archive": true,
 }
 
 func keepPhone() string {
@@ -179,7 +181,7 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 		}
 		// The app connector's own workspace ("Business Card Snap") stays only while the
 		// connector is on: with CRM_CARDFLOW_SYNC=false nothing would use it, so it goes too.
-		connectorOn := os.Getenv("CRM_CARDFLOW_SYNC") != "false"
+		connectorOn := m.connectorEnabled(ctx)
 		var system []uuid.UUID
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id), '{}') FROM crm.workspaces WHERE is_platform OR ($2 AND code = $1)`, cardflow.WorkspaceCode, connectorOn).Scan(&system); err != nil {
 			return err
