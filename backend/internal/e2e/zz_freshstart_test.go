@@ -131,8 +131,20 @@ func TestFreshStartKeepsOnlyTheOwnerAndOneBusiness(t *testing.T) {
 	if _, err := testDB.Pool.Exec(ctx, `UPDATE crm.verified_identifiers SET value_normalized = '+919000099999' WHERE kind = 'phone' AND value_normalized = '+919876543211'`); err != nil {
 		t.Fatal(err)
 	}
+	// While the app connector is on, its own workspace stays (emptied); switched off, it goes too.
+	if n := count(`SELECT count(*) FROM crm.workspaces WHERE code = 'business-card-snap'`); n != 1 {
+		t.Fatalf("the connector's workspace should still exist while the connector is on, found %d", n)
+	}
+	os.Setenv("CRM_CARDFLOW_SYNC", "false")
+	defer os.Setenv("CRM_CARDFLOW_SYNC", "true")
 	os.Setenv("CRM_FRESH_START", "erase-everything-e2e-2")
 	crmMod.FreshStart(ctx)
+	if n := count(`SELECT count(*) FROM crm.workspaces WHERE NOT is_platform`); n != 1 {
+		t.Fatalf("with the connector off only the kept business remains, found %d workspaces", n)
+	}
+	if n := count(`SELECT count(*) FROM crm.products WHERE key <> 'standard_crm'`); n != 0 {
+		t.Fatalf("setups nobody uses should be gone, found %d", n)
+	}
 	if n := count(`SELECT count(*) FROM crm.identities WHERE NOT is_platform_owner`); n != 1 {
 		t.Fatalf("people after the second fresh start = %d, want 1", n)
 	}

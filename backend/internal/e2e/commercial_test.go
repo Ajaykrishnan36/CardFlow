@@ -924,3 +924,41 @@ func TestConcurrentRefundsNeverExceedThePayment(t *testing.T) {
 		t.Fatalf("one set of lines after concurrent pricing: %s", truncate(lines.Raw, 300))
 	}
 }
+
+// CRM_SAMPLE_DATA puts a small connected set of example records into one business, once.
+func TestSampleDataForOneBusiness(t *testing.T) {
+	boss := signIn(t, freshPhone(), "Trader")
+	ws := newBusiness(t, boss, "Sample Traders")
+	other := signIn(t, freshPhone(), "Neighbour")
+	otherWS := newBusiness(t, other, "Untouched Co")
+	t.Setenv("CRM_SAMPLE_DATA", ws)
+	crmMod.SampleData(context.Background())
+	for object, n := range map[string]int{"leads": 2, "accounts": 2, "contacts": 2, "opportunities": 2, "catalog_items": 2, "price_books": 1, "quotes": 1, "invoices": 1,
+		"payments": 1, "cases": 1, "contracts": 1, "assets": 1, "territories": 1, "tasks": 1, "line_items": 3} {
+		if got := total(t, boss, ws, object, ""); got != n {
+			t.Errorf("sample %s = %d, want %d", object, got, n)
+		}
+	}
+	// The records are real: the quote is priced from the price book, the invoice is part paid, the case has its SLA.
+	quote := call(t, "GET", crmAPI+"/w/"+ws+"/crm/quotes", boss, nil).list("data")[0].(map[string]any)["values"].(map[string]any)
+	// 20 rolls at 12,000 less 5% = 228,000 + 5% tax 11,400; one service 2,500 + 18% tax 450.
+	if quote["total"] != float64(242350) {
+		t.Errorf("sample quote total = %v, want 242350", quote["total"])
+	}
+	inv := call(t, "GET", crmAPI+"/w/"+ws+"/crm/invoices", boss, nil).list("data")[0].(map[string]any)["values"].(map[string]any)
+	if inv["total"] != float64(35400) || inv["amountPaid"] != float64(15000) || inv["balanceDue"] != float64(20400) || inv["status"] != "partially_paid" {
+		t.Errorf("sample invoice: %v", inv)
+	}
+	cs := call(t, "GET", crmAPI+"/w/"+ws+"/crm/cases", boss, nil).list("data")[0].(map[string]any)
+	if len(call(t, "GET", crmAPI+"/w/"+ws+"/cases/"+cs["id"].(string)+"/sla", boss, nil).list("timers")) != 2 {
+		t.Errorf("the sample case should have SLA clocks")
+	}
+	// Once only, and only in the business named.
+	crmMod.SampleData(context.Background())
+	if got := total(t, boss, ws, "leads", ""); got != 2 {
+		t.Errorf("sample data ran twice: %d leads", got)
+	}
+	if got := total(t, other, otherWS, "leads", "") + total(t, other, otherWS, "accounts", ""); got != 0 {
+		t.Errorf("sample data reached another business: %d records", got)
+	}
+}

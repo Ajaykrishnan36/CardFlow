@@ -814,6 +814,25 @@ invoiced (lines copied). `crm.entitlement_usage` counts cases and work-order hou
 `overagePolicy` blocks or flags. SLA policies gained assignment and customer-update
 milestones, a warning percentage and an escalation contact. No GPS, routing or travel time.
 
+### D-128 — Removing the connector workspace; sample data on request
+
+The "Business Card Snap" workspace belongs to the app connector (D-36), which recreates it
+at every start and files every app user in it as a lead. Since the app and the CRM are one
+product (D-93) a business no longer needs it. With `CRM_CARDFLOW_SYNC=false` the connector
+doesn't start, and a fresh start (D-108) then removes that workspace and its setup too; with
+the connector on, the workspace is kept (emptied) as before. Turning the connector off also
+removes the App users / Businesses pages and the app-ticket → Case mirror that lived in that
+workspace; app support tickets themselves are unaffected.
+
+`CRM_SAMPLE_DATA=<business code>` creates about 25 connected example records in one business,
+once (marker `sample-data:<code>`): two leads, a customer and a vendor with contacts, a product
+and a service in a default price book, a territory, two deals, a priced quote, an invoice
+with a part payment, a contract with entitlement and SLA policy, an asset, a case, a
+technician, a purchase order, an expense, a task and an event. They are made through the
+normal record code path, are owned by the business's first member, and say "Sample record"
+in their description. This replaces the "no sample data" rule of D-108 for the business the
+owner names — nothing is seeded anywhere unless asked.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

@@ -177,8 +177,11 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 				keptBusiness = append(keptBusiness, ws)
 			}
 		}
+		// The app connector's own workspace ("Business Card Snap") stays only while the
+		// connector is on: with CRM_CARDFLOW_SYNC=false nothing would use it, so it goes too.
+		connectorOn := os.Getenv("CRM_CARDFLOW_SYNC") != "false"
 		var system []uuid.UUID
-		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id), '{}') FROM crm.workspaces WHERE is_platform OR code = $1`, cardflow.WorkspaceCode).Scan(&system); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(id), '{}') FROM crm.workspaces WHERE is_platform OR ($2 AND code = $1)`, cardflow.WorkspaceCode, connectorOn).Scan(&system); err != nil {
 			return err
 		}
 		keepSetup := append(append([]uuid.UUID{}, system...), keptBusiness...) // workspaces whose setup stays
@@ -291,6 +294,9 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 		// only the standard setup, the app connector's setup and the built-in objects stay.
 		unusedSetups := `SELECT id FROM crm.products WHERE key NOT IN ($1, $2) AND id NOT IN (SELECT product_id FROM crm.workspace_products)`
 		setupKeys := []any{platform.StandardSetupKey, cardflow.ProductKey}
+		if !connectorOn {
+			setupKeys[1] = platform.StandardSetupKey
+		}
 		var customObjects []string
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(array_agg(key), '{}') FROM crm.object_definitions
 			WHERE NOT is_standard AND (workspace_id IS NULL OR workspace_id <> ALL($1))`, keepSetup).Scan(&customObjects); err != nil {

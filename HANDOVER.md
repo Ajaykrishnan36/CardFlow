@@ -143,6 +143,10 @@ CRM settings:
   server whose `ENV` isn't `production` shows the code on screen instead of sending it.
   `OTP_PREVIEW_INSECURE=true` does the same anywhere — never leave it on for real users.
 - **Fresh start:** `CRM_FRESH_START` — see "Fresh start" below.
+- **Sample data:** `CRM_SAMPLE_DATA=<business code>` (e.g. `ajay-traders`) adds about 25 example
+  records to that business, once.
+- **App connector:** `CRM_CARDFLOW_SYNC=false` turns off the "Business Card Snap" workspace; a
+  fresh start then removes it.
 - **Background sweeps** (SLA breaches, contract expiry, overdue invoices): on by default;
   `CRM_SWEEPS=off` turns the loop off.
 

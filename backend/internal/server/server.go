@@ -294,5 +294,7 @@ func New(d Deps) (http.Handler, *crm.Module) {
 
 	// Only when the host asks for it with CRM_FRESH_START (one run per value, D-106).
 	crmModule.FreshStart(context.Background())
+	// A few example records in one business, when the host asks with CRM_SAMPLE_DATA=<business code> (once per business).
+	crmModule.SampleData(context.Background())
 	return r, crmModule
 }
