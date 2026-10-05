@@ -623,6 +623,15 @@ layout also shows a four-step tour once per person per device. Browse lists othe
 businesses only; a person's own are under Profile → My Businesses (open the CRM, the business card
 and listing, or add a business).
 
+### D-110 — "New lead" on a directory listing
+
+Someone else's listing (Browse) has a **New lead** action: it adds that business to the open
+business's CRM as a lead (company, phones, email, website, address, source `directory` — a new
+lead-source option). The sheet first runs the D-98 match against the viewer's own records and shows
+anything already there (open it, or create another); a follow-up date and a note are optional. The
+listing's owner and their CRM are not touched. Shown only to members who may create leads, never on
+your own listing.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

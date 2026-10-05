@@ -210,3 +210,30 @@ func TestAppCardBecomesCRMLead(t *testing.T) {
 		t.Fatalf("lead should carry the app card's details: %v", v)
 	}
 }
+
+// A directory listing becomes a lead in the viewer's own business; the listing's owner
+// and their CRM are not touched.
+func TestDirectoryListingBecomesALeadInMyBusiness(t *testing.T) {
+	seller := signIn(t, freshPhone(), "Seller")
+	sellerWS := newBusiness(t, seller, "Listed Seller Co")
+	buyer := signIn(t, freshPhone(), "Buyer")
+	buyerWS := newBusiness(t, buyer, "Buyer Co")
+
+	lead := call(t, "POST", crmAPI+"/w/"+buyerWS+"/crm/leads", buyer, map[string]any{"values": map[string]any{
+		"lastName": "Listed Seller Co", "organization": "Listed Seller Co", "phone": "9000077777", "source": "directory", "city": "Coimbatore"}})
+	if lead.Status != 200 && lead.Status != 201 {
+		t.Fatalf("lead from a listing: %d %s", lead.Status, truncate(lead.Raw, 300))
+	}
+	if got := lead.at("values").(map[string]any)["source"]; got != "directory" {
+		t.Fatalf("lead source = %v, want directory", got)
+	}
+	// Looking again finds it, so the same business isn't added twice by accident.
+	m := call(t, "POST", crmAPI+"/w/"+buyerWS+"/cards/match", buyer, map[string]any{"company": "Listed Seller Co", "phones": []string{"9000077777"}})
+	want(t, m, 200, "match the listing against my CRM")
+	if len(m.list("matches")) != 1 {
+		t.Fatalf("the lead should be found: %s", truncate(m.Raw, 300))
+	}
+	if n := total(t, seller, sellerWS, "leads", ""); n != 0 {
+		t.Fatalf("the listing owner's CRM must not change, leads = %d", n)
+	}
+}

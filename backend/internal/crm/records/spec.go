@@ -84,7 +84,7 @@ func opts(pairs ...string) []Option {
 var (
 	salutations = opts("Mr.", "Mr.", "Ms.", "Ms.", "Mrs.", "Mrs.", "Dr.", "Dr.", "Prof.", "Prof.")
 	sources     = opts("manual", "Manual entry", "web", "Website", "phone", "Phone inquiry", "email", "Email", "referral", "Referral",
-		"partner", "Partner", "event", "Event", "social", "Social media", "advertisement", "Advertisement", "business_card", "Business card", "app_signup", "App sign-up", "other", "Other")
+		"partner", "Partner", "event", "Event", "social", "Social media", "advertisement", "Advertisement", "business_card", "Business card", "directory", "Business directory", "app_signup", "App sign-up", "other", "Other")
 	ratings    = opts("hot", "Hot", "warm", "Warm", "cold", "Cold")
 	industries = opts("agriculture", "Agriculture", "automotive", "Automotive", "banking", "Banking & finance", "construction", "Construction",
 		"consulting", "Consulting", "education", "Education", "energy", "Energy & utilities", "entertainment", "Media & entertainment",

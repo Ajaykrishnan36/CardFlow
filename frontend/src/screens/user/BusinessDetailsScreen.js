@@ -15,7 +15,8 @@ import {
   Bookmark,
   Upload,
   Palette,
-  Download
+  Download,
+  UserPlus
 } from 'lucide-react';
 import { colors, radii, spacing, typography } from '../../theme';
 import { Card } from '../../components/Card';
@@ -25,12 +26,17 @@ import { CardViewToggle } from '../../components/CardViewToggle';
 import { BusinessCardPreview } from '../../components/BusinessCardTemplates';
 import { CardStyleModal } from '../../components/CardStyleModal';
 import { Snackbar } from '../../components/Snackbar';
+import { useCrm } from '../../context/CrmContext';
+import { ListingLeadSheet } from '../crm/ListingLeadSheet';
 import { useAuth } from '../../context/AuthContext';
 import { fetchCardOriginalImageUrl } from '../../services/api';
 import { getCardTemplate } from '../../utils/cardTemplateStorage';
 import { downloadCardAs } from '../../utils/cardDownload';
 
-export function BusinessDetailsScreen({ business, onBack, onHome, onShowQr, onBusinessUpdated }) {
+export function BusinessDetailsScreen({ business, onBack, onHome, onShowQr, onBusinessUpdated, onOpenRecord }) {
+  // Someone else's listing can become a lead in the business you have open.
+  const crm = useCrm();
+  const [leadSheet, setLeadSheet] = useState(false);
   const { user, token, myBusinesses, updateMyBusiness, isBusinessSaved, saveBusinessToVault, unsaveBusinessFromVault } = useAuth();
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'success' });
   const [showEnquiryModal, setShowEnquiryModal] = useState(false);
@@ -344,6 +350,15 @@ export function BusinessDetailsScreen({ business, onBack, onHome, onShowQr, onBu
               </Text>
             </TouchableOpacity>
 
+            {!isOwner && crm.status === 'ready' && crm.active && crm.can('leads', 'create') ? (
+            <TouchableOpacity style={styles.actionCircleBtn} onPress={() => setLeadSheet(true)} accessibilityLabel="Add this business to your CRM as a lead">
+              <View style={[styles.actionCircle, { backgroundColor: colors.primary }]}>
+                <UserPlus size={18} color="#FFFFFF" />
+              </View>
+              <Text style={styles.actionLabel}>New lead</Text>
+            </TouchableOpacity>
+            ) : null}
+
             <TouchableOpacity style={styles.actionCircleBtn} onPress={() => setShowEnquiryModal(true)}>
               <View style={[styles.actionCircle, { backgroundColor: colors.primaryLight }]}>
                 <Mail size={18} color={colors.primary} />
@@ -548,6 +563,8 @@ export function BusinessDetailsScreen({ business, onBack, onHome, onShowQr, onBu
         }}
       />
 
+      <ListingLeadSheet visible={leadSheet} business={business} onClose={() => setLeadSheet(false)} onOpenRecord={onOpenRecord} />
+
       <Snackbar
         visible={snackbar.visible}
         message={snackbar.message}
@@ -693,11 +710,13 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 12
   },
   actionCircleBtn: {
     alignItems: 'center',
-    width: 52
+    width: 58
   },
   actionCircle: {
     width: 44,

@@ -273,6 +273,7 @@ export function AppNavigator() {
           business={biz}
           onBack={() => back(paths.browse)}
           onHome={() => go(homePath)}
+          onOpenRecord={openRecord}
           onBusinessUpdated={(next) => {
             memory.current.listings[route.id] = next;
             bump((n) => n + 1);
