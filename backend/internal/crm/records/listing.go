@@ -730,7 +730,9 @@ func (h *Handler) handleDuplicates(w http.ResponseWriter, r *http.Request) {
 			add("lower(regexp_replace(COALESCE(t.website, ''), '^https?://', '')) = lower($v)", web)
 		}
 	default:
-		if n := str("name"); n != "" {
+		// Documents and activities repeat names on purpose (a quote and its next version, a
+		// contract and its renewal, an order named after its quote): no warning for those.
+		if n := str("name"); n != "" && !sameNameIsNormal[spec.Key] {
 			add("lower(t.name) = lower($v)", n)
 		}
 	}
@@ -757,6 +759,13 @@ func (h *Handler) handleDuplicates(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+var sameNameIsNormal = map[string]bool{
+	"quotes": true, "sales_orders": true, "invoices": true, "contracts": true, "line_items": true, "payments": true, "refunds": true,
+	"credit_notes": true, "debit_notes": true, "adjustments": true, "appointments": true, "work_orders": true, "tasks": true, "events": true,
+	"notes": true, "communications": true, "cases": true, "subscriptions": true, "income": true, "expenses": true, "purchase_orders": true,
+	"resource_absences": true, "entitlements": true,
 }
 
 // linkField is a field (on any object) that points at records of one object.

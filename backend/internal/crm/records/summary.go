@@ -255,6 +255,20 @@ func (h *Handler) handleDashboardSummary(w http.ResponseWriter, r *http.Request)
 				return
 			}
 			m.Income = v
+			// Money received against invoices and orders is income too (less what was refunded).
+			if can("payments") {
+				args := []any{}
+				where := scope("payments", "t", &args)
+				paid := `COALESCE(NULLIF(t.custom->>'baseAmount', ''), t.custom->>'amount')`
+				var got float64
+				if !scan(`SELECT COALESCE(sum(GREATEST(`+numeric(paid)+` - `+numeric(`t.custom->>'refundedAmount'`)+` * COALESCE(NULLIF(t.custom->>'exchangeRate', '')::numeric, 1), 0)), 0)
+					FROM crm.object_records t WHERE t.object_key = 'payments' AND COALESCE(t.status, '') IN ('paid', 'partially_refunded')
+					AND COALESCE(NULLIF(left(t.custom->>'paymentDate', 10), ''), to_char(t.created_at, 'YYYY-MM-DD')) >= `+arg(&args, fromDate)+`
+					AND COALESCE(NULLIF(left(t.custom->>'paymentDate', 10), ''), to_char(t.created_at, 'YYYY-MM-DD')) < `+arg(&args, toDate)+` AND`+where, args, &got) {
+					return
+				}
+				m.Income += got
+			}
 		}
 		if can("expenses") {
 			v, ok := sum("expenses")

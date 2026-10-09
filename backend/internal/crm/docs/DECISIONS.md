@@ -893,6 +893,32 @@ who set it up is still asked for the code. The code is kept: deleting the `row.i
 block in `identity/service.go` (and its twin in `identity/invitations.go`) switches it back
 on. Trade-off: the owner account now relies on its password or email code alone.
 
+## D-134 — Fixes and gaps from the October 2026 test round
+
+Three end-to-end rounds (a normal business, a two-wheeler dealer, and the Salesforce
+"Sales Overview" diagram) found these. Migration 0025 only adds.
+
+- **Rules.** A contract can't end before it starts. A deal marked Closed lost needs a lost
+  reason, as leads do. An account can't be placed under its own child, and a contact can't
+  report to someone who reports to them (the check territories already had).
+- **Closing a deal.** When a deal becomes won or lost and its close date is still in the
+  future, the close date becomes today, so it counts in the period it was closed in. A past
+  date is kept (imported history). A won deal turns a prospect account into an active customer.
+- **Dashboard income** adds payments received (paid or partly refunded, less refunds) to the
+  Income records. Someone who logs an Income record for the same money would count it twice.
+- **Duplicates.** Documents and activities are no longer matched by name: a quote and its
+  next version, or a contract and its renewal, are not duplicates.
+- **Names.** An order made from "Quote — X" is "Order — X"; its invoice is "Invoice — X".
+- **Workflows.** A Notify step with nobody to notify can't be published.
+- **Campaigns.** A contact shows the campaigns of the lead it was converted from. A deal
+  shows the campaigns that reached its people (the same people the results page credits);
+  there is still no hand-picked "primary campaign" field.
+- **Contacts** have "Reports to".
+- **Partners.** New built-in relationship types: Partner / Reseller / Distributor /
+  Implementation partner on a deal, and Reseller of / Distributor of between accounts.
+- **Lists.** Appointments list who is coming, the service and the assigned resource.
+  "Create a business" offers Automotive, Agriculture and Transport & logistics.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

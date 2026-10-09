@@ -590,7 +590,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
           {inWorkspace && hasContactRoles(object) ? <ContactRolesCard object={object} record={record} /> : null}
           {inWorkspace && hasRecordTeam(object) ? <RecordTeamCard object={object} record={record} /> : null}
           {inWorkspace && object === 'accounts' ? <AccountTerritoryCard record={record} /> : null}
-          {inWorkspace && (object === 'leads' || object === 'contacts') ? <RecordCampaignsCard object={object} record={record} /> : null}
+          {inWorkspace && (object === 'leads' || object === 'contacts' || object === 'opportunities') ? <RecordCampaignsCard object={object} record={record} /> : null}
           {inWorkspace ? <RelationshipsCard object={object} record={record} canEdit={canEdit} /> : null}
           {relatedLists.map((r) => (
             <RelatedCard key={r.key} list={r} compact onViewAll={() => setTab('related')} />

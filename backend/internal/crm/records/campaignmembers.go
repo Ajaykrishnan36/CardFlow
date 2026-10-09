@@ -336,12 +336,24 @@ func (h *Handler) handleRecordCampaigns(w http.ResponseWriter, r *http.Request) 
 		shared.WriteError(w, r, err)
 		return
 	}
-	col := map[string]string{"leads": "m.lead_id", "contacts": "m.contact_id"}[spec.Key]
-	if col == "" {
+	// A contact keeps the campaigns of the lead it was converted from. A deal shows the
+	// campaigns that reached its people: its primary contact, its contact roles, and the
+	// lead its account or contact came from (the same people the results page credits).
+	fromLead := `SELECT lc.lead_id FROM crm.lead_conversions lc WHERE lc.workspace_id = $1 AND lc.status = 'converted'`
+	cond := map[string]string{
+		"leads":    "m.lead_id = $2",
+		"contacts": "(m.contact_id = $2 OR m.lead_id IN (" + fromLead + " AND lc.contact_id = $2))",
+		"opportunities": `(m.contact_id::text IN (
+			   SELECT o.custom->>'contactId' FROM crm.object_records o WHERE o.id = $2 AND o.workspace_id = $1
+			   UNION SELECT rr.source_id::text FROM crm.record_relationships rr WHERE rr.workspace_id = $1 AND rr.type_key = 'contact_role' AND rr.target_object = 'opportunities' AND rr.target_id = $2)
+			 OR m.lead_id IN (` + fromLead + ` AND (lc.account_id::text = (SELECT o.custom->>'accountId' FROM crm.object_records o WHERE o.id = $2 AND o.workspace_id = $1)
+			   OR lc.contact_id::text = (SELECT o.custom->>'contactId' FROM crm.object_records o WHERE o.id = $2 AND o.workspace_id = $1))))`,
+	}[spec.Key]
+	if cond == "" {
 		shared.WriteJSON(w, http.StatusOK, map[string]any{"data": []CampaignMember{}})
 		return
 	}
-	rows, err := h.store.Pool.Query(r.Context(), memberSelect+` WHERE m.workspace_id = $1 AND `+col+` = $2 ORDER BY m.first_touch_at DESC LIMIT 200`, sc.WS, row.uuid())
+	rows, err := h.store.Pool.Query(r.Context(), memberSelect+` WHERE m.workspace_id = $1 AND `+cond+` ORDER BY m.first_touch_at DESC LIMIT 200`, sc.WS, row.uuid())
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return

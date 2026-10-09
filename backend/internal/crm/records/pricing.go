@@ -1669,6 +1669,25 @@ func (h *Handler) lineItemSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op
 
 // ---------------------------------------------------------------- quote → order → invoice
 
+// documentName names the next document after its source: "Quote — Acme" becomes
+// "Order — Acme", then "Invoice — Acme". A name that doesn't start with the kind is kept.
+func documentName(title, from, toSingular string) string {
+	words := map[string][]string{"quotes": {"quotation", "quote"}, "sales_orders": {"sales order", "order"}, "work_orders": {"work order"}}[from]
+	lower := strings.ToLower(title)
+	for _, w := range words {
+		if strings.HasPrefix(lower, w) && (len(title) == len(w) || !isLetter(title[len(w)])) {
+			to := map[string]string{"Sales order": "Order"}[toSingular]
+			if to == "" {
+				to = toSingular
+			}
+			return to + title[len(w):]
+		}
+	}
+	return title
+}
+
+func isLetter(b byte) bool { return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') }
+
 // copyDocument makes the next document of the chain from a source: header fields the two
 // share, and the lines exactly as priced (no price is looked up again).
 func (h *Handler) copyDocument(ctx context.Context, tx pgx.Tx, sc *Scope, a actorInfo, from string, src *Row, to string, extra map[string]any) (*Row, error) {
@@ -1679,7 +1698,7 @@ func (h *Handler) copyDocument(ctx context.Context, tx pgx.Tx, sc *Scope, a acto
 			v[k] = src.Values[k]
 		}
 	}
-	v["name"] = src.Title
+	v["name"] = documentName(src.Title, from, toSpec.Singular)
 	for k, x := range extra {
 		v[k] = x
 	}

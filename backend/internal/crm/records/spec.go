@@ -282,6 +282,7 @@ var contactSpec = objectSpec{
 		text("firstName", "First name", "first_name"),
 		req(text("lastName", "Last name", "last_name")),
 		lookup("accountId", "Account", "account_id", "accounts"),
+		lookup("reportsToId", "Reports to", "reports_to_id", "contacts"),
 		text("title", "Title", "title"),
 		text("department", "Department", "department"),
 		typed("email", "Email", "email", "email"),
@@ -302,7 +303,7 @@ var contactSpec = objectSpec{
 		Highlights: []string{"accountId", "title", "email", "phone", "ownerId"},
 		Sections: []Section{
 			{ID: "contact_info", Title: "Contact information", Columns: 2, Fields: []string{
-				"salutation", "phone", "firstName", "mobile", "lastName", "email", "accountId", "leadSource", "title", "birthdate", "department"}},
+				"salutation", "phone", "firstName", "mobile", "lastName", "email", "accountId", "leadSource", "title", "birthdate", "department", "reportsToId"}},
 			{ID: "address", Title: "Address information", Columns: 2, Fields: []string{
 				"mailingStreet", "mailingCity", "mailingState", "mailingPostalCode", "mailingCountry"}},
 			{ID: "description", Title: "Description", Columns: 1, Fields: []string{"description"}},

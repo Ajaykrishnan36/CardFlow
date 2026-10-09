@@ -9,7 +9,7 @@ import { useCrm } from '../../context/CrmContext';
 import { errorText } from '../../services/crmApi';
 import { Chip, Loading, ErrorBox } from './ui';
 
-const INDUSTRIES = ['Retail', 'Wholesale & distribution', 'Manufacturing', 'Services', 'Real estate', 'Construction', 'Education', 'Healthcare', 'Hospitality', 'Technology', 'Finance', 'Other'];
+const INDUSTRIES = ['Retail', 'Wholesale & distribution', 'Automotive', 'Manufacturing', 'Agriculture', 'Transport & logistics', 'Services', 'Real estate', 'Construction', 'Education', 'Healthcare', 'Hospitality', 'Technology', 'Finance', 'Other'];
 
 /** The form that creates a business (a CRM of its own). Used on first sign-in and from the switcher. */
 export function BusinessForm({ onCreated, onCancel, first }) {

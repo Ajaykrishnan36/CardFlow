@@ -80,8 +80,8 @@ func TestFreshStartKeepsOnlyTheOwnerAndOneBusiness(t *testing.T) {
 		t.Fatalf("test objects left behind = %d", n)
 	}
 	// Built-in relationship types are part of the product, not customer data.
-	if n := count(`SELECT count(*) FROM crm.relationship_types WHERE workspace_id IS NULL`); n != 19 {
-		t.Fatalf("built-in relationship types after a fresh start = %d, want 19", n)
+	if n := count(`SELECT count(*) FROM crm.relationship_types WHERE workspace_id IS NULL`); n != 25 {
+		t.Fatalf("built-in relationship types after a fresh start = %d, want 25", n)
 	}
 	if n := count(`SELECT count(*) FROM crm.currencies`); n < 10 {
 		t.Fatalf("the currency list must survive a fresh start, has %d", n)

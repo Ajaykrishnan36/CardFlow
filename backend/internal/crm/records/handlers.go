@@ -671,6 +671,27 @@ type recordInput struct {
 // objectRules applies per-object business rules on top of field validation.
 func objectRules(spec *objectSpec, values map[string]any, current map[string]any, creating bool) map[string]string {
 	fe := map[string]string{}
+	pick := func(k string) string {
+		v, given := values[k]
+		if !given {
+			v = current[k]
+		}
+		s, _ := v.(string)
+		return strings.TrimSpace(s)
+	}
+	switch spec.Key {
+	case "opportunities":
+		// The same rule as leads: a lost deal says why.
+		if pick("status") == "closed_lost" && pick("lostReason") == "" {
+			fe["lostReason"] = "Tell us why the deal was lost."
+		}
+		return fe
+	case "contracts":
+		if start, end := pick("startDate"), pick("endDate"); start != "" && end != "" && end < start {
+			fe["endDate"] = "The end date can't be before the start date."
+		}
+		return fe
+	}
 	if spec.Key != "leads" {
 		return fe
 	}

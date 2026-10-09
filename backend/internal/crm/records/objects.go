@@ -94,6 +94,13 @@ func of(key, label, typ string) ObjectField     { return ObjectField{Key: key, L
 func ofLookup(key, label, target string) ObjectField {
 	return ObjectField{Key: key, Label: label, Type: "lookup", Lookup: target}
 }
+
+// listColumnsFor replaces the default list columns (the first few fields) where those
+// hide what matters: an appointment list shows who is coming and who is assigned.
+var listColumnsFor = map[string][]string{
+	"appointments": {"status", "startsAt", "contactId", "itemId", "resourceId"},
+}
+
 func ofSelect(key, label string, o []Option) ObjectField {
 	return ObjectField{Key: key, Label: label, Type: "select", Options: o}
 }
@@ -773,6 +780,9 @@ func buildSpec(d *ObjectDefinition) *objectSpec {
 		}
 	}
 	highlights = append(highlights, "ownerId")
+	if cols, ok := listColumnsFor[d.Key]; ok {
+		listCols = append([]string{}, cols...)
+	}
 	listCols = append(listCols, "ownerId", "createdAt")
 	sections := []Section{{ID: "main", Title: d.Singular + " information", Columns: 2, Fields: main}}
 	if len(long) > 0 {

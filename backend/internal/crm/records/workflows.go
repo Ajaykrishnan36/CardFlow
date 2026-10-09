@@ -160,6 +160,10 @@ func (h *Handler) validateWorkflowDef(sc *Scope, d *WorkflowDef) map[string]stri
 				if strings.TrimSpace(str(s.Config["to"])) == "" || strings.TrimSpace(str(s.Config["subject"])) == "" {
 					fe[p] = "An email needs a recipient and a subject."
 				}
+			case "notify":
+				if len(asStrings(s.Config["to"])) == 0 {
+					fe[p] = "Choose who gets the notification."
+				}
 			case "http_request":
 				if strings.TrimSpace(str(s.Config["url"])) == "" {
 					fe[p] = "Enter the URL to call."

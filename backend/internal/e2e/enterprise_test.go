@@ -233,6 +233,9 @@ func TestForecastRollsUpWithoutDoubleCounting(t *testing.T) {
 		if category != "" {
 			v["forecastCategory"] = category
 		}
+		if status == "closed_lost" {
+			v["lostReason"] = "Chose a competitor"
+		}
 		return create(t, token, ws, "opportunities", v)
 	}
 	deal(boss, "Boss won", 100000, "closed_won", "", in)

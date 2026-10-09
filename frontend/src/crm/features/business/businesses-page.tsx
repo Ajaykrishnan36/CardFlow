@@ -19,7 +19,7 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 
 export const businessesKey = ['businesses'] as const;
 
-const industries = ['Retail', 'Wholesale & distribution', 'Manufacturing', 'Services', 'Real estate', 'Construction', 'Education', 'Healthcare', 'Hospitality', 'Technology', 'Finance', 'Other'];
+const industries = ['Retail', 'Wholesale & distribution', 'Automotive', 'Manufacturing', 'Agriculture', 'Transport & logistics', 'Services', 'Real estate', 'Construction', 'Education', 'Healthcare', 'Hospitality', 'Technology', 'Finance', 'Other'];
 
 /**
  * /crm/businesses — every business the person belongs to, and "create a business".
