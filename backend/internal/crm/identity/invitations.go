@@ -212,6 +212,9 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 		}
 		privileged := access.IsPrivileged(isOwner, memberships)
 		mfaRequired = mfaEnrolled || (privileged && s.cfg.MFAEnforced())
+		if isOwner {
+			mfaRequired = false // the owner console has no two-step verification (D-133)
+		}
 		audience := "workspace"
 		if isOwner {
 			audience = "owner"

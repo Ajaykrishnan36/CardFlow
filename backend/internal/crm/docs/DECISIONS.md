@@ -883,6 +883,16 @@ the number on the invitation, so the code proves they are the invited person, as
 emailed link does. The link still works and is how they set a password; the email address
 stays unverified until then. Someone invited by email only is not affected.
 
+## D-133 — The owner console signs in without two-step verification
+
+At Ajay's request (2026-10-09) the platform owner is no longer asked for an authenticator
+code when signing in to the owner console, even if one was set up, and is not made to set
+one up. The owner's Profile page no longer shows the two-step section. Everyone else is
+unchanged: admins on the live site must still use two-step verification (D-11), and anyone
+who set it up is still asked for the code. The code is kept: deleting the `row.isOwner`
+block in `identity/service.go` (and its twin in `identity/invitations.go`) switches it back
+on. Trade-off: the owner account now relies on its password or email code alone.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

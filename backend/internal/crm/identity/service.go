@@ -686,6 +686,11 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 		mfaRequired = mfaEnrolled
 		privileged = false
 	}
+	if row.isOwner {
+		// The owner console signs in without two-step verification (D-133, Ajay's call,
+		// 2026-10-09). Everyone else keeps it. Delete this block to switch it back on.
+		mfaRequired = false
+	}
 	sessionAudience := "workspace"
 	if row.isOwner {
 		sessionAudience = "owner"

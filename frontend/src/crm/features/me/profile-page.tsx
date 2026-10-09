@@ -75,6 +75,8 @@ export function ProfilePage() {
             </div>
           </Card>
 
+          {/* The owner console signs in without two-step verification (D-133). */}
+          {me.identity.isPlatformOwner ? null : (
           <Card className="flex flex-col">
             <CardHeader
               title={t('me.mfaTitle')}
@@ -98,6 +100,7 @@ export function ProfilePage() {
               )}
             </div>
           </Card>
+          )}
         </div>
 
         <SessionsCard onSignOutAll={() => void signOut({ all: true })} />
