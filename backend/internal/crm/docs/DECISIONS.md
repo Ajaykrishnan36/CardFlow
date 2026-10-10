@@ -976,6 +976,13 @@ who brought in each lead and how each person is doing.
 - **Bulk import** of leads already exists (Import from CSV). It needs the Import permission,
   which Staff don't have by default; the Super Admin can grant it in the permission set.
 
+## D-138 — An Admin can add staff, and the users list says who added whom
+
+- The Admin role (and its "Admin access" permission set) includes "Manage users": an Admin
+  can add and manage staff, never with more access than their own (so not a Super Admin).
+  Migration 0027 gives this once to the Admin set of businesses that already exist.
+- Users & access shows an **Added by** column (the member who gave the person access).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

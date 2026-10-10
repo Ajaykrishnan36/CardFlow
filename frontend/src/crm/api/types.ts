@@ -857,6 +857,8 @@ export interface WorkspaceAdminMember extends WorkspaceMember {
   productIds: string[];
   /** Their mobile number, when they have one (people added by number have no email). */
   phone?: string;
+  /** Who gave this person access (empty for the person who created the business). */
+  addedBy?: string;
   permissionSets: Array<{ id: string; name: string }>;
   effective: EffectiveAccess;
   isSelf: boolean;

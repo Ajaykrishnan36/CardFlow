@@ -651,6 +651,8 @@ type adminMember struct {
 	LockedReason   string            `json:"lockedReason,omitempty"`
 	UserType       string            `json:"userType,omitempty"`
 	Phone          string            `json:"phone,omitempty"`
+	// AddedBy: who gave this person access (empty for the founder of the business).
+	AddedBy string `json:"addedBy,omitempty"`
 }
 
 func productsWithin(ids []uuid.UUID, limit *access.Effective) bool {
@@ -674,6 +676,7 @@ func (h *Handler) loadAdminMember(ctx context.Context, sc *AdminScope, membershi
 		SELECT m.id, i.id, i.display_name, COALESCE(e.value_normalized, ''), m.status, COALESCE(r.key, ''), COALESCE(r.name, ''),
 		       i.last_login_at, m.created_at, COALESCE(r.product_ids, '{}'), i.is_platform_owner, COALESCE(m.user_type, ''),
 		       COALESCE((SELECT p.value_normalized FROM crm.verified_identifiers p WHERE p.identity_id = i.id AND p.kind = 'phone' AND p.namespace = 'global' LIMIT 1), ''),
+		       COALESCE((SELECT c.display_name FROM crm.identities c WHERE c.id = m.created_by AND c.id <> i.id), ''),
 		       COALESCE((SELECT json_agg(json_build_object('id', ps.id, 'name', ps.name) ORDER BY ps.name)
 		                   FROM crm.membership_permission_sets mps JOIN crm.permission_sets ps ON ps.id = mps.permission_set_id
 		                  WHERE mps.membership_id = m.id), '[]')
@@ -686,7 +689,7 @@ func (h *Handler) loadAdminMember(ctx context.Context, sc *AdminScope, membershi
 		) r ON true
 		WHERE m.id = $1 AND m.workspace_id = $2`, membershipID, sc.WS).Scan(
 		&m.MembershipID, &m.IdentityID, &m.DisplayName, &m.Email, &m.Status, &m.RoleKey, &m.RoleName,
-		&m.LastLoginAt, &m.CreatedAt, &m.ProductIDs, &isOwner, &m.UserType, &m.Phone, &sets)
+		&m.LastLoginAt, &m.CreatedAt, &m.ProductIDs, &isOwner, &m.UserType, &m.Phone, &m.AddedBy, &sets)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.NotFound("membership_not_found")
 	}

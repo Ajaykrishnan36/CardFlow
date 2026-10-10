@@ -108,6 +108,7 @@ export function MembersTab({ code, options }: { code: string; options: Workspace
                     <th scope="col" className="py-2 pl-4 pr-3 font-medium">{t('workspaceApp.admin.users.colName')}</th>
                     <th scope="col" className="px-3 py-2 font-medium">{t('workspaceApp.admin.users.colRole')}</th>
                     <th scope="col" className="px-3 py-2 font-medium">{t('workspaceApp.admin.users.colSets')}</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Added by</th>
                     <th scope="col" className="px-3 py-2 font-medium">{t('workspaceApp.admin.users.colStatus')}</th>
                     <th scope="col" className="px-3 py-2 pr-4 text-right font-medium">{t('workspaceApp.admin.users.colLastLogin')}</th>
                   </tr>
@@ -144,6 +145,7 @@ export function MembersTab({ code, options }: { code: string; options: Workspace
                           {m.permissionSets.length ? m.permissionSets.map((s) => s.name).join(', ') : '—'}
                         </span>
                       </td>
+                      <td className="px-3 py-2 text-muted-foreground">{m.addedBy || '—'}</td>
                       <td className="px-3 py-2">
                         <StatusBadge status={m.status} />
                       </td>
