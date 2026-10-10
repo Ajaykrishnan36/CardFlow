@@ -1158,6 +1158,26 @@ func (h *Handler) validateObject(ctx context.Context, d *ObjectDefinition, in ob
 		if d.Key == "" {
 			d.Key = snakeKey(d.Plural)
 		}
+		// Object keys are unique across the platform, but one business must not be blocked by
+		// (or learn of) an object another business made: its key and prefix get a free variant.
+		if d.WorkspaceID != nil && objectKeyRe.MatchString(d.Key) {
+			theirs := func(match func(x *ObjectDefinition) bool) bool {
+				for _, x := range defs {
+					if match(x) {
+						return x.WorkspaceID != nil && *x.WorkspaceID != *d.WorkspaceID
+					}
+				}
+				return false
+			}
+			if base := d.Key; theirs(func(x *ObjectDefinition) bool { return x.Key == base }) {
+				for n := 2; keys[d.Key] || platform.IsModuleKey(d.Key); n++ {
+					d.Key = fmt.Sprintf("%s_%d", base, n)
+				}
+			}
+			if p := strings.ToUpper(trim(in.Prefix)); p != "" && theirs(func(x *ObjectDefinition) bool { return x.Prefix == p }) {
+				in.Prefix = nil
+			}
+		}
 		switch {
 		case !objectKeyRe.MatchString(d.Key) || reservedKeys[d.Key]:
 			fe["key"] = "Use lowercase letters, numbers and underscores (e.g. projects); some names are reserved."
@@ -1252,7 +1272,7 @@ func (h *Handler) createObject(w http.ResponseWriter, r *http.Request, ws *uuid.
 		shared.WriteError(w, r, err)
 		return
 	}
-	d := &ObjectDefinition{Status: "active"}
+	d := &ObjectDefinition{Status: "active", WorkspaceID: ws}
 	if err := h.validateObject(ctx, d, in, true); err != nil {
 		shared.WriteError(w, r, err)
 		return

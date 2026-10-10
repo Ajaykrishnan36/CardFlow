@@ -930,6 +930,36 @@ Three end-to-end rounds (a normal business, a two-wheeler dealer, and the Salesf
   `OTP_PREVIEW_INSECURE=true` (or a non-production preview) is set. Real use needs
   `SMS_PROVIDER` (msg91, twilio or fast2sms) with its keys, and that flag removed.
 
+## D-136 — Integrity hardening after the schema review
+
+An outside review of the ER diagrams listed nine structural concerns. Each was checked
+against the real database and code. Migration 0026 only adds; every constraint is created
+NOT VALID and then validated where the data allows, so a stray old row can't stop a deploy.
+
+- **Same tenant (review #3).** For every foreign key between two tenant tables there is now a
+  second key on `(workspace_id, column) → (workspace_id, id)`: a row can only reference a row
+  of its own workspace. This includes the keys into `crm.object_records`.
+- **Typed keys (#2).** `crm.check_record_type()` on the allocation, price-book, bundle, SLA,
+  territory and entitlement tables: an `invoice_id` must be an invoice, not any record.
+- **Money links (#1).** Invoices, payments and line items stay in `crm.object_records`, but
+  `crm.check_money_links()` makes the database check their links itself (exists, same
+  workspace, right kind). Moving them to their own tables is a larger change, not done here.
+- **Tenant keys (#7).** The 18 tables that carried `workspace_id` without a key now have one.
+- **Custom object keys (#4).** Keys stay unique across the platform, but a business is no
+  longer blocked by another business's object: it gets a free variant (`site_visits_2`).
+- **Deletes (#5).** Invoices, payments, refunds, credit notes, debit notes and adjustments can
+  go to the recycle bin but can't be deleted for good, so allocations never cascade away.
+- **Orphans (#8).** Deleting a record for good also clears its approval requests and card
+  links (files, timeline, relationships, team members and favourites were already cleared).
+- **Indexes (#9).** The generic table already had a GIN index and per-object expression
+  indexes; account, contact and opportunity lookups are added.
+- **Card links.** `card_links.card_id` now references `public.saved_cards`.
+- **Not a defect (#6).** Person lookups (`assignedTo`, `managerId`, …) point at
+  `crm.identities` and are checked for active membership on save; the diagram's "users"
+  label was misleading.
+- **Not done.** Row-level security in PostgreSQL; checking in the database that an owner is
+  a member; real tables for financial documents; queues and email templates.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

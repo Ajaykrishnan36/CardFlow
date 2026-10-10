@@ -328,6 +328,11 @@ func (h *Handler) restoreRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, sp
 // destroyRecord deletes a record from the recycle bin for good. Links to it from other
 // records are cleared (their history stays); its files, favorites and timeline go too.
 func (h *Handler) destroyRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *objectSpec, id uuid.UUID, a actorInfo, owners []uuid.UUID) error {
+	// The books are never erased: a financial record can sit in the recycle bin, but deleting
+	// it for good would take its allocations (who paid what) with it.
+	if keptForTheBooks[spec.Key] {
+		return shared.NewError(http.StatusConflict, "financial_record", "Financial records are kept for the books and can't be deleted permanently.")
+	}
 	var title string
 	err := tx.QueryRow(ctx, "SELECT "+spec.TitleSQL+" FROM crm."+spec.Table+" t WHERE t.id = $1 AND t.workspace_id = $2 AND t.deleted_at IS NOT NULL"+
 		" AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)) FOR UPDATE", id, ws, owners).Scan(&title)
@@ -345,6 +350,8 @@ func (h *Handler) destroyRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, sp
 		// Relationships to or from a record that no longer exists are meaningless.
 		`DELETE FROM crm.record_relationships WHERE workspace_id = $1 AND ((source_object = $3 AND source_id = $2) OR (target_object = $3 AND target_id = $2))`,
 		`DELETE FROM crm.record_team_members WHERE workspace_id = $1 AND object_key = $3 AND record_id = $2`,
+		`DELETE FROM crm.approval_requests WHERE workspace_id = $1 AND object_key = $3 AND record_id = $2`,
+		`DELETE FROM crm.card_links WHERE workspace_id = $1 AND object_key = $3 AND record_id = $2`,
 	}
 	plain := []string{`DELETE FROM crm.favorites WHERE workspace_id = $1 AND kind = 'record' AND target_id = $2`}
 	switch spec.Key {
@@ -460,5 +467,7 @@ func (h *Handler) SeedRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, objec
 	}
 	return uuid.Parse(row.ID)
 }
+
+var keptForTheBooks = map[string]bool{"invoices": true, "payments": true, "refunds": true, "credit_notes": true, "debit_notes": true, "adjustments": true}
 
 var activeByDefault = map[string]bool{"service_resources": true, "territories": true, "price_books": true, "catalog_items": true, "sla_policies": true}
