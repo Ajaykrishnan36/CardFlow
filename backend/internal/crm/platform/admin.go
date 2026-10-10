@@ -650,6 +650,7 @@ type adminMember struct {
 	Editable       bool              `json:"editable"`
 	LockedReason   string            `json:"lockedReason,omitempty"`
 	UserType       string            `json:"userType,omitempty"`
+	Phone          string            `json:"phone,omitempty"`
 }
 
 func productsWithin(ids []uuid.UUID, limit *access.Effective) bool {
@@ -672,6 +673,7 @@ func (h *Handler) loadAdminMember(ctx context.Context, sc *AdminScope, membershi
 	err := h.store.Pool.QueryRow(ctx, `
 		SELECT m.id, i.id, i.display_name, COALESCE(e.value_normalized, ''), m.status, COALESCE(r.key, ''), COALESCE(r.name, ''),
 		       i.last_login_at, m.created_at, COALESCE(r.product_ids, '{}'), i.is_platform_owner, COALESCE(m.user_type, ''),
+		       COALESCE((SELECT p.value_normalized FROM crm.verified_identifiers p WHERE p.identity_id = i.id AND p.kind = 'phone' AND p.namespace = 'global' LIMIT 1), ''),
 		       COALESCE((SELECT json_agg(json_build_object('id', ps.id, 'name', ps.name) ORDER BY ps.name)
 		                   FROM crm.membership_permission_sets mps JOIN crm.permission_sets ps ON ps.id = mps.permission_set_id
 		                  WHERE mps.membership_id = m.id), '[]')
@@ -684,7 +686,7 @@ func (h *Handler) loadAdminMember(ctx context.Context, sc *AdminScope, membershi
 		) r ON true
 		WHERE m.id = $1 AND m.workspace_id = $2`, membershipID, sc.WS).Scan(
 		&m.MembershipID, &m.IdentityID, &m.DisplayName, &m.Email, &m.Status, &m.RoleKey, &m.RoleName,
-		&m.LastLoginAt, &m.CreatedAt, &m.ProductIDs, &isOwner, &m.UserType, &sets)
+		&m.LastLoginAt, &m.CreatedAt, &m.ProductIDs, &isOwner, &m.UserType, &m.Phone, &sets)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, shared.NotFound("membership_not_found")
 	}

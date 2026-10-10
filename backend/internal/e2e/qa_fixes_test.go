@@ -115,6 +115,31 @@ func TestQARoundFixes(t *testing.T) {
 		t.Fatalf("an unrelated deal shows no campaign: %s", c.Raw)
 	}
 
+	// A finished case says what was done; setup records start Active; the deal follows its accepted quote;
+	// someone added by mobile number shows that number.
+	cs := create(t, boss, ws, "cases", map[string]any{"name": "Broken"})
+	want(t, edit(t, boss, ws, "cases", cs, map[string]any{"status": "resolved"}), 422, "resolved with no resolution")
+	want(t, edit(t, boss, ws, "cases", cs, map[string]any{"status": "resolved", "resolution": "Replaced it"}), 200, "resolved")
+	want(t, edit(t, boss, ws, "cases", cs, map[string]any{"status": "closed"}), 200, "closed after it was resolved")
+	res := create(t, boss, ws, "service_resources", map[string]any{"name": "Tech"})
+	if get(t, boss, ws, "service_resources", res)["status"] != "active" {
+		t.Fatalf("a new service resource is active")
+	}
+	d2 := create(t, boss, ws, "opportunities", map[string]any{"name": "Quoted deal", "amount": 999, "closeDate": future, "accountId": group})
+	q2 := create(t, boss, ws, "quotes", map[string]any{"name": "Quote — deal", "accountId": group, "opportunityId": d2, "status": "draft"})
+	want(t, call(t, "PUT", base+"/quotes/"+q2+"/lines", boss, map[string]any{"lines": []map[string]any{{"itemId": item, "quantity": 7}}}), 200, "lines")
+	if o := call(t, "POST", base+"/quotes/"+q2+"/convert", boss, nil); o.Status != 200 && o.Status != 201 {
+		t.Fatalf("convert: %d %s", o.Status, o.Raw)
+	}
+	if a := get(t, boss, ws, "opportunities", d2)["amount"]; a != float64(70) {
+		t.Fatalf("the deal's amount follows the accepted quote (70), got %v", a)
+	}
+	phone := freshPhone()
+	want(t, call(t, "POST", base+"/admin/members", boss, map[string]any{"displayName": "By Phone", "phone": phone, "roleKey": "STAFF"}), 201, "add by phone")
+	if m := call(t, "GET", base+"/admin/members", boss, nil); !strings.Contains(m.Raw, `"phone":"+91`+phone+`"`) {
+		t.Fatalf("the members list carries the mobile number: %s", truncate(m.Raw, 400))
+	}
+
 	// Partners have named roles, on an account and on a deal.
 	partner := create(t, boss, ws, "accounts", map[string]any{"name": "Partner Co", "type": "partner"})
 	want(t, call(t, "POST", base+"/crm/accounts/"+partner+"/relationships", boss, map[string]any{"type": "reseller_on", "targetObject": "opportunities", "targetId": deal}), 201, "reseller on a deal")

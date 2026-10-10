@@ -404,7 +404,7 @@ func TestCaseSLAClocks(t *testing.T) {
 	if breaches != 1 {
 		t.Fatalf("a breach is recorded once, got %d", breaches)
 	}
-	patch(c, map[string]any{"status": "resolved"})
+	patch(c, map[string]any{"status": "resolved", "resolution": "Restarted the server"})
 	sla = call(t, "GET", base+"/cases/"+c+"/sla", token, nil)
 	for _, x := range sla.list("timers") {
 		if m := x.(map[string]any); m["milestone"] == "resolution" && m["state"] != "missed" {

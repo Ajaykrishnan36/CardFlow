@@ -128,6 +128,12 @@ func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 		return nil, err
 	}
 	applyStageDefaults(ctx, tx, ws, spec, values)
+	// Setup records are usable as soon as they are made: no status given means Active.
+	if activeByDefault[spec.Key] {
+		if s, _ := values["status"].(string); strings.TrimSpace(s) == "" {
+			values["status"] = "active"
+		}
+	}
 	cs, fe := buildChanges(ctx, tx, ws, fields, values, true)
 	for k, v := range objectRules(spec, values, map[string]any{}, true) {
 		fe[k] = v
@@ -454,3 +460,5 @@ func (h *Handler) SeedRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, objec
 	}
 	return uuid.Parse(row.ID)
 }
+
+var activeByDefault = map[string]bool{"service_resources": true, "territories": true, "price_books": true, "catalog_items": true, "sla_policies": true}

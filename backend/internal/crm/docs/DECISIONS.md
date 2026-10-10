@@ -919,6 +919,17 @@ Three end-to-end rounds (a normal business, a two-wheeler dealer, and the Salesf
 - **Lists.** Appointments list who is coming, the service and the assigned resource.
   "Create a business" offers Automotive, Agriculture and Transport & logistics.
 
+## D-135 — The remaining points from the test round
+
+- A case can't be marked Resolved or Closed without a resolution.
+- When a quote is accepted (turned into an order), its deal's amount becomes the quote's total.
+- Service resources, territories, price books, products and SLA policies saved with no
+  status start Active.
+- Users & access shows a person's mobile number when they have no email.
+- Sign-in codes on the page are a server setting, not code: they show only while
+  `OTP_PREVIEW_INSECURE=true` (or a non-production preview) is set. Real use needs
+  `SMS_PROVIDER` (msg91, twilio or fast2sms) with its keys, and that flag removed.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

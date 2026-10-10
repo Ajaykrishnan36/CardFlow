@@ -130,7 +130,7 @@ export function MembersTab({ code, options }: { code: string; options: Workspace
                               <span className="truncate">{m.displayName}</span>
                               {m.isSelf ? <Badge tone="primary">{t('workspaceApp.admin.users.you')}</Badge> : null}
                             </button>
-                            <p className="truncate text-xs text-muted-foreground">{m.email ?? '—'}</p>
+                            <p className="truncate text-xs text-muted-foreground">{m.email || m.phone || '—'}</p>
                           </div>
                           {!m.editable ? <LockMark reason={m.lockedReason} /> : null}
                         </div>
@@ -166,7 +166,7 @@ export function MembersTab({ code, options }: { code: string; options: Workspace
                         {m.isSelf ? <Badge tone="primary">{t('workspaceApp.admin.users.you')}</Badge> : null}
                         {!m.editable ? <Lock className="size-3.5 shrink-0 text-muted-foreground" aria-label={m.lockedReason || t('workspaceApp.admin.locked')} /> : null}
                       </p>
-                      <p className="truncate text-xs text-muted-foreground">{m.email ?? '—'}</p>
+                      <p className="truncate text-xs text-muted-foreground">{m.email || m.phone || '—'}</p>
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
                         {limits.roleName(m.roleKey, m.roleName)}
                         {m.permissionSets.length ? ` · ${m.permissionSets.map((s) => s.name).join(', ')}` : ''}
@@ -297,7 +297,7 @@ function MemberDialog({ code, options, member, onClose }: { code: string; option
                   <span className="truncate">{member.displayName}</span>
                   <StatusBadge status={member.status} />
                 </DialogTitle>
-                <DialogDescription className="truncate text-[13px] text-muted-foreground">{member.email ?? '—'}</DialogDescription>
+                <DialogDescription className="truncate text-[13px] text-muted-foreground">{member.email || member.phone || '—'}</DialogDescription>
               </div>
             </div>
             <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">

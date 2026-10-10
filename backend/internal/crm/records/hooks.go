@@ -72,6 +72,14 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		}
 		return after, h.lineItemSaved(ctx, tx, ws, op, before, after)
 	case "quotes":
+		// An accepted quote is what the customer agreed to pay: the deal's amount follows it.
+		if op == "update" && after.text("status") == "accepted" && before.text("status") != "accepted" {
+			if opp := after.id("opportunityId"); opp != uuid.Nil && after.Values["total"] != nil && specFor("opportunities") != nil {
+				if _, err := h.updateValues(ctx, tx, ws, specFor("opportunities"), opp, systemActor(sourceSales), map[string]any{"amount": after.Values["total"]}, nil, nil); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if a.Source == sourcePricing || a.Source == sourceApproval {
 			return after, nil
 		}

@@ -686,6 +686,12 @@ func objectRules(spec *objectSpec, values map[string]any, current map[string]any
 			fe["lostReason"] = "Tell us why the deal was lost."
 		}
 		return fe
+	case "cases":
+		// A finished case says what was done about it.
+		if st := pick("status"); (st == "resolved" || st == "closed") && pick("resolution") == "" {
+			fe["resolution"] = "Say how the case was resolved."
+		}
+		return fe
 	case "contracts":
 		if start, end := pick("startDate"), pick("endDate"); start != "" && end != "" && end < start {
 			fe["endDate"] = "The end date can't be before the start date."
