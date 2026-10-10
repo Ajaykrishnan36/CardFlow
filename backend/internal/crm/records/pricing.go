@@ -1706,12 +1706,19 @@ func (h *Handler) copyDocument(ctx context.Context, tx pgx.Tx, sc *Scope, a acto
 	if err != nil {
 		return nil, err
 	}
-	fromField, toField := lineParents[from].field, lineParents[to].field
+	if err := h.copyLines(ctx, tx, sc.WS, lineParents[from].field, src.ID, lineParents[to].field, row.ID); err != nil {
+		return nil, err
+	}
+	return row, nil
+}
+
+// copyLines copies the line items of one document onto another exactly as priced.
+func (h *Handler) copyLines(ctx context.Context, tx pgx.Tx, ws uuid.UUID, fromField, srcID, toField, dstID string) error {
 	rows, err := tx.Query(ctx, `SELECT id::text, name, custom FROM crm.object_records
 		WHERE workspace_id = $1 AND object_key = 'line_items' AND deleted_at IS NULL AND custom->>'`+fromField+`' = $2
-		ORDER BY COALESCE(NULLIF(custom->>'sortOrder', ''), '0')::numeric, created_at, id`, sc.WS, src.ID)
+		ORDER BY COALESCE(NULLIF(custom->>'sortOrder', ''), '0')::numeric, created_at, id`, ws, srcID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	type line struct {
 		id, name string
@@ -1723,18 +1730,18 @@ func (h *Handler) copyDocument(ctx context.Context, tx pgx.Tx, sc *Scope, a acto
 		var raw []byte
 		if err := rows.Scan(&l.id, &l.name, &raw); err != nil {
 			rows.Close()
-			return nil, err
+			return err
 		}
 		_ = json.Unmarshal(raw, &l.v)
 		lines = append(lines, l)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return err
 	}
 	newID := map[string]string{}
 	for _, l := range lines {
-		nv := map[string]any{"name": l.name, toField: row.ID}
+		nv := map[string]any{"name": l.name, toField: dstID}
 		for k, x := range l.v {
 			switch k {
 			case "quoteId", "orderId", "invoiceId", "contractId", "workOrderId", "opportunityId", "creditNoteId":
@@ -1746,13 +1753,13 @@ func (h *Handler) copyDocument(ctx context.Context, tx pgx.Tx, sc *Scope, a acto
 				nv[k] = x
 			}
 		}
-		made, err := h.createRecord(ctx, tx, sc.WS, specFor("line_items"), systemActor(sourcePricing), nv)
+		made, err := h.createRecord(ctx, tx, ws, specFor("line_items"), systemActor(sourcePricing), nv)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		newID[l.id] = made.ID
 	}
-	return row, nil
+	return nil
 }
 
 func (h *Handler) handleConvertDocument(from, to string) http.HandlerFunc {

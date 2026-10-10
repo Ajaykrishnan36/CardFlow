@@ -265,7 +265,7 @@ func SystemRoles() []SystemRole {
 		if o.Module == "finance" {
 			return nil // money in and out is for admins unless a permission set says otherwise (D-96)
 		}
-		return only(o.Actions, "read", "create", "update", "convert")
+		return only(o.Actions, "read", "create", "update", "convert", "import")
 	}, "own")
 	return []SystemRole{
 		{Key: "SUPER_ADMIN", Name: "Super Admin", Rank: RankSuperAdmin,

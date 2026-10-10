@@ -983,6 +983,17 @@ who brought in each lead and how each person is doing.
   Migration 0027 gives this once to the Admin set of businesses that already exist.
 - Users & access shows an **Added by** column (the member who gave the person access).
 
+## D-139 — Follow-ups from the dealer round
+
+- **A deal's items follow the accepted quote.** When a quote is accepted, the deal's own
+  line items are replaced by the quote's lines, so Amount and the Items total agree.
+- **A reassigned case stays visible.** When a case's owner changes, the previous owner and
+  the person who logged it are put on the case team with read access.
+- **Staff can import.** The Staff role (and its "Staff access" set) includes Import on
+  every object they can create; migration 0028 adds it once to existing businesses.
+- **Staff still can't record payments.** Money in and out stays with Admins unless a
+  permission set grants it (D-96); this was left as it is on purpose.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

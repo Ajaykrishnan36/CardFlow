@@ -52,6 +52,18 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		if a.Source == sourceSLA {
 			return after, nil
 		}
+		// A case handed to someone else stays visible to whoever had it and whoever logged it.
+		if op == "update" && before.id("ownerId") != after.id("ownerId") {
+			for _, who := range []uuid.UUID{before.id("ownerId"), before.id("createdBy")} {
+				if who == uuid.Nil || who == after.id("ownerId") {
+					continue
+				}
+				if _, err := tx.Exec(ctx, `INSERT INTO crm.record_team_members (workspace_id, object_key, record_id, identity_id, team_role, access_level, created_by)
+					VALUES ($1, 'cases', $2, $3, 'Raised or handled it before', 'read', $4) ON CONFLICT DO NOTHING`, ws, after.uuid(), who, a.ID); err != nil {
+					return nil, err
+				}
+			}
+		}
 		if after, err = h.caseSaved(ctx, tx, ws, a, op, before, after); err != nil {
 			return nil, err
 		}
@@ -76,6 +88,14 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		if op == "update" && after.text("status") == "accepted" && before.text("status") != "accepted" {
 			if opp := after.id("opportunityId"); opp != uuid.Nil && after.Values["total"] != nil && specFor("opportunities") != nil {
 				if _, err := h.updateValues(ctx, tx, ws, specFor("opportunities"), opp, systemActor(sourceSales), map[string]any{"amount": after.Values["total"]}, nil, nil); err != nil {
+					return nil, err
+				}
+				// …and so do its items: the deal shows what was agreed, not the first draft.
+				if _, err := tx.Exec(ctx, `DELETE FROM crm.object_records WHERE workspace_id = $1 AND object_key = 'line_items' AND custom->>'opportunityId' = $2
+					AND COALESCE(custom->>'quoteId', '') = '' AND COALESCE(custom->>'orderId', '') = '' AND COALESCE(custom->>'invoiceId', '') = ''`, ws, opp.String()); err != nil {
+					return nil, err
+				}
+				if err := h.copyLines(ctx, tx, ws, "quoteId", after.ID, "opportunityId", opp.String()); err != nil {
 					return nil, err
 				}
 			}

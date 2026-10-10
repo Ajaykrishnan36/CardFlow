@@ -75,15 +75,13 @@ func TestTeamPerformanceAndWhoAddedWhat(t *testing.T) {
 	// Staff who only see their own records don't get the team report.
 	want(t, call(t, "GET", base+"/dashboard/team?range=month", kumar, nil), 403, "staff asking for the team report")
 
-	// Bulk import: 12 leads in one go by the Super Admin; a bad row is reported, the rest go in.
-	// Staff need the Import permission in their permission set to do the same.
+	// Bulk import: 12 leads in one go; a bad row is reported, the rest go in. Staff can import too.
 	rows := [][]string{}
 	for _, n := range []string{"Anu", "Bala", "Chitra", "Dev", "Esha", "Farid", "Gita", "Hari", "Indu", "Jai", "Kala", "Latha"} {
 		rows = append(rows, []string{n, "Kumar-import", strings.ToLower(n) + "@example.test"})
 	}
 	rows = append(rows, []string{"", "", "not-an-email"})
 	body := map[string]any{"rows": rows, "mapping": []string{"firstName", "lastName", "email"}, "mode": "create"}
-	want(t, call(t, "POST", base+"/crm/leads/import", kavin, body), 403, "staff importing without the Import permission")
 	imp := call(t, "POST", base+"/crm/leads/import", ram, body)
 	if imp.Status != 200 || imp.at("created") != float64(12) || imp.at("failed") != float64(1) {
 		t.Fatalf("import 12 leads and report the bad row: %d %s", imp.Status, truncate(imp.Raw, 300))
@@ -93,6 +91,38 @@ func TestTeamPerformanceAndWhoAddedWhat(t *testing.T) {
 		if x := m.(map[string]any); x["name"] == "Ram" && x["leadsAdded"] != float64(12) {
 			t.Fatalf("imported leads count for the person who imported them, got %v", x["leadsAdded"])
 		}
+	}
+
+	one := call(t, "POST", base+"/crm/leads/import", kavin, map[string]any{"rows": [][]string{{"Staff", "Imported"}}, "mapping": []string{"firstName", "lastName"}, "mode": "create"})
+	if one.Status != 200 || one.at("created") != float64(1) {
+		t.Fatalf("staff can import leads: %d %s", one.Status, truncate(one.Raw, 200))
+	}
+
+	// A case handed to someone else stays readable for the person who logged it.
+	cs := create(t, kumar, ws, "cases", map[string]any{"name": "Car won't start"})
+	var kavinID string
+	for _, m := range call(t, "GET", base+"/admin/members", ram, nil).list("data") {
+		if x := m.(map[string]any); x["displayName"] == "Kavin" {
+			kavinID = x["identityId"].(string)
+		}
+	}
+	want(t, edit(t, ram, ws, "cases", cs, map[string]any{"ownerId": kavinID}), 200, "assign the case to Kavin")
+	want(t, call(t, "GET", base+"/crm/cases/"+cs, kumar, nil), 200, "Kumar still opens the case he logged")
+	want(t, edit(t, kumar, ws, "cases", cs, map[string]any{"priority": "low"}), 403, "but can no longer change it")
+	want(t, call(t, "GET", base+"/crm/cases/"+cs, kavin, nil), 200, "Kavin opens his case")
+
+	// A deal's items follow the quote the customer accepted.
+	item := create(t, ram, ws, "catalog_items", map[string]any{"name": "Nexon", "unitPrice": 1000, "taxRate": 0})
+	deal := create(t, ram, ws, "opportunities", map[string]any{"name": "Deal", "amount": 1, "closeDate": today()})
+	want(t, call(t, "PUT", base+"/opportunities/"+deal+"/lines", ram, map[string]any{"lines": []map[string]any{{"itemId": item, "quantity": 3}}}), 200, "deal lines")
+	quote := create(t, ram, ws, "quotes", map[string]any{"name": "Quote — deal", "opportunityId": deal, "status": "draft"})
+	want(t, call(t, "PUT", base+"/quotes/"+quote+"/lines", ram, map[string]any{"lines": []map[string]any{{"itemId": item, "quantity": 2, "discountPercent": 10}}}), 200, "quote lines")
+	if o := call(t, "POST", base+"/quotes/"+quote+"/convert", ram, nil); o.Status != 200 && o.Status != 201 {
+		t.Fatalf("convert: %d %s", o.Status, o.Raw)
+	}
+	lines := call(t, "GET", base+"/opportunities/"+deal+"/lines", ram, nil)
+	if lines.at("pricing", "total") != float64(1800) || get(t, ram, ws, "opportunities", deal)["amount"] != float64(1800) || len(lines.at("pricing", "lines").([]any)) != 1 {
+		t.Fatalf("the deal's items and amount match the accepted quote (2 × 1000 − 10%% = 1800): %s", truncate(lines.Raw, 300))
 	}
 
 	// Export with the Added by column.
