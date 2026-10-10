@@ -25,6 +25,7 @@ export const DASHBOARD_SECTIONS = {
     { key: 'section:quick', label: 'Quick actions' },
     { key: 'section:start', label: 'Getting started' },
     { key: 'section:summary', label: 'Business summary' },
+    { key: 'section:team', label: 'Team performance' },
     { key: 'section:kpis', label: 'Record counts' },
     { key: 'section:recent', label: 'Recent records' }
   ],

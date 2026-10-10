@@ -20,6 +20,7 @@ import { guessTone, humanize, useObjectIcon } from '@crm/features/records/use-ob
 import { firstModulePath, hasDashboard, readableObjects, ticketAccess, useWorkspace, workspaceBase } from './workspace-context';
 import { canAdminister } from './admin/admin-utils';
 import { SummarySection } from './summary-section';
+import { TeamSection } from './team-section';
 import { GettingStartedPanel } from './getting-started';
 
 /** /crm/w/:ws/home — the member's dashboard (or the first module when dashboard.view isn't granted). */
@@ -125,6 +126,8 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
               <GettingStartedPanel key={s.key} code={code} />
             ) : s.key === 'section:summary' ? (
               <SummarySection key={s.key} code={code} layout={layout} />
+            ) : s.key === 'section:team' ? (
+              <TeamSection key={s.key} code={code} />
             ) : s.key === 'section:kpis' ? (
               !kpis || kpis.length ? (
                 <section key={s.key} className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4" aria-label={t('workspaceApp.dashboard.keyMetrics')}>

@@ -638,8 +638,22 @@ export const businessApi = {
   profile: (code: string) => api<BusinessProfile>(`/w/${enc(code)}/business`),
   update: (code: string, body: { name?: string; currency?: string; timezone?: string; profile?: Record<string, string | null> }) =>
     api<BusinessProfile>(`/w/${enc(code)}/business`, { method: 'PATCH', body }),
-  summary: (code: string, params: { range: string; from?: string; to?: string }) => api<BusinessDashboardSummary>(`/w/${enc(code)}/dashboard/summary${qs(params)}`)
+  summary: (code: string, params: { range: string; from?: string; to?: string }) => api<BusinessDashboardSummary>(`/w/${enc(code)}/dashboard/summary${qs(params)}`),
+  /** Who added and converted what (D-137). 403 for people who only see their own records. */
+  team: (code: string, params: { range: string; from?: string; to?: string }) => api<TeamPerformance>(`/w/${enc(code)}/dashboard/team${qs(params)}`)
 };
+
+export interface TeamPerformance {
+  range: { key: string; from?: string; to?: string };
+  bucket: 'day' | 'month';
+  buckets: Array<{ key: string; label: string; leads: number; contacts: number }>;
+  members: Array<{
+    id: string; name: string; role: string; active: boolean;
+    leadsAdded: number; leadsConverted: number; contactsAdded: number; accountsAdded: number; dealsWon: number; wonValue: number;
+    leads: number[];
+  }>;
+  currency: string;
+}
 
 export const cardsApi = {
   list: (code: string, params: { q?: string; object?: string; recordId?: string } = {}) => api<{ items: SavedCard[]; total: number }>(`/w/${enc(code)}/cards${qs(params)}`),

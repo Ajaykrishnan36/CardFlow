@@ -141,7 +141,7 @@ func systemFields() []Field {
 		// The owner can be changed (reassign / "change owner"); it must be a member of the workspace.
 		help(lookup("ownerId", "Owner", "owner_id", "users"), "Who this record belongs to. Records are shared by owner and role."),
 		ro(typed("createdAt", "Created", "datetime", "created_at")),
-		ro(lookup("createdBy", "Created by", "created_by", "users")),
+		ro(lookup("createdBy", "Added by", "created_by", "users")),
 		ro(typed("updatedAt", "Last modified", "datetime", "updated_at")),
 		ro(lookup("updatedBy", "Last modified by", "updated_by", "users")),
 	}
@@ -203,7 +203,7 @@ var leadSpec = objectSpec{
 		ro(lookup("convertedContactId", "Converted contact", "converted_contact_id", "contacts")),
 		ro(lookup("identityId", "User login", "identity_id", "users")),
 	),
-	ListColumns: []string{"organization", "email", "phone", "status", "source", "ownerId", "createdAt"},
+	ListColumns: []string{"organization", "email", "phone", "status", "source", "ownerId", "createdBy", "createdAt"},
 	StatusField: "status",
 	Statuses:    leadStatus,
 	Layout: Layout{
@@ -254,7 +254,7 @@ var accountSpec = objectSpec{
 		ro(lookup("customerWorkspaceId", "Customer product", "customer_workspace_id", "workspaces")),
 		ro(lookup("identityId", "Primary login", "identity_id", "users")),
 	),
-	ListColumns: []string{"type", "lifecycle", "industry", "phone", "ownerId", "createdAt"},
+	ListColumns: []string{"type", "lifecycle", "industry", "phone", "ownerId", "createdBy", "createdAt"},
 	StatusField: "lifecycle",
 	Statuses:    accountLifecycle,
 	Layout: Layout{
@@ -298,7 +298,7 @@ var contactSpec = objectSpec{
 		typed("description", "Description", "textarea", "description"),
 		ro(lookup("identityId", "User login", "identity_id", "users")),
 	),
-	ListColumns: []string{"accountId", "title", "email", "phone", "ownerId", "createdAt"},
+	ListColumns: []string{"accountId", "title", "email", "phone", "ownerId", "createdBy", "createdAt"},
 	Layout: Layout{
 		Highlights: []string{"accountId", "title", "email", "phone", "ownerId"},
 		Sections: []Section{

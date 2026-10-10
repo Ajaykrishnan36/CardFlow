@@ -960,6 +960,22 @@ NOT VALID and then validated where the data allows, so a stray old row can't sto
 - **Not done.** Row-level security in PostgreSQL; checking in the database that an owner is
   a member; real tables for financial documents; queues and email templates.
 
+## D-137 — Who added what, and team performance
+
+For a business with staff (a dealer with several salespeople), the Super Admin needs to see
+who brought in each lead and how each person is doing.
+
+- **Added by.** The "Created by" field is labelled "Added by" and is a default column of the
+  leads, accounts and contacts lists (next to Owner). Export carries it.
+- **Team performance** on the dashboard (`GET /w/{code}/dashboard/team`, section
+  `section:team`): per person, leads added, leads converted, conversion %, contacts and
+  accounts added, deals won and their value; a bar chart of leads per day (per month for
+  long periods) and a line per person. Download as CSV. Only for people who see everyone's
+  leads; staff who see only their own get 403 and the section is hidden.
+- **Reports** can be downloaded as CSV from the report builder.
+- **Bulk import** of leads already exists (Import from CSV). It needs the Import permission,
+  which Staff don't have by default; the Super Admin can grant it in the permission set.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

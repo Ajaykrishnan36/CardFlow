@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { BarChart3, LayoutGrid, Plus, Save, Trash2, X } from 'lucide-react';
+import { BarChart3, Download, LayoutGrid, Plus, Save, Trash2, X } from 'lucide-react';
 import { reportsApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { FieldDef, FilterOp, ReportChart as ChartType, ReportDefinition, ReportFilter, ReportObject } from '@crm/api/types';
@@ -19,6 +19,7 @@ import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { useWorkspace, workspaceBase } from '@crm/features/workspace/workspace-context';
 import { ReportChart } from './report-chart';
+import { downloadCsv } from '@crm/features/workspace/team-section';
 import { reportKeys } from './reports-page';
 
 const CHARTS: ChartType[] = ['bar', 'line', 'donut', 'number', 'table'];
@@ -319,6 +320,11 @@ function Builder({ id }: { id: string }) {
             ) : (
               <div className={cn('transition-opacity', preview.isFetching && 'opacity-60')}>
                 <ReportChart result={preview.data} chart={def.chart} />
+                <div className="mt-3 flex justify-end">
+                  <Button variant="outline" size="sm" onClick={() => downloadCsv(`${(name.trim() || 'report').replace(/[^\w-]+/g, '-')}.csv`, [[preview.data.groupLabel || 'Group', preview.data.measureLabel, 'Records'], ...preview.data.rows.map((r) => [r.label, r.value, r.count])])}>
+                    <Download /> Download CSV
+                  </Button>
+                </div>
               </div>
             )}
           </div>
