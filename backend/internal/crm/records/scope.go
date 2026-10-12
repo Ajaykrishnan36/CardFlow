@@ -180,6 +180,7 @@ type workspaceContext struct {
 		Name       string    `json:"name"`
 		IsPlatform bool      `json:"isPlatform"`
 		Currency   string    `json:"currency"` // amounts without their own currency use this (D-76)
+		Timezone   string    `json:"timezone"` // dates and times are shown in this zone unless the person set their own
 	} `json:"workspace"`
 	Role *struct {
 		Key  string `json:"key"`
@@ -298,7 +299,7 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 	var out workspaceContext
 	out.Workspace.ID, out.Workspace.Code, out.Workspace.IsPlatform = sc.WS, sc.Code, sc.IsPlatformWS
 	out.Workspace.Name = displayWorkspaceName(sc.Name, sc.IsPlatformWS)
-	_ = h.store.Pool.QueryRow(r.Context(), `SELECT COALESCE(currency, 'INR') FROM crm.workspaces WHERE id = $1`, sc.WS).Scan(&out.Workspace.Currency)
+	_ = h.store.Pool.QueryRow(r.Context(), `SELECT COALESCE(currency, 'INR'), COALESCE(timezone, '') FROM crm.workspaces WHERE id = $1`, sc.WS).Scan(&out.Workspace.Currency, &out.Workspace.Timezone)
 	if out.Workspace.Currency == "" {
 		out.Workspace.Currency = "INR"
 	}

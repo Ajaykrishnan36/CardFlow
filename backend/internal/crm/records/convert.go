@@ -47,13 +47,15 @@ type convertInput struct {
 }
 
 type ConvertResult struct {
-	AccountID     *uuid.UUID           `json:"accountId,omitempty"`
-	ContactID     *uuid.UUID           `json:"contactId,omitempty"`
-	OpportunityID *uuid.UUID           `json:"opportunityId,omitempty"`
-	WorkspaceID   *uuid.UUID           `json:"workspaceId,omitempty"`
-	IdentityID    *uuid.UUID           `json:"identityId,omitempty"`
-	Invitation    *platform.Invitation `json:"invitation,omitempty"`
-	ExistingLogin bool                 `json:"existingLogin,omitempty"`
+	AccountID *uuid.UUID `json:"accountId,omitempty"`
+	ContactID *uuid.UUID `json:"contactId,omitempty"`
+	// ContactExisting: the lead matched someone already in Contacts and was linked to them.
+	ContactExisting bool                 `json:"contactExisting,omitempty"`
+	OpportunityID   *uuid.UUID           `json:"opportunityId,omitempty"`
+	WorkspaceID     *uuid.UUID           `json:"workspaceId,omitempty"`
+	IdentityID      *uuid.UUID           `json:"identityId,omitempty"`
+	Invitation      *platform.Invitation `json:"invitation,omitempty"`
+	ExistingLogin   bool                 `json:"existingLogin,omitempty"`
 }
 
 type leadRow struct {
@@ -154,6 +156,13 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 		if l.status == "converted" {
 			return shared.NewError(http.StatusUnprocessableEntity, "already_converted", "This lead has already been converted.")
 		}
+		// What the lead becomes belongs to whoever owns the lead, not to whoever pressed
+		// Convert: a manager converting a rep's lead must not take the deal away from them.
+		owner := me
+		var leadOwner *uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT owner_id FROM crm.leads WHERE id = $1`, leadID).Scan(&leadOwner); err == nil && leadOwner != nil {
+			owner = *leadOwner
+		}
 		setup, _ := cachedSetup(ctx, tx, ws)
 		if setup.Conversion.RequireQualified && l.status != "qualified" {
 			return shared.NewError(http.StatusUnprocessableEntity, "not_qualified", "This product converts qualified leads only. Set the lead status to Qualified first.")
@@ -192,6 +201,15 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			}
 			aid := in.Account.AccountID
 			res.AccountID = &aid
+			// What the lead knew is kept: it fills the account's empty fields, never overwrites.
+			if _, err := tx.Exec(ctx, `
+				UPDATE crm.accounts SET industry = COALESCE(industry, NULLIF($3, '')), rating = COALESCE(rating, NULLIF($4, '')),
+				       website = COALESCE(website, NULLIF($5, '')), annual_revenue = COALESCE(annual_revenue, $6), employees = COALESCE(employees, $7),
+				       description = COALESCE(NULLIF(description, ''), NULLIF($8, '')), phone = COALESCE(phone, NULLIF($9, '')), updated_at = now()
+				WHERE id = $1 AND workspace_id = $2`, aid, ws, l.industry, l.rating, l.website, l.annualRevenue, l.employees, l.description,
+				firstNonEmpty(l.phone, l.mobile)); err != nil {
+				return err
+			}
 		case "none":
 			// Contact first (D-52): a person without a business is just a contact.
 		case "new", "":
@@ -228,10 +246,10 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 				                          billing_country, description, owner_id, created_by, updated_by, custom)
 				VALUES ($1, $2, $3, $4, 'customer', $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), $9, NULLIF($10, ''),
 				        $11, $12, NULLIF($13, ''), NULLIF($14, ''), NULLIF($15, ''), NULLIF($16, ''), NULLIF($17, ''), NULLIF($18, ''),
-				        $19, $19, $19, $20)
+				        $19, $21, $21, $20)
 				RETURNING id`,
 				ws, code, kind, name, lifecycle, l.industry, l.rating, l.website, email, firstNonEmpty(l.phone, l.mobile),
-				l.annualRevenue, l.employees, l.street, l.city, l.state, l.postalCode, l.country, l.description, me, customJSON).Scan(&newAccount); err != nil {
+				l.annualRevenue, l.employees, l.street, l.city, l.state, l.postalCode, l.country, l.description, owner, customJSON, me).Scan(&newAccount); err != nil {
 				return err
 			}
 			res.AccountID = &newAccount
@@ -247,6 +265,30 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			if l.lastName == "" && l.firstName == "" {
 				return shared.Validation(map[string]string{"contact": "The lead needs a name to create a contact."})
 			}
+			// Someone already in Contacts with this email (or, with no email, this number) is
+			// the same person: link to them instead of making a second contact.
+			var existing uuid.UUID
+			digits := digitsOnly(firstNonEmpty(l.mobile, l.phone))
+			if len(digits) > 10 {
+				digits = digits[len(digits)-10:]
+			}
+			if l.email != "" || len(digits) >= 7 {
+				_ = tx.QueryRow(ctx, `
+					SELECT id FROM crm.contacts c WHERE c.workspace_id = $1 AND c.deleted_at IS NULL AND ($4::uuid[] IS NULL OR c.owner_id = ANY($4))
+					  AND (($2 <> '' AND lower(c.email) = lower($2))
+					    OR ($2 = '' AND $3 <> '' AND (right(regexp_replace(COALESCE(c.phone, ''), '\D', '', 'g'), 10) = $3 OR right(regexp_replace(COALESCE(c.mobile, ''), '\D', '', 'g'), 10) = $3)))
+					ORDER BY c.created_at LIMIT 1`, ws, l.email, digits, ownerFilter(r, &contactSpec)).Scan(&existing)
+			}
+			if existing != uuid.Nil {
+				res.ContactID, res.ContactExisting = &existing, true
+				if res.AccountID != nil {
+					if _, err := tx.Exec(ctx, `UPDATE crm.contacts SET account_id = COALESCE(account_id, $2), updated_at = now() WHERE id = $1`, existing, *res.AccountID); err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if in.CreateContact && res.ContactID == nil {
 			code, err := nextCode(ctx, tx, ws, "C")
 			if err != nil {
 				return err
@@ -255,17 +297,22 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			if lastName == "" {
 				lastName = l.firstName
 			}
+			// With no new account to carry it, the lead's description stays on the contact.
+			contactNote := ""
+			if newAccount == uuid.Nil {
+				contactNote = l.description
+			}
 			customJSON, _ := json.Marshal(carry("contacts"))
 			var cid uuid.UUID
 			if err := tx.QueryRow(ctx, `
 				INSERT INTO crm.contacts (workspace_id, code, account_id, salutation, first_name, last_name, title, email, phone, mobile,
 				                          lead_source, mailing_street, mailing_city, mailing_state, mailing_postal_code, mailing_country,
-				                          owner_id, created_by, updated_by, custom)
+				                          owner_id, created_by, updated_by, custom, description)
 				VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''),
-				        NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), NULLIF($15, ''), NULLIF($16, ''), $17, $17, $17, $18)
+				        NULLIF($11, ''), NULLIF($12, ''), NULLIF($13, ''), NULLIF($14, ''), NULLIF($15, ''), NULLIF($16, ''), $17, $19, $19, $18, NULLIF($20, ''))
 				RETURNING id`,
 				ws, code, res.AccountID, l.salutation, nullIfSame(l.firstName, lastName), lastName, l.title, l.email, l.phone, l.mobile,
-				l.source, l.street, l.city, l.state, l.postalCode, l.country, me, customJSON).Scan(&cid); err != nil {
+				l.source, l.street, l.city, l.state, l.postalCode, l.country, owner, customJSON, me, contactNote).Scan(&cid); err != nil {
 				return err
 			}
 			res.ContactID = &cid
@@ -286,7 +333,7 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			}
 			if mods["opportunities"] {
 				name := ""
-				vals := map[string]any{"leadSource": l.source, "ownerId": me.String()}
+				vals := map[string]any{"leadSource": l.source, "ownerId": owner.String()}
 				if in.Opportunity != nil {
 					name = strings.TrimSpace(in.Opportunity.Name)
 					if in.Opportunity.Amount != nil {

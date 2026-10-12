@@ -167,6 +167,9 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request) {
 	sc := scopeFrom(r.Context())
 	sub := h.bus.subscribe(sc.WS, actor(r))
 	defer h.bus.unsubscribe(sub)
+	// A stream outlives the server's write timeout by design: without lifting it here the
+	// connection was cut every 15 seconds and events in between were lost.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")

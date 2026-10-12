@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Compass, Hammer, Lock, RefreshCw, ServerCrash } from 'lucide-react';
+import { Compass, Lock, RefreshCw, ServerCrash } from 'lucide-react';
 import { Button } from '@crm/components/ui/button';
 import { LogoMark } from '@crm/components/brand';
 import type { LucideIcon } from 'lucide-react';
@@ -37,17 +37,6 @@ export function NoAccessPage() {
     <Centered icon={Lock} title={t('system.noAccessTitle')} body={t('system.noAccessBody')}>
       <Button asChild variant="outline">
         <Link to="/crm">{t('system.goHome')}</Link>
-      </Button>
-    </Centered>
-  );
-}
-
-export function ComingSoonPage({ name, backTo }: { name: string; backTo: string }) {
-  const { t } = useTranslation();
-  return (
-    <Centered icon={Hammer} title={t('system.comingSoonTitle', { name })} body={t('system.comingSoonBody')}>
-      <Button asChild variant="outline">
-        <Link to={backTo}>{t('system.backToOverview')}</Link>
       </Button>
     </Centered>
   );

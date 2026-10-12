@@ -183,6 +183,7 @@ func (h *Handler) getWorkspace(ctx context.Context, id uuid.UUID) (*WorkspaceDet
 	var acc LinkedAccount
 	err = h.store.Pool.QueryRow(ctx, `
 		SELECT id, code, name FROM crm.accounts WHERE customer_workspace_id = $1 AND deleted_at IS NULL
+		  AND workspace_id IN (SELECT id FROM crm.workspaces WHERE is_platform) -- the owner's own CRM record of this customer
 		ORDER BY created_at LIMIT 1`, id).Scan(&acc.ID, &acc.Code, &acc.Name)
 	if err == nil {
 		d.Account = &acc

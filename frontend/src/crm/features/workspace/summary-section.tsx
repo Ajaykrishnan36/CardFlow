@@ -52,12 +52,12 @@ export function SummarySection({ code, layout }: { code: string; layout?: UILayo
   type Tile = { key: string; label: string; value: string; hint?: string; to?: string; show: boolean; tone?: 'good' | 'bad' };
   const allTiles: Tile[] = s
     ? ([
-        { key: 'summary:activeLeads', label: 'Active leads', value: String(m('activeLeads')), hint: `${m('newLeads')} new · ${m('convertedLeads')} converted`, to: `${base}/leads`, show: can('leads') },
+        { key: 'summary:activeLeads', label: 'Active leads', value: String(m('activeLeads')), hint: `${m('newLeads')} added · ${m('convertedLeads')} converted`, to: `${base}/leads`, show: can('leads') },
         { key: 'summary:followUps', label: 'Follow-ups due', value: String(m('followUpsToday')), hint: 'leads to call today', to: `${base}/leads`, show: can('leads') },
         { key: 'summary:contacts', label: 'Contacts', value: String(m('activeContacts')), hint: `${m('newContacts')} new`, to: `${base}/contacts`, show: can('contacts') },
         { key: 'summary:accounts', label: 'Accounts', value: String(m('activeAccounts')), hint: `${m('newAccounts')} new`, to: `${base}/accounts`, show: can('accounts') },
         { key: 'summary:openDeals', label: 'Open deals', value: String(m('openOpportunities')), hint: money(m('pipelineValue'), s.currency) + ' in pipeline', to: `${base}/opportunities`, show: can('opportunities') },
-        { key: 'summary:won', label: 'Won', value: money(m('wonValue'), s.currency), hint: `${m('wonDeals')} deals · ${Math.round(m('winRate'))}% win rate`, to: `${base}/opportunities`, show: can('opportunities'), tone: 'good' },
+        { key: 'summary:won', label: 'Won', value: money(m('wonValue'), s.currency), hint: `${m('wonDeals')} ${m('wonDeals') === 1 ? 'deal' : 'deals'} · ${Math.round(m('winRate'))}% win rate`, to: `${base}/opportunities`, show: can('opportunities'), tone: 'good' },
         { key: 'summary:tasks', label: 'Tasks due today', value: String(m('tasksDueToday')), hint: `${m('overdueTasks')} overdue`, to: `${base}/tasks`, show: can('tasks'), tone: m('overdueTasks') > 0 ? 'bad' : undefined },
         { key: 'summary:cases', label: 'Open cases', value: String(m('openCases')), hint: `${m('newCases')} new`, to: `${base}/cases`, show: can('cases') },
         { key: 'summary:income', label: 'Income', value: money(s.finance?.income ?? 0, s.finance?.currency ?? s.currency), to: `${base}/income`, show: Boolean(s.finance), tone: 'good' },

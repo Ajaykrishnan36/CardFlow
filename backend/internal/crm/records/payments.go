@@ -358,6 +358,17 @@ func (h *Handler) handleAllocate(w http.ResponseWriter, r *http.Request) {
 		if in.Amount > unapplied+0.004 {
 			return shared.Validation(map[string]string{"amount": "That is more than this payment has left to apply."})
 		}
+		// What the invoice still needs counts everything already set against it: other
+		// payments, credit notes, write-offs and refunds, not only other payments.
+		due, _, err := h.invoiceBalance(ctx, tx, sc.WS, invoiceID)
+		if err != nil {
+			return err
+		}
+		var already float64
+		_ = tx.QueryRow(ctx, `SELECT COALESCE((SELECT amount FROM crm.payment_allocations WHERE payment_id = $1 AND invoice_id = $2), 0)::float8`, pay.uuid(), invoiceID).Scan(&already)
+		if real := due.Float() + already; real < balance {
+			balance = real
+		}
 		if in.Amount > balance+0.004 {
 			return shared.Validation(map[string]string{"amount": "That is more than the invoice still needs."})
 		}

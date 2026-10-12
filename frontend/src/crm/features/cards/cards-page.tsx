@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Building2, CreditCard, ExternalLink, Link2, Mail, MapPin, Phone, Plus, ScanLine, Unlink, UserPlus } from 'lucide-react';
@@ -241,6 +241,7 @@ export function SaveOptions({
   onNote: (v: string) => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const base = workspaceBase(code);
   const people = matches.matches.filter((m) => m.object !== 'accounts');
   const [action, setAction] = useState<SaveCardBody['action']>(matches.suggested === 'attach' ? 'attach' : matches.suggested);
@@ -266,7 +267,7 @@ export function SaveOptions({
     onSuccess: async (res) => {
       await qc.invalidateQueries({ queryKey: ['workspace', code] });
       const what = res.record ? `${objectLabel[res.record.object] ?? 'Record'} ${res.created ? 'created' : 'updated'}: ${res.record.title}` : 'Card saved';
-      toast.success(what, res.record ? { action: { label: 'Open', onClick: () => window.location.assign(`${base}/${res.record!.object}/${res.record!.recordId}`) } } : undefined);
+      toast.success(what, res.record ? { action: { label: 'Open', onClick: () => navigate(`${base}/${res.record!.object}/${res.record!.recordId}`) } } : undefined);
       onSaved();
     },
     onError: (e) => {

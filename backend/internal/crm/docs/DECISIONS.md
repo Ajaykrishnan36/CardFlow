@@ -994,6 +994,55 @@ who brought in each lead and how each person is doing.
 - **Staff still can't record payments.** Money in and out stays with Admins unless a
   permission set grants it (D-96); this was left as it is on purpose.
 
+## D-140 — Bug tracker round (11 Oct 2026): 40 of 42 fixed
+
+An outside end-to-end test and code review filed 42 bugs. Fixed here; each has a test or a
+screen check unless noted.
+
+**Security**
+- SSO (SAML / OIDC) only signs in someone who is already an active member of that business,
+  and never the platform owner (BUG-002).
+- API keys and webhooks obey "never more than you have": a key can't use a permission set
+  beyond its maker's access; a webhook only listens to objects its maker sees in full (006, 007).
+- Nobody can give a role that ranks above their own; a role's standard set goes through the
+  same limit check as a chosen one (008).
+- Accepting an invitation with an existing password uses the same lockout as sign-in (009).
+- Microsoft sign-in from the shared "common" endpoint is not treated as a verified email;
+  a named tenant (`CRM_MICROSOFT_TENANT`) is (010).
+- The emailed sign-in code travels in the URL fragment and is removed from the address bar (033).
+- Changing a password on an account that has none is a clear 422, not a 500 (034).
+
+**Users and access**
+- "More than your access" ignores modules that are switched off in the business, so a
+  Super Admin can assign the built-in Admin / Staff sets; the permission catalog lists only
+  switched-on modules (003).
+- Anyone invited without a chosen set gets their role's standard set, whichever way they
+  are added (004).
+
+**Records**
+- Lead conversion: what the lead becomes belongs to the lead's owner; converting into an
+  existing account fills that account's empty fields; a contact with the same email (or
+  number) is linked, not duplicated (018, 029, 030).
+- Payment allocation is limited by the invoice's real balance (credit notes, write-offs,
+  refunds) (016). Restore from the bin checks unique fields (017).
+- CSV export neutralises formula cells and fails loudly instead of ending early (019);
+  import can match on a lookup field (031); the purge skips records that are never deleted (032).
+- List and board totals are computed on the server in the business's currency (022, 023).
+
+**Screens**
+- The recycle bin is never remembered as a list's default view (005); a page past the end
+  snaps back (011); a mistyped object is Not Found (013); sign-in notices show on every
+  tab (014); failed actions always say so (020); switching business shows a loading state,
+  not the previous business (021); dates and times follow the person's or the business's
+  time zone (037); labels focus composite inputs (038); no "coming soon" pages or badges (042);
+  plus 012, 024, 025, 027, 028, 035, 036, 039, 040, 041.
+- The live-update stream was being cut by the server's 15-second write timeout; it now
+  stays open (026).
+
+**Not changed**
+- BUG-001: sign-in codes on screen is a live setting (SMS provider + remove the preview flag).
+- BUG-015: owner console without two-step verification is decision D-133.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

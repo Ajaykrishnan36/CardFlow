@@ -170,7 +170,7 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 			step("lead", "Add a customer lead", "Capture the customer you're onboarding in Platform CRM.", allLeads > 0, false, "/crm/owner/leads"),
 			step("provision", "Add a product for the customer", "Name it, invite its Super Admin, then add its first app (objects, roles, sales process, sign-in) from the Apps tab.", allActiveWorkspaces > 0, false, "/crm/owner/workspaces/new"),
 			step("product", "Publish the app", "Publishing makes the app live for the product's users.", activeProducts > 0, false, "/crm/owner/workspaces"),
-			step("permissions", "Set up permissions", "Create permission sets and give users exactly the access they need.", customPermissionSets > 0, false, "/crm/owner/users?tab=permissions"),
+			step("permissions", "Set up permissions", "Create permission sets and give users exactly the access they need.", customPermissionSets > 0, false, "/crm/owner/users?tab=permission-sets"),
 			step("test", "First sign-in", "The customer's Super Admin signs in for the first time.", testedCustomers > 0, false, "/crm/owner/workspaces"),
 		},
 		RecentWorkspaces: []RecentWorkspace{},

@@ -1,3 +1,4 @@
+import { zoned } from '@crm/lib/zone';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Check, ExternalLink, Info, Minus } from 'lucide-react';
@@ -30,7 +31,7 @@ function formatDate(v: unknown): string {
 function formatDateTime(v: unknown): string {
   if (typeof v !== 'string') return String(v);
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? v : d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? v : d.toLocaleString('en-IN', zoned({ day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }));
 }
 
 function asNumber(v: unknown): number | null {

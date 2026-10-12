@@ -17,6 +17,8 @@ export interface RecordScope {
   routeBase: string;
   api: RecordsApi;
   can: (object: ObjectKey, action: ObjectAction) => boolean;
+  /** False for a key that names no object here (a mistyped URL): the page is Not Found, not "no access". */
+  knows: (object: ObjectKey) => boolean;
   /** Row visibility per object (member only; the owner sees everything). */
   rowScope: (object: ObjectKey) => RowScope | undefined;
   /** May edit page layouts and custom fields. */
@@ -41,6 +43,7 @@ export const ownerScope: RecordScope = {
   routeBase: '/crm/owner',
   api: recordsApi,
   can: () => true,
+  knows: () => true,
   rowScope: () => undefined,
   canCustomize: true,
   dashboardKey: ['platform', 'dashboard'],
@@ -68,6 +71,7 @@ export function scopeFromContext(ctx: WorkspaceContext, code: string): RecordSco
       const a = access(object);
       return Boolean(a && a.moduleEnabled && a.actions.includes(action));
     },
+    knows: (object) => Boolean(access(object)),
     rowScope: (object) => access(object)?.scope,
     canCustomize: ctx.canCustomize || full,
     dashboardKey: workspaceDashboardKey(code),

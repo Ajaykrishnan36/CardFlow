@@ -37,7 +37,14 @@ export function EmailCodeForm({ audience }: { audience: 'owner' | 'workspace' })
   const returnTo = safeReturnTo(params.get('returnTo'));
 
   const linkEmail = params.get('email') ?? '';
-  const linkCode = (params.get('code') ?? '').replace(/\D/g, '').slice(0, 6);
+  // The emailed link carries the code in the fragment (older links: in the query). It is
+  // read once and then taken out of the address bar and the history entry.
+  const [linkCode] = useState(() => {
+    const fromHash = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('code');
+    const code = (fromHash ?? params.get('code') ?? '').replace(/\D/g, '').slice(0, 6);
+    if (fromHash) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    return code;
+  });
   const fromLink = Boolean(linkEmail && linkCode.length === 6);
 
   const [email, setEmail] = useState(linkEmail);

@@ -413,6 +413,11 @@ func Exceeds(r Rules, limit *Effective) []string {
 	r = Normalize(r)
 	var out []string
 	for _, o := range CatalogObjects() {
+		// A module that is switched off in this business grants nothing here, so a set that
+		// mentions it (the built-in sets name every module) asks for nothing extra.
+		if lo, ok := limit.Objects[o.Key]; ok && !lo.ModuleEnabled {
+			continue
+		}
 		acts := r.Objects[o.Key]
 		for _, a := range acts {
 			if !limit.Can(o.Key, a) {

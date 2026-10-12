@@ -1,13 +1,14 @@
 import { useTranslation } from 'react-i18next';
 import type { ReportChart as ChartType, ReportResult } from '@crm/api/types';
 import { cn } from '@crm/lib/utils';
+import { formatMoney } from '@crm/lib/money';
 
 // Dependency-free charts for reports (D-50): plain SVG/HTML using the theme colours.
 
 const PALETTE = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#ec4899', '#84cc16', '#f97316', '#64748b'];
 
 export function formatValue(v: number, currency?: boolean) {
-  if (currency) return `₹${v.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  if (currency) return formatMoney(Math.round(v)).replace(/\.00$/, '');
   return Number.isInteger(v) ? v.toLocaleString('en-IN') : v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 }
 

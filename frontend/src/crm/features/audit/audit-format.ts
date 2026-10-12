@@ -1,3 +1,4 @@
+import { zoned } from '@crm/lib/zone';
 import type { useTranslation } from 'react-i18next';
 import type { AuditEntry } from '@crm/api/types';
 
@@ -43,5 +44,5 @@ export function shortId(id: string): string {
 }
 
 export function absoluteTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(iso).toLocaleString('en-IN', zoned({ day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
 }

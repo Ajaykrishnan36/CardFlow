@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,6 +98,23 @@ func exportValue(r Row, f Field) string {
 	return string(raw)
 }
 
+var plainNumberCell = regexp.MustCompile(`^[+-]?[\d\s().,-]+$`)
+
+// safeCell stops a spreadsheet from running a cell as a formula: text that starts with
+// = + - or @ gets a leading apostrophe. Numbers and phone numbers (+91 …) are left alone.
+func safeCell(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		if !plainNumberCell.MatchString(s) {
+			return "'" + s
+		}
+	}
+	return s
+}
+
 // GET /crm/{object}/export?columns=a,b (+ the list's selection parameters) → CSV
 func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 	spec, ws, err := h.scope(r, "export")
@@ -138,6 +156,14 @@ func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	// The first page is read before anything is sent, so a bad filter is an error the
+	// browser shows, not an empty or half-written file that looks like a good download.
+	p.Limit, p.Offset = 500, 0
+	first, _, err := h.list(r.Context(), ws, spec, p)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
 	name := fmt.Sprintf("%s-%s.csv", spec.Key, time.Now().Format("2006-01-02"))
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
@@ -153,16 +179,21 @@ func (h *Handler) handleExport(w http.ResponseWriter, r *http.Request) {
 	_ = cw.Write(header)
 	written := 0
 	for offset := 0; offset < maxExportRows; offset += 500 {
-		p.Limit, p.Offset = 500, offset
-		rows, _, err := h.list(r.Context(), ws, spec, p)
-		if err != nil {
-			break
+		rows := first
+		if offset > 0 {
+			p.Limit, p.Offset = 500, offset
+			if rows, _, err = h.list(r.Context(), ws, spec, p); err != nil {
+				// Too late for an error page: cut the connection so the download fails
+				// instead of ending early and looking complete.
+				cw.Flush()
+				panic(http.ErrAbortHandler)
+			}
 		}
 		for _, row := range rows {
-			line := []string{row.Code, row.Title}
+			line := []string{row.Code, safeCell(row.Title)}
 			for _, f := range cols {
 				if f.Key != "code" {
-					line = append(line, exportValue(row, f))
+					line = append(line, safeCell(exportValue(row, f)))
 				}
 			}
 			_ = cw.Write(line)
@@ -485,6 +516,10 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
 			}
 			if key == in.MatchField {
 				matchValue = strings.TrimSpace(cells[i])
+				// A lookup is stored as the id of the record it names, so match on that.
+				if id, ok := v.(string); ok && byKey[key].Type == "lookup" && id != "" {
+					matchValue = id
+				}
 			}
 			if v != nil {
 				values[key] = v

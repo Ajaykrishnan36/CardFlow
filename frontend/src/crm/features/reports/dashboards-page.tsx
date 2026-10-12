@@ -32,8 +32,13 @@ export function DashboardsPage() {
   const navigate = useNavigate();
   useDocumentTitle(t('reports.dashboardsTitle'));
   const q = useQuery({ queryKey: reportKeys.dashboards(code), queryFn: () => reportsApi(code).dashboards() });
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreatingRaw] = useState(false);
   const [name, setName] = useState('');
+  // Opening or closing the dialog always starts from an empty name.
+  const setCreating = (open: boolean) => {
+    setName('');
+    setCreatingRaw(open);
+  };
   const create = useMutation({
     mutationFn: () => reportsApi(code).createDashboard({ name: name.trim() }),
     onSuccess: (d) => {

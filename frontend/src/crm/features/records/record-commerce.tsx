@@ -1,3 +1,4 @@
+import { zoned } from '@crm/lib/zone';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1010,7 +1011,7 @@ export function BookAppointmentButton({ record, object, disabled }: { record: Re
                   return (
                     <button key={v} type="button" onClick={() => setSlot(v)}
                       className={cn('rounded-md border px-2 py-1.5 text-left text-xs', slot === v ? 'border-primary bg-primary-soft text-primary' : 'hover:bg-muted')}>
-                      <span className="block font-medium tabular-nums">{new Date(s.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <span className="block font-medium tabular-nums">{new Date(s.start).toLocaleTimeString([], zoned({ hour: '2-digit', minute: '2-digit' }))}</span>
                       <span className="block truncate text-muted-foreground">{s.resource}</span>
                     </button>
                   );

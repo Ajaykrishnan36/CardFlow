@@ -108,11 +108,11 @@ export function FieldInput({ field, value, onChange, lookupLabel, links, disable
         </div>
       );
     case 'rating':
-      return <RatingInput value={value} onChange={onChange} disabled={disabled} label={field.label} />;
+      return <RatingInput id={control.id} value={value} onChange={onChange} disabled={disabled} label={field.label} />;
     case 'address':
-      return <PartsInput value={value} onChange={onChange} disabled={disabled} invalid={control.invalid} parts={ADDRESS_PARTS} />;
+      return <PartsInput id={control.id} value={value} onChange={onChange} disabled={disabled} invalid={control.invalid} parts={ADDRESS_PARTS} />;
     case 'fullName':
-      return <PartsInput value={value} onChange={onChange} disabled={disabled} invalid={control.invalid} parts={NAME_PARTS} />;
+      return <PartsInput id={control.id} value={value} onChange={onChange} disabled={disabled} invalid={control.invalid} parts={NAME_PARTS} />;
     case 'emails':
     case 'phones':
     case 'links':
@@ -452,13 +452,13 @@ export function LookupCombobox({
 
 // ---- Rating: 1–5 stars ----
 
-function RatingInput({ value, onChange, disabled, label }: { value: unknown; onChange: (v: unknown) => void; disabled?: boolean; label: string }) {
+function RatingInput({ id, value, onChange, disabled, label }: { id?: string; value: unknown; onChange: (v: unknown) => void; disabled?: boolean; label: string }) {
   const { t } = useTranslation();
   const n = typeof value === 'number' ? value : Number(value) || 0;
   const [hover, setHover] = useState(0);
   const shown = hover || n;
   return (
-    <div className="flex h-9 items-center gap-0.5" role="radiogroup" aria-label={label} onMouseLeave={() => setHover(0)}>
+    <div id={id} tabIndex={-1} className="flex h-9 items-center gap-0.5" role="radiogroup" aria-label={label} onMouseLeave={() => setHover(0)}>
       {[1, 2, 3, 4, 5].map((i) => (
         <button
           key={i}
@@ -485,7 +485,7 @@ function RatingInput({ value, onChange, disabled, label }: { value: unknown; onC
 const ADDRESS_PARTS = ['street', 'street2', 'city', 'state', 'postalCode', 'country'] as const;
 const NAME_PARTS = ['firstName', 'lastName'] as const;
 
-function PartsInput({ value, onChange, disabled, invalid, parts }: { value: unknown; onChange: (v: unknown) => void; disabled?: boolean; invalid?: boolean; parts: readonly string[] }) {
+function PartsInput({ id, value, onChange, disabled, invalid, parts }: { id?: string; value: unknown; onChange: (v: unknown) => void; disabled?: boolean; invalid?: boolean; parts: readonly string[] }) {
   const { t } = useTranslation();
   const v = (value && typeof value === 'object' ? value : {}) as Record<string, string>;
   const set = (k: string, s: string) => {
@@ -495,9 +495,10 @@ function PartsInput({ value, onChange, disabled, invalid, parts }: { value: unkn
   };
   return (
     <div className={cn('grid gap-2', parts.length > 2 ? 'grid-cols-2' : 'grid-cols-2')}>
-      {parts.map((k) => (
+      {parts.map((k, i) => (
         <Input
           key={k}
+          id={i === 0 ? id : undefined}
           aria-label={t(`records.input.part.${k}`)}
           placeholder={t(`records.input.part.${k}`)}
           disabled={disabled}

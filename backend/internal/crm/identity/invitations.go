@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -135,10 +136,23 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 			return nil, shared.Validation(map[string]string{"password": "Enter your password."})
 		}
 		var hash string
-		if err := s.store.Pool.QueryRow(ctx, `SELECT hash FROM crm.password_credentials WHERE identity_id = $1`, preview.identityID).Scan(&hash); err != nil {
+		var lockedUntil *time.Time
+		if err := s.store.Pool.QueryRow(ctx, `SELECT hash, locked_until FROM crm.password_credentials WHERE identity_id = $1`, preview.identityID).Scan(&hash, &lockedUntil); err != nil {
 			return nil, err
 		}
+		// The same lock as the sign-in page: guessing here must not be a way around it.
+		if lockedUntil != nil && lockedUntil.After(time.Now()) {
+			return nil, shared.TooManyAttempts(int(time.Until(*lockedUntil).Seconds()) + 1)
+		}
 		if !verifyPassword(in.Password, hash) {
+			_, _ = s.store.Pool.Exec(ctx, `
+				UPDATE crm.password_credentials
+				SET failed_attempts = CASE WHEN failed_attempts + 1 >= $2 THEN 0 ELSE failed_attempts + 1 END,
+				    locked_until    = CASE WHEN failed_attempts + 1 >= $2 THEN now() + $3::interval ELSE locked_until END,
+				    updated_at = now()
+				WHERE identity_id = $1`, preview.identityID, lockAfterFailures, fmt.Sprintf("%d seconds", int(lockDuration.Seconds())))
+			_ = shared.WriteAudit(ctx, s.store.Pool, shared.AuditEvent{ActorID: &preview.identityID, Action: "auth.login.failed", EntityType: "identity", EntityID: &preview.identityID,
+				After: map[string]any{"reason": "bad_password", "via": "invitation"}, IP: meta.IP, RequestID: meta.RequestID})
 			// 422 (not 401): the caller is anonymous, so this is a form error, not an expired session.
 			return nil, shared.Validation(map[string]string{"password": "That password isn't right."})
 		}

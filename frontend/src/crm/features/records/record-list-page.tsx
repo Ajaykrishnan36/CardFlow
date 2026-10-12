@@ -36,6 +36,7 @@ import { ClearProductButton, useChangeOwnerFilter, useOwnerFilter, useOwnerProdu
 import { GroupedTable } from './list/grouped-table';
 import { useManualWorkflows, useRunWorkflow } from './run-workflow';
 import { ImportDialog } from './list/import-dialog';
+import { NotFoundPage } from '@crm/features/system/pages';
 
 const PAGE_SIZE = 50;
 const ALL_WS = 'all';
@@ -48,6 +49,7 @@ function lastViewKey(prefix: string, object: string) {
 
 export function RecordListPage({ object }: { object: ObjectKey }) {
   const scope = useRecordScope();
+  if (!scope.knows(object)) return <NotFoundPage />;
   if (!scope.can(object, 'read')) return <RecordNoAccess />;
   return <RecordListView object={object} />;
 }
@@ -90,11 +92,12 @@ function RecordListView({ object }: { object: ObjectKey }) {
       return null;
     }
   })();
-  const viewId = sp.get('view') ?? storedView ?? ALL_VIEW;
+  const viewId = sp.get('view') ?? (storedView === BIN_VIEW ? null : storedView) ?? ALL_VIEW;
   const view = views.find((v) => v.id === viewId);
   const binMode = viewId === BIN_VIEW;
   const effectiveViewId = binMode || view || viewId === ALL_VIEW || !viewsQ.data ? viewId : ALL_VIEW;
   useEffect(() => {
+    if (effectiveViewId === BIN_VIEW) return; // the bin is a place you visit, not your default list
     try {
       localStorage.setItem(lastViewKey(scope.prefix, object), effectiveViewId);
     } catch {
@@ -244,6 +247,11 @@ function RecordListView({ object }: { object: ObjectKey }) {
   const Icon = objectIcon(object, meta?.icon);
   const total = listQ.data?.total ?? 0;
   const rows = listQ.data?.data;
+  useEffect(() => {
+    if (!listQ.data || listQ.isFetching || page <= 1 || listQ.data.data.length > 0) return;
+    const last = Math.max(1, Math.ceil(listQ.data.total / PAGE_SIZE));
+    patchParams({ page: last > 1 ? String(Math.min(last, page - 1)) : null });
+  }, [listQ.data, listQ.isFetching, page, patchParams]);
   const filtered = Boolean(q) || countConditions(filter) > 0;
   const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const to = Math.min(page * PAGE_SIZE, total);

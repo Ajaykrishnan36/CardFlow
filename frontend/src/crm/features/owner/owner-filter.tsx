@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { platformApi } from '@crm/api/endpoints';
+import { platformApi, workspacesApi } from '@crm/api/endpoints';
 import { X } from 'lucide-react';
 import { Button } from '@crm/components/ui/button';
 import { Select } from '@crm/components/ui/form-controls';
@@ -62,11 +62,14 @@ export function ownerFilterParams(f: OwnerFilter): { product?: string; app?: str
 /** Products (with their apps) the owner can filter by, from the apps list. */
 export function useOwnerProducts(enabled = true) {
   const apps = useQuery({ queryKey: ['platform', 'apps', 'all'], queryFn: () => platformApi.apps(), staleTime: 60_000, enabled });
+  // Every business is a choice, including self-serve ones that have no app of their own yet.
+  const all = useQuery({ queryKey: ['platform', 'workspaces', 'filter-options'], queryFn: () => workspacesApi.list(), staleTime: 60_000, enabled });
   const products = useMemo(() => {
     const seen = new Map<string, { id: string; code: string; name: string }>();
+    for (const w of all.data?.data ?? []) seen.set(w.id, { id: w.id, code: w.code, name: w.name });
     for (const a of apps.data ?? []) seen.set(a.workspaceId, { id: a.workspaceId, code: a.workspaceCode, name: a.workspaceName });
     return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }, [apps.data]);
+  }, [apps.data, all.data]);
   return { apps: apps.data ?? [], products };
 }
 

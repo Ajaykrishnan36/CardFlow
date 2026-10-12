@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { isApiError, setUnauthorizedHandler } from '@crm/api/client';
-import { homeFor, isOwnerSession, meKey, OwnerLoginGate, RedirectIfSignedIn, RequireOwner, RequireSession, useCapabilities, useMe } from '@crm/auth/session';
+import { homeFor, isOwnerSession, meKey, OwnerLoginGate, RedirectIfSignedIn, RequireOwner, RequireSession, useMe } from '@crm/auth/session';
 import { PhoneLayout, usePhoneLayout } from './mobile-shell';
 // @ts-expect-error — a JavaScript module without type declarations
 import { phoneHandles } from '../navigation/routes';
@@ -25,7 +25,7 @@ import { DeveloperPage } from './features/tools/developer-page';
 import { SignupPage } from './features/auth/signup-page';
 import { AppsPage } from './features/owner/apps-page';
 import { ProductObjectDetailPage, ProductObjectsPage } from './features/objects/product-objects';
-import { ComingSoonPage, NotFoundPage } from '@crm/features/system/pages';
+import { NotFoundPage } from '@crm/features/system/pages';
 
 // Route-level code splitting (PRD §11 performance): only the sign-in screens ship eagerly.
 const MfaVerifyPage = lazy(() => import('@crm/features/auth/mfa-pages').then((m) => ({ default: m.MfaVerifyPage })));
@@ -69,6 +69,16 @@ const AuditPage = lazy(() => import('@crm/features/audit/audit-page').then((m) =
 const IntegrationsPage = lazy(() => import('@crm/features/integrations/integrations-page').then((m) => ({ default: m.IntegrationsPage })));
 
 const queryClient = new QueryClient({
+  // An action that fails must say so. A mutation that brings its own onError handles it;
+  // any other one (delete a team, remove a mailbox, retry a webhook…) gets a toast here
+  // instead of a dialog that just closes.
+  mutationCache: new MutationCache({
+    onError: (err, _vars, _ctx, mutation) => {
+      if (mutation.options.onError) return;
+      if (isApiError(err) && err.status === 401) return; // the session bridge handles sign-in
+      toast.error(isApiError(err) ? err.message : "That didn't work. Check your connection and try again.");
+    }
+  }),
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
@@ -101,19 +111,6 @@ function RootRedirect() {
   if (isPending) return <FullPageLoader />;
   if (!me) return <Navigate to="/crm/login" replace />;
   return <Navigate to={me.next.startsWith('/crm/mfa') || me.next === '/crm/change-password' ? me.next : homeFor(me)} replace />;
-}
-
-/** Nav entries whose module isn't built yet land here, labelled from /capabilities. */
-function NavComingSoon({ backTo }: { backTo: string }) {
-  const { data: me } = useMe();
-  const { data: caps } = useCapabilities(Boolean(me));
-  const location = useLocation();
-  // Most specific match wins, so /crm/home/leads resolves to Leads rather than Home.
-  const item = caps?.navigation
-    .filter((n) => location.pathname === n.path || location.pathname.startsWith(n.path + '/'))
-    .sort((a, b) => b.path.length - a.path.length)[0];
-  if (caps && (!item || item.available)) return <NotFoundPage />;
-  return <ComingSoonPage name={item?.label ?? '…'} backTo={backTo} />;
 }
 
 function AppRoutes() {
@@ -217,7 +214,7 @@ function AppRoutes() {
               <Route path="/crm/owner/objects/:key" element={<ObjectDetailPage />} />
               <Route path="/crm/owner/audit" element={<AuditPage />} />
               <Route path="/crm/owner/integrations" element={<IntegrationsPage />} />
-              <Route path="/crm/owner/*" element={<NavComingSoon backTo="/crm/owner/dashboard" />} />
+              <Route path="/crm/owner/*" element={<NotFoundPage />} />
             </Route>
           </Route>
         </Route>

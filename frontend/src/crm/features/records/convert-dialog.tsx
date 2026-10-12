@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { currencySymbol, defaultCurrency } from '@crm/lib/money';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -296,7 +297,7 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
                         <Input value={d.oppName} onChange={(e) => patch({ oppName: e.target.value })} />
                       </Field>
                       <Field label={t('records.convert.oppAmount')} error={err('opportunity.amount')}>
-                        <Input type="number" inputMode="decimal" leading={<span className="text-[13px]">₹</span>} value={d.oppAmount} onChange={(e) => patch({ oppAmount: e.target.value })} />
+                        <Input type="number" inputMode="decimal" leading={<span className="text-[13px]">{currencySymbol(defaultCurrency())}</span>} value={d.oppAmount} onChange={(e) => patch({ oppAmount: e.target.value })} />
                       </Field>
                       <Field label={t('records.convert.oppClose')} error={err('opportunity.closeDate')}>
                         <Input type="date" value={d.oppCloseDate} onChange={(e) => patch({ oppCloseDate: e.target.value })} />

@@ -149,9 +149,16 @@ func (p *Provider) FetchUser(ctx context.Context, tok *oauth2.Token) (*UserInfo,
 	if err := json.NewDecoder(res.Body).Decode(&u); err != nil {
 		return nil, err
 	}
-	// Microsoft accounts: work accounts are verified by the tenant.
+	// Microsoft sends no email_verified claim. A single named tenant vouches for its own
+	// addresses; the shared "common" endpoint lets any tenant claim any address, so an
+	// address from there is never treated as verified (it can't take over an account).
 	if p.Name == "microsoft" && u.EmailVerified == nil && u.Email != "" {
-		u.EmailVerified = true
+		switch strings.ToLower(strings.TrimSpace(os.Getenv("CRM_MICROSOFT_TENANT"))) {
+		case "", "common", "organizations", "consumers":
+			u.EmailVerified = false
+		default:
+			u.EmailVerified = true
+		}
 	}
 	u.Email = strings.ToLower(strings.TrimSpace(u.Email))
 	if u.Email == "" || u.Subject == "" {

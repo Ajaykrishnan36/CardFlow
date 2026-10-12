@@ -15,7 +15,9 @@ export function useWorkspaceContextQuery(code: string | undefined) {
   return useQuery({
     queryKey: [...workspaceContextKey(code ?? ''), app],
     queryFn: () => workspaceApi.context(code!, app || undefined),
-    placeholderData: (prev) => prev,
+    // Keep the old answer only while the same business reloads (switching app inside it).
+    // Switching business must never show the previous one's name, menu or permissions.
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (code ?? '') ? prev : undefined),
     enabled: Boolean(code),
     staleTime: 60_000
   });

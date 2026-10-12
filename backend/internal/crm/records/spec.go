@@ -298,7 +298,7 @@ var contactSpec = objectSpec{
 		typed("description", "Description", "textarea", "description"),
 		ro(lookup("identityId", "User login", "identity_id", "users")),
 	),
-	ListColumns: []string{"accountId", "title", "email", "phone", "ownerId", "createdBy", "createdAt"},
+	ListColumns: []string{"accountId", "title", "email", "phone", "mobile", "ownerId", "createdBy", "createdAt"},
 	Layout: Layout{
 		Highlights: []string{"accountId", "title", "email", "phone", "ownerId"},
 		Sections: []Section{

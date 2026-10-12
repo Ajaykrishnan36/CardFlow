@@ -563,6 +563,10 @@ func (s *Service) ChangePassword(ctx context.Context, sess *Session, current, ne
 
 	var hash string
 	if err := s.store.Pool.QueryRow(ctx, `SELECT hash FROM crm.password_credentials WHERE identity_id = $1`, sess.IdentityID).Scan(&hash); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Signed in by mobile code, email code or SSO and never set a password.
+			return nil, shared.Validation(map[string]string{"currentPassword": "This account has no password yet. Use “Set password” in Profile & security."})
+		}
 		return nil, err
 	}
 	if !verifyPassword(current, hash) {

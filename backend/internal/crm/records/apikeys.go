@@ -307,6 +307,16 @@ func (h *Handler) handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 				*in.PermissionSetID, sc.WS).Scan(&exists)
 			if !exists {
 				fe["permissionSetId"] = "Pick a permission set of this workspace."
+			} else if !sc.Owner {
+				// A key never does more than the person who made it (the same rule as giving a
+				// teammate a permission set).
+				var raw []byte
+				_ = h.store.Pool.QueryRow(r.Context(), `SELECT rules FROM crm.permission_sets WHERE id = $1`, *in.PermissionSetID).Scan(&raw)
+				rules := access.ParseRules(raw)
+				rules.Capabilities = without(rules.Capabilities, access.CapAccessManage, access.CapMembersManage, access.CapDeveloper)
+				if list := access.Exceeds(rules, sc.Eff); len(list) > 0 {
+					fe["permissionSetId"] = "This permission set gives more than your own access (" + list[0] + "). Pick one within what you can do yourself."
+				}
 			}
 		}
 	default:

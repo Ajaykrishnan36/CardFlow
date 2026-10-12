@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { workspaceSupportApi } from '@crm/api/endpoints';
@@ -15,7 +16,11 @@ export function TicketToCase() {
     workspaceSupportApi(code)
       .get(id)
       .then((tk) => live && navigate(supportPath(code, id, tk.caseId), { replace: true }))
-      .catch(() => live && navigate(supportPath(code), { replace: true }));
+      .catch(() => {
+        if (!live) return;
+        toast.error("That support ticket wasn't found. It may have been removed, or the link is wrong.");
+        navigate(supportPath(code), { replace: true });
+      });
     return () => {
       live = false;
     };

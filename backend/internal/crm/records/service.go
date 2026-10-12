@@ -312,6 +312,14 @@ func (h *Handler) restoreRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, sp
 	if err != nil {
 		return nil, err
 	}
+	// A value that must be unique may have been taken while this record sat in the bin.
+	if fields, err := allFields(ctx, tx, ws, spec); err == nil {
+		if fe := checkUnique(ctx, tx, ws, spec, fields, &changeSet{custom: row.Values}, id); len(fe) > 0 {
+			for _, msg := range fe {
+				return nil, shared.NewError(http.StatusConflict, "unique_taken", "Can't restore: "+msg+" Change or delete the other record first.")
+			}
+		}
+	}
 	if err := insertActivity(ctx, tx, ws, spec.Key, id, "record.restored", "Restored from the recycle bin", map[string]any{"source": a.Source}, a.ID); err != nil {
 		return nil, err
 	}

@@ -1,3 +1,4 @@
+import { setDisplayZone } from '@crm/lib/zone';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Outlet, useParams } from 'react-router-dom';
@@ -26,6 +27,8 @@ export function WorkspaceLayout() {
   const scope = useMemo(() => (q.data ? scopeFromContext(q.data, ws) : null), [q.data, ws]);
   useProductAccent(q.data?.setup?.accentColor);
   setDefaultCurrency(q.data?.workspace.currency);
+  const meQ = useMe();
+  setDisplayZone(meQ.data?.identity.timezone || q.data?.workspace.timezone);
 
   if (q.isPending) {
     return (

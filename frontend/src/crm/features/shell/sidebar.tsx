@@ -129,7 +129,7 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
                 <div className="mx-2 mb-2 h-px bg-border" />
               ) : null}
               <ul className="space-y-0.5">
-                {group.items.map((item) => (
+                {group.items.filter((item) => item.available).map((item) => (
                   <li key={item.key}>
                     <SidebarLink item={item} collapsed={collapsed} onNavigate={onNavigate} filtered={filteredPaths} />
                   </li>
@@ -171,7 +171,6 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
 }
 
 function SidebarLink({ item, collapsed, onNavigate, filtered }: { item: NavItem; collapsed: boolean; onNavigate?: () => void; filtered: string[] }) {
-  const { t } = useTranslation();
   const location = useLocation();
   const Icon = navIcon(item.icon);
   // "Vendors" is the accounts list through a fixed filter (D-117): it is the active entry
@@ -202,18 +201,13 @@ function SidebarLink({ item, collapsed, onNavigate, filtered }: { item: NavItem;
       {!collapsed ? (
         <>
           <span className="flex-1 truncate">{item.label}</span>
-          {!item.available ? (
-            <span className="rounded border border-dashed px-1 text-[10px] font-medium uppercase leading-4 tracking-wide text-muted-foreground/80">
-              {t('common.soon')}
-            </span>
-          ) : null}
         </>
       ) : (
         <span className="sr-only">{item.label}</span>
       )}
     </NavLink>
   );
-  return collapsed ? <Tooltip content={item.available ? item.label : `${item.label} · ${t('common.soon')}`}>{link}</Tooltip> : link;
+  return collapsed ? <Tooltip content={item.label}>{link}</Tooltip> : link;
 }
 
 function WorkspaceAvatar({ name, className }: { name: string; className?: string }) {

@@ -199,6 +199,16 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 	shared.WriteJSON(w, http.StatusOK, resp)
 }
 
+// baseMoneyExpr is a number field as SQL. An object's main amount (a deal's amount, an
+// invoice's total) is read in the business's own currency, so a total never adds dollars
+// to rupees as if they were the same thing.
+func baseMoneyExpr(spec *objectSpec, f Field) string {
+	if m, ok := moneyFields[spec.Key]; ok && m[0] == f.Key {
+		return numeric(`COALESCE(NULLIF(t.custom->>'` + m[1] + `', ''), t.custom->>'` + m[0] + `')`)
+	}
+	return "(" + filterExpr(f) + ")::numeric"
+}
+
 // aggregates computes footer totals: "amount:sum,probability:avg".
 func (h *Handler) aggregates(ctx context.Context, ws uuid.UUID, spec *objectSpec, p listParams, raw string) (map[string]map[string]float64, error) {
 	fields, err := allFields(ctx, h.store.Pool, ws, spec)
@@ -219,7 +229,7 @@ func (h *Handler) aggregates(ctx context.Context, ws uuid.UUID, spec *objectSpec
 			continue
 		}
 		wants = append(wants, want{key, fn})
-		cols = append(cols, "COALESCE("+fn+"(("+filterExpr(f)+")::numeric), 0)::float8")
+		cols = append(cols, "COALESCE("+fn+"("+baseMoneyExpr(spec, f)+"), 0)::float8")
 	}
 	out := map[string]map[string]float64{}
 	if len(wants) == 0 {
@@ -282,7 +292,10 @@ type recordGroup struct {
 	Label string `json:"label"`
 	Tone  string `json:"tone,omitempty"`
 	Count int    `json:"count"`
-	Rows  []Row  `json:"rows"`
+	// Amount: the sum of the object's main amount over every record of the group (not only
+	// the cards loaded), in the business's currency. Absent for objects without one.
+	Amount *float64 `json:"amount,omitempty"`
+	Rows   []Row    `json:"rows"`
 }
 
 // GET /crm/{object}/groups?field=status&limit=20 (+ the list's selection parameters)
@@ -324,7 +337,16 @@ func (h *Handler) handleGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	counts := map[string]int{}
-	cq, err := h.store.Pool.Query(r.Context(), "SELECT COALESCE(("+filterExpr(f)+")::text, ''), count(*) FROM crm."+spec.Table+" t"+where+" GROUP BY 1", b.args...)
+	amounts := map[string]float64{}
+	sumExpr, hasAmount := "0", false
+	if m, ok := moneyFields[spec.Key]; ok {
+		for _, x := range fields {
+			if x.Key == m[0] {
+				sumExpr, hasAmount = baseMoneyExpr(spec, x), true
+			}
+		}
+	}
+	cq, err := h.store.Pool.Query(r.Context(), "SELECT COALESCE(("+filterExpr(f)+")::text, ''), count(*), COALESCE(sum("+sumExpr+"), 0)::float8 FROM crm."+spec.Table+" t"+where+" GROUP BY 1", b.args...)
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
@@ -332,12 +354,13 @@ func (h *Handler) handleGroups(w http.ResponseWriter, r *http.Request) {
 	for cq.Next() {
 		var v string
 		var n int
-		if err := cq.Scan(&v, &n); err != nil {
+		var amt float64
+		if err := cq.Scan(&v, &n, &amt); err != nil {
 			cq.Close()
 			shared.WriteError(w, r, err)
 			return
 		}
-		counts[v] = n
+		counts[v], amounts[v] = n, amt
 	}
 	cq.Close()
 	groups := []recordGroup{}
@@ -418,6 +441,10 @@ func (h *Handler) handleGroups(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		groups[i].Rows = rows
+		if hasAmount {
+			amt := amounts[groups[i].Value]
+			groups[i].Amount = &amt
+		}
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"field": f.Key, "groups": groups})
 }

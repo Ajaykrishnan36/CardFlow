@@ -45,10 +45,13 @@ export function ReportBuilderPage() {
 
 function useDebounced<T>(value: T, ms = 350): T {
   const [v, setV] = useState(value);
+  // Compared by content: the caller builds a new object on every render, and treating
+  // that as a change re-rendered the page every 350 ms for as long as it was open.
+  const key = JSON.stringify(value);
   useEffect(() => {
-    const h = setTimeout(() => setV(value), ms);
+    const h = setTimeout(() => setV((prev) => (JSON.stringify(prev) === key ? prev : (JSON.parse(key) as T))), ms);
     return () => clearTimeout(h);
-  }, [value, ms]);
+  }, [key, ms]);
   return v;
 }
 

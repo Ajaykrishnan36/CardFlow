@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { NotFoundPage } from '@crm/features/system/pages';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -36,6 +37,7 @@ import { CaseSlaCard, InvoicePaymentsCard, PaymentAllocationsCard, Relationships
 export function RecordDetailPage({ object }: { object: ObjectKey }) {
   const { id = '' } = useParams();
   const scope = useRecordScope();
+  if (!scope.knows(object)) return <NotFoundPage />;
   if (!scope.can(object, 'read')) return <RecordNoAccess />;
   // Keyed by id so edit state never leaks between records of the same object.
   return <RecordDetailView key={id} object={object} id={id} />;

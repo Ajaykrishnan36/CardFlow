@@ -89,7 +89,9 @@ func (s *Service) RequestOTP(ctx context.Context, in OTPRequestInput, meta Reque
 	if strings.EqualFold(strings.TrimSpace(in.Audience), "owner") {
 		loginPath = "/crm/owner/login"
 	}
-	magic := s.cfg.BaseURL + loginPath + "?" + url.Values{"method": {"code"}, "email": {email}, "code": {code}}.Encode()
+	// The code rides in the fragment, which browsers never send to a server: it stays out of
+	// proxy logs and Referer headers, and the page removes it from the address bar on load.
+	magic := s.cfg.BaseURL + loginPath + "?" + url.Values{"method": {"code"}, "email": {email}}.Encode() + "#code=" + code
 	if err := s.sendNow(ctx, mail.Message{
 		To:      email,
 		Subject: code + " is your " + s.cfg.AppName + " sign-in code",

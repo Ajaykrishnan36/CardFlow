@@ -633,10 +633,20 @@ func (h *Handler) adminOptions(w http.ResponseWriter, r *http.Request, sc *Admin
 	if setup, err := WorkspaceSetup(ctx, h.store.Pool, sc.WS); err == nil && setup.UserTypes != nil {
 		userTypes = setup.UserTypes
 	}
+	// Only the modules this business has switched on: a set that mentions a module that is
+	// off grants nothing here, so it must not count as "more than your access" (the built-in
+	// sets name every module) or clutter the permission editor.
+	objects := []access.CatalogObject{}
+	for _, o := range access.CatalogObjectsFor(sc.WS) {
+		if lo, ok := sc.Limit.Objects[o.Key]; ok && !lo.ModuleEnabled {
+			continue
+		}
+		objects = append(objects, o)
+	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
 		"canManageAccess": canAccess, "canManageMembers": canMembers, "userTypes": userTypes,
 		"grantable": sc.Limit.AsRules(),
-		"catalog":   accessCatalog{Objects: access.CatalogObjectsFor(sc.WS), Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles()},
+		"catalog":   accessCatalog{Objects: objects, Actions: access.Actions, Capabilities: access.CapabilityCatalog, Roles: access.SystemRoles()},
 		"roles":     roles, "permissionSets": sets, "products": sc.Limit.Products, "isPlatform": sc.IsPlatform,
 	})
 }
@@ -758,6 +768,19 @@ func (h *Handler) checkGrant(ctx context.Context, sc *AdminScope, roleKey *strin
 		}
 		if list := access.Exceeds(rules, sc.Limit); len(list) > 0 {
 			return exceedsErr(list)
+		}
+		// Nobody hands out a role that ranks above their own (a Staff member who may manage
+		// users can't make an Admin).
+		if sc.Limit != nil && !sc.IsPlatform && sc.Limit.RoleKey != "" && sc.Limit.RoleKey != "PLATFORM_OWNER" {
+			var mine, theirs int
+			if err := h.store.Pool.QueryRow(ctx, `
+				SELECT COALESCE((SELECT rank FROM crm.roles WHERE workspace_id = $1 AND key = $2), 0),
+				       COALESCE((SELECT rank FROM crm.roles WHERE workspace_id = $1 AND key = $3), 0)`, sc.WS, sc.Limit.RoleKey, *roleKey).Scan(&mine, &theirs); err != nil {
+				return err
+			}
+			if theirs > mine {
+				return shared.Forbidden("exceeds_your_access", "You can't give a role that ranks above your own.")
+			}
 		}
 	}
 	if setIDs != nil {
@@ -881,6 +904,15 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 	if !sc.IsPlatform && len(in.ProductIDs) == 0 {
 		for _, p := range sc.Limit.Products {
 			in.ProductIDs = append(in.ProductIDs, p.ID)
+		}
+	}
+	// A role grants nothing by itself (D-48): with no permission set chosen, the person gets
+	// the role's standard set, however they are added. Naming it here also puts it through
+	// the "never more than you have" check below.
+	if len(in.PermissionSetIDs) == 0 {
+		var def uuid.UUID
+		if err := h.store.Pool.QueryRow(ctx, `SELECT id FROM crm.permission_sets WHERE workspace_id = $1 AND system_key = $2`, sc.WS, in.RoleKey).Scan(&def); err == nil {
+			in.PermissionSetIDs = []uuid.UUID{def}
 		}
 	}
 	if err := h.checkGrant(ctx, sc, &in.RoleKey, &in.PermissionSetIDs, &in.ProductIDs); err != nil {

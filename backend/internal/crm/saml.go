@@ -140,11 +140,25 @@ func (m *Module) samlACS(w http.ResponseWriter, r *http.Request) {
 // ssoIdentity finds (or, with just-in-time provisioning, creates) the person.
 func (m *Module) ssoIdentity(ctx context.Context, provider string, ws uuid.UUID, subject, email, name string, jit bool, domains []string, roleKey string) (uuid.UUID, error) {
 	var id uuid.UUID
-	err := m.platform.Store().Pool.QueryRow(ctx, `SELECT identity_id FROM crm.sso_links WHERE provider = $1 AND subject = $2`, provider, subject).Scan(&id)
-	if err == nil {
-		return id, nil
-	}
 	pool := m.platform.Store().Pool
+	// A business's identity provider speaks only for that business's own people: whoever it
+	// names must already be an active member here, and is never the platform owner. Without
+	// this, an admin could point SSO at their own provider and sign in as anyone by email.
+	member := func(id uuid.UUID) error {
+		var ok bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.memberships m JOIN crm.identities i ON i.id = m.identity_id
+			WHERE m.identity_id = $1 AND m.workspace_id = $2 AND m.status = 'active' AND i.status = 'active' AND NOT i.is_platform_owner)`, id, ws).Scan(&ok); err != nil {
+			return err
+		}
+		if !ok {
+			return shared.Forbidden("not_a_member", "This account isn't a member of this product. Ask your administrator for an invitation.")
+		}
+		return nil
+	}
+	err := pool.QueryRow(ctx, `SELECT identity_id FROM crm.sso_links WHERE provider = $1 AND subject = $2`, provider, subject).Scan(&id)
+	if err == nil {
+		return id, member(id)
+	}
 	err = pool.QueryRow(ctx, `SELECT i.id FROM crm.verified_identifiers v JOIN crm.identities i ON i.id = v.identity_id
 		WHERE v.kind = 'email' AND v.namespace = 'global' AND v.value_normalized = $1 AND i.status = 'active'`, email).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -185,6 +199,8 @@ func (m *Module) ssoIdentity(ctx context.Context, provider string, ws uuid.UUID,
 			return uuid.Nil, err
 		}
 	} else if err != nil {
+		return uuid.Nil, err
+	} else if err := member(id); err != nil {
 		return uuid.Nil, err
 	}
 	_, _ = pool.Exec(ctx, `INSERT INTO crm.sso_links (provider, subject, identity_id, email_at_link) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`, provider, subject, id, email)

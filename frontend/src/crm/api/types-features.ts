@@ -68,6 +68,8 @@ export interface RecordGroup {
   label: string;
   tone?: 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
   count: number;
+  /** Sum of the object's main amount over the whole group, in the business's currency. */
+  amount?: number;
   rows: RecordRow[];
 }
 

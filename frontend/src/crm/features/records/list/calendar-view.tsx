@@ -1,3 +1,4 @@
+import { zoned } from '@crm/lib/zone';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -42,7 +43,7 @@ function dayOf(v: unknown, f: FieldDef): string | null {
 function timeOf(v: unknown, f: FieldDef): string {
   if (f.type !== 'datetime' || typeof v !== 'string') return '';
   const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-IN', zoned({ hour: 'numeric', minute: '2-digit' }));
 }
 
 export function CalendarView({

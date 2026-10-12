@@ -118,6 +118,9 @@ func (h *Handler) purgeRecycleBins(ctx context.Context) {
 			if budget <= 0 || ctx.Err() != nil {
 				return
 			}
+			if keptForTheBooks[spec.Key] {
+				continue // never deleted for good, so not worth the budget or a log line
+			}
 			ids := []uuid.UUID{}
 			r2, err := h.store.Pool.Query(ctx, "SELECT id FROM crm."+spec.Table+" WHERE workspace_id = $1 AND deleted_at IS NOT NULL AND deleted_at < $2 ORDER BY deleted_at LIMIT $3",
 				w.id, cutoff, budget)

@@ -105,7 +105,9 @@ export function KanbanBoard({
     <div className="flex min-h-[420px] gap-3 overflow-x-auto p-3" role="list" aria-label={t('lists.board.label', { field: groupField.label })}>
       {q.data.groups.map((g) => {
         const rows = [...g.rows, ...(extra[g.value] ?? []).filter((r) => !g.rows.some((x) => x.id === r.id))];
-        const total = amountField ? rows.reduce((n, r) => n + (Number(r.values[amountField.key]) || 0), 0) : 0;
+        // The server's sum covers every deal of the column in the business's currency; the
+        // cards on screen are only the first few and may be in other currencies.
+        const total = typeof g.amount === 'number' ? g.amount : amountField ? rows.reduce((n, r) => n + (Number(r.values[amountField.key]) || 0), 0) : 0;
         return (
           <section
             key={g.value || '_empty'}

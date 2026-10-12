@@ -1,3 +1,4 @@
+import { zoned } from '@crm/lib/zone';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -48,7 +49,7 @@ function show(v: unknown): string {
   const s = String(v);
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
     const d = new Date(s);
-    if (!Number.isNaN(d.getTime())) return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    if (!Number.isNaN(d.getTime())) return d.toLocaleString('en-IN', zoned({ day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }));
   }
   return s;
 }

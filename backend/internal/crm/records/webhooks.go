@@ -305,6 +305,24 @@ func (h *Handler) validateWebhook(sc *Scope, in webhookInput, wh *Webhook, creat
 	if wh.Objects == nil {
 		wh.Objects = []string{}
 	}
+	// A webhook receives whole records, so it may only listen to objects its author can see
+	// in full: not ones they can't read, and not ones where they see only their own records.
+	if !sc.Owner && (in.Objects != nil || in.Events != nil) {
+		full := func(o string) bool { return sc.Can(o, "read") && !sc.OwnOnly(o) }
+		for _, o := range wh.Objects {
+			if !full(o) {
+				fe["objects"] = "You can only send records of objects you can see in full. " + specFor(o).Plural + " isn't one of them."
+			}
+		}
+		if len(wh.Objects) == 0 {
+			for _, spec := range append([]*objectSpec{specs["leads"], specs["accounts"], specs["contacts"]}, dynamicSpecs()...) {
+				if spec != nil && sc.Enabled(spec.Key) && !full(spec.Key) {
+					fe["objects"] = "Choose the objects to send. “Every object” needs access to all records of every object."
+					break
+				}
+			}
+		}
+	}
 	if in.Status != nil {
 		if *in.Status != "active" && *in.Status != "paused" {
 			fe["status"] = "Pick active or paused."

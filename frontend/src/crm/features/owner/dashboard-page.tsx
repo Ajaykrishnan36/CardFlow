@@ -182,7 +182,7 @@ function Checklist({ steps }: { steps?: ChecklistStep[] }) {
       </div>
       <ol className="p-2">
         {steps
-          ? steps.map((s, i) => <ChecklistRow key={s.key} step={s} index={i + 1} />)
+          ? steps.filter((s) => s.status !== 'upcoming').map((s, i) => <ChecklistRow key={s.key} step={s} index={i + 1} />)
           : Array.from({ length: 5 }).map((_, i) => (
               <li key={i} className="flex items-center gap-3 px-3 py-3">
                 <Skeleton className="size-7 rounded-full" />
@@ -219,8 +219,6 @@ function ChecklistRow({ step, index }: { step: ChecklistStep; index: number }) {
       </span>
       {isDone ? (
         <Badge tone="success">{t('owner.dashboard.stepDone')}</Badge>
-      ) : isUpcoming ? (
-        <Badge>{t('owner.dashboard.stepUpcoming')}</Badge>
       ) : (
         <span className="flex items-center gap-1 text-xs font-medium text-primary">
           {t('owner.dashboard.stepStart')} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />

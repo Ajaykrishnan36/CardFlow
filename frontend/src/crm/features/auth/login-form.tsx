@@ -45,12 +45,22 @@ export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
     asked === 'code' ? 'code' : asked === 'password' || audience === 'owner' ? 'password' : 'phone'
   );
   const method = tabs.includes(picked) ? picked : tabs[0];
+  // Why you are back on this page (session ended, signed out, password updated) shows on
+  // every sign-in method, not only on the password form.
+  const topNotice = searchParams.get('expired')
+    ? { tone: 'info' as const, text: t('auth.login.sessionExpired') }
+    : searchParams.get('signedOut')
+      ? { tone: 'success' as const, text: t('auth.login.signedOut') }
+      : searchParams.get('reset')
+        ? { tone: 'success' as const, text: t('auth.login.passwordUpdated') }
+        : null;
   const providers = (['google', 'microsoft', 'linkedin'] as const).filter((p) => allowed.includes(p) && providersQ.data?.[p] && (audience === 'workspace' || p !== 'linkedin'));
   const sso = audience === 'workspace' && Boolean(product) && allowed.includes('sso');
   const buttons = providers.length > 0 || sso;
   return (
     <div className="space-y-5">
       {oauthError ? <Alert tone="danger">{oauthError}</Alert> : null}
+      {method !== 'password' && topNotice ? <Alert tone={topNotice.tone}>{topNotice.text}</Alert> : null}
       {tabs.length > 1 ? (
         <div role="tablist" aria-label={t('auth.login.submit')} className={'grid rounded-lg border bg-muted/60 p-1 ' + (tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-2')}>
           {tabs.map((m) => (
