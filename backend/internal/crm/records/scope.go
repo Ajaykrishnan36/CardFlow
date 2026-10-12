@@ -111,6 +111,10 @@ func (h *Handler) memberScope(next http.Handler) http.Handler {
 				shared.WriteError(w, r, err)
 				return
 			}
+			if err := h.checkLoginPolicy(r, sc.WS, nil); err != nil {
+				shared.WriteError(w, r, err)
+				return
+			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), scopeKeyT{}, sc)))
 			return
 		}
@@ -155,6 +159,11 @@ func (h *Handler) memberScope(next http.Handler) http.Handler {
 		}
 		// The product's setup decides how its people sign in (D-64).
 		if err := identity.SessionMethodAllowed(r.Context(), sess, code); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+		// And from where, and for how long a sign-in lasts (D-142).
+		if err := h.checkLoginPolicy(r, sc.WS, sess); err != nil {
 			shared.WriteError(w, r, err)
 			return
 		}

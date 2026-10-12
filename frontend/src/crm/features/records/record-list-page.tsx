@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Download, Ellipsis, LayoutTemplate, Plus, RefreshCw, RotateCcw, Save, Upload } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Ellipsis, LayoutTemplate, Plus, RefreshCw, RotateCcw, Save, ShieldCheck, Upload } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import { type BulkQuery } from '@crm/api/endpoints';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordListParams, RecordRow } from '@crm/api/types';
@@ -20,7 +20,7 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { FieldValue } from './field-value';
 import { NewRecordDialog } from './new-record-dialog';
 import { fieldIndex, objectIcon, recordKeys, statusOption, useObjectMeta } from './use-object-meta';
-import { layoutHref, listHref, useRecordScope } from './record-scope';
+import { layoutHref, listHref, rulesHref, useRecordScope } from './record-scope';
 import { rememberRecordList } from '@crm/features/shell/shortcuts';
 import { isForbidden, RecordNoAccess } from './record-states';
 import { ALL_VIEW, BIN_VIEW, ViewDialog, ViewsBar } from './list/views-bar';
@@ -326,6 +326,11 @@ function RecordListView({ object }: { object: ObjectKey }) {
                   {scope.canCustomize ? (
                     <MenuItem onSelect={() => navigate(layoutHref(scope, object))}>
                       <LayoutTemplate /> {t('records.common.editLayout')}
+                    </MenuItem>
+                  ) : null}
+                  {scope.canCustomize ? (
+                    <MenuItem onSelect={() => navigate(rulesHref(scope, object))}>
+                      <ShieldCheck /> {t('records.common.rulesAndDefaults')}
                     </MenuItem>
                   ) : null}
                   <MenuSeparator />

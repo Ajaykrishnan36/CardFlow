@@ -178,6 +178,19 @@ const strings = {
   },
 
   // ---- Single sign-on ----
+  loginPolicy: {
+    title: 'Login security',
+    body: 'Rules for everyone who signs in to this business. They apply to API keys too.',
+    networks: 'Allowed networks',
+    networksHint: 'One address or range per line, for example 203.0.113.7 or 203.0.113.0/24. Leave empty to allow any network.',
+    yourIp: 'You are on {{ip}} now.',
+    addMine: 'Add my address',
+    anywhere: 'People can sign in from any network.',
+    sessionTitle: 'Ask people to sign in again',
+    sessionBody: 'A sign-in stops working in this business after the number of hours you set, even if the person has been active.',
+    hours: 'Hours a sign-in lasts',
+    saved: 'Login security saved'
+  },
   sso: {
     title: 'Single sign-on',
     subtitle: 'Let people sign in with your company’s identity provider (Okta, Microsoft Entra ID, Google Workspace, OneLogin, Auth0, Keycloak…) using SAML 2.0 or OpenID Connect.',

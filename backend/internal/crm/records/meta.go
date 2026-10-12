@@ -30,6 +30,8 @@ type Meta struct {
 	Custom        bool           `json:"custom,omitempty"`
 	// LookupTargets are the objects a new lookup / relations field can point at.
 	LookupTargets []lookupTarget `json:"lookupTargets,omitempty"`
+	// Defaults are what a new record starts with (D-141).
+	Defaults map[string]any `json:"defaults,omitempty"`
 }
 
 var customTypes = map[string]bool{
@@ -233,8 +235,15 @@ func (h *Handler) meta(ctx context.Context, wsID uuid.UUID, spec *objectSpec) (*
 	if err != nil {
 		return nil, err
 	}
+	defaults, _ := fieldDefaults(ctx, h.store.Pool, wsID, spec.Key)
+	for k := range defaults {
+		if f, ok := fieldByKey(fields, k); !ok || f.ReadOnly {
+			delete(defaults, k)
+		}
+	}
 	return &Meta{
-		Object: spec.Key, LabelSingular: spec.Singular, LabelPlural: spec.Plural, CodePrefix: spec.Prefix,
+		Defaults: defaults,
+		Object:   spec.Key, LabelSingular: spec.Singular, LabelPlural: spec.Plural, CodePrefix: spec.Prefix,
 		Fields: fields, Layout: layout, DefaultLayout: sanitizeLayout(cloneLayout(spec.Layout), fields),
 		ListColumns: spec.ListColumns, StatusField: spec.StatusField, Statuses: statusesFor(ctx, h.store.Pool, wsID, spec), Icon: spec.Icon, Custom: spec.Custom,
 		LookupTargets: h.lookupTargets(),

@@ -62,6 +62,7 @@ const ProvisionWorkspacePage = lazy(() => import('@crm/features/workspaces/provi
 const WorkspaceDetailPage = lazy(() => import('@crm/features/workspaces/workspace-detail-page').then((m) => ({ default: m.WorkspaceDetailPage })));
 const RecordListPage = lazy(() => import('@crm/features/records/record-list-page').then((m) => ({ default: m.RecordListPage })));
 const RecordDetailPage = lazy(() => import('@crm/features/records/record-detail-page').then((m) => ({ default: m.RecordDetailPage })));
+const RulesPage = lazy(() => import('@crm/features/records/rules-page').then((m) => ({ default: m.RulesPage })));
 const LayoutEditorPage = lazy(() => import('@crm/features/records/layout-editor-page').then((m) => ({ default: m.LayoutEditorPage })));
 const UsersPage = lazy(() => import('@crm/features/users/users-page').then((m) => ({ default: m.UsersPage })));
 const UserDetailPage = lazy(() => import('@crm/features/users/user-detail-page').then((m) => ({ default: m.UserDetailPage })));
@@ -186,12 +187,14 @@ function AppRoutes() {
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [
                 <Route key={`w-${object}`} path={object} element={<RecordListPage key={object} object={object} />} />,
                 <Route key={`w-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
-                <Route key={`w-${object}-layout`} path={`setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />
+                <Route key={`w-${object}-layout`} path={`setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />,
+                <Route key={`w-${object}-rules`} path={`setup/${object}/rules`} element={<RulesPage key={object} object={object} />} />
               ])}
               {/* Objects defined as data (opportunities, tasks, custom objects…): same pages, keyed by the URL. */}
               <Route path=":object" element={<ObjectRoute page="list" />} />
               <Route path=":object/:id" element={<ObjectRoute page="detail" />} />
               <Route path="setup/:object/layout" element={<ObjectRoute page="layout" />} />
+              <Route path="setup/:object/rules" element={<ObjectRoute page="rules" />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
             <Route element={<RequireOwner />}>
@@ -208,7 +211,8 @@ function AppRoutes() {
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [
                 <Route key={object} path={`/crm/owner/${object}`} element={<RecordListPage key={object} object={object} />} />,
                 <Route key={`${object}-detail`} path={`/crm/owner/${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
-                <Route key={`${object}-layout`} path={`/crm/owner/setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />
+                <Route key={`${object}-layout`} path={`/crm/owner/setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />,
+                <Route key={`${object}-rules`} path={`/crm/owner/setup/${object}/rules`} element={<RulesPage key={object} object={object} />} />
               ])}
               <Route path="/crm/owner/objects" element={<ObjectsPage />} />
               <Route path="/crm/owner/objects/:key" element={<ObjectDetailPage />} />
@@ -226,11 +230,12 @@ function AppRoutes() {
 }
 
 /** Record pages for an object named in the URL (keyed so switching objects resets state). */
-function ObjectRoute({ page }: { page: 'list' | 'detail' | 'layout' }) {
+function ObjectRoute({ page }: { page: 'list' | 'detail' | 'layout' | 'rules' }) {
   const { object = '' } = useParams();
   if (!/^[a-z][a-z0-9_]{1,40}$/.test(object)) return <NotFoundPage />;
   if (page === 'list') return <RecordListPage key={object} object={object} />;
   if (page === 'detail') return <RecordDetailPage key={object} object={object} />;
+  if (page === 'rules') return <RulesPage key={object} object={object} />;
   return <LayoutEditorPage key={object} object={object} />;
 }
 

@@ -493,6 +493,24 @@ export interface ObjectMeta {
   custom?: boolean;
   /** Objects a new lookup / relations field can link to. */
   lookupTargets?: Array<{ key: string; label: string }>;
+  /** What a new record starts with (set under Rules & defaults). */
+  defaults?: Record<string, unknown>;
+}
+
+/** A rule an admin wrote: a record matching the conditions can't be saved. */
+export interface ValidationRule {
+  id: string;
+  name: string;
+  message: string;
+  field?: string;
+  filter: import('./types-features').FilterGroup;
+  active: boolean;
+  updatedAt: string;
+}
+
+export interface ObjectRules {
+  rules: ValidationRule[];
+  defaults: Record<string, unknown>;
 }
 
 export interface LookupValue {

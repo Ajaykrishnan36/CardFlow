@@ -1043,6 +1043,40 @@ screen check unless noted.
 - BUG-001: sign-in codes on screen is a live setting (SMS provider + remove the preview flag).
 - BUG-015: owner console without two-step verification is decision D-133.
 
+## D-141 — Validation rules and default values per object
+
+Gap tracker GAP-001 and GAP-014 (default values).
+
+- **Validation rules.** Whoever may customise a business writes rules on any object
+  (standard or custom) under *Rules & defaults* (list page → ⋯ menu, `/setup/{object}/rules`).
+  A rule is a name, the same conditions lists and workflows use (D-54), a message and
+  optionally the field the message shows at. A record that matches the conditions after a
+  save is not saved — from a form, an import, the API, a bulk edit or a lead conversion.
+  The check runs in the save's transaction after the write, so it sees the new values and
+  a refused save leaves nothing behind. Work the system does on its own (workflows,
+  sweeps) is not held back. Up to 30 rules per object; each can be switched off.
+- **Default values.** The same page sets what a new record starts with when nothing is
+  given, for standard and custom fields alike (`crm.field_defaults`). The form shows them
+  before saving; the server applies them for imports and the API. Unique, system and file
+  fields can't have one. Defaults are fixed values — no "today" or "me" yet.
+- Tables `crm.validation_rules`, `crm.field_defaults` (migration 0029). Both changes are audited.
+
+## D-142 — Login security per business
+
+Gap tracker GAP-002 (the part that is not the SSO bug, which D-140 fixed).
+
+- A business sets, under Settings → Single sign-on → *Login security*: the networks its
+  people may work from (addresses or CIDR ranges), and after how many hours a sign-in
+  must be repeated. Needs "Manage roles & permission sets".
+- Both are checked on every member request in that business; the network list also holds
+  API keys. A person's other businesses are not affected.
+- A list that leaves out the saver's own address is refused, so nobody locks themselves out.
+  The platform owner entering from the console is not held to either rule.
+- The address is the one the proxy reports. Whether it can be trusted depends on the host
+  putting the real client address in the forwarding header (see HANDOVER, hosting).
+- Not built: a per-business password policy. A password belongs to the person, not to one
+  business, so it stays one rule for everyone. Owner-console MFA is still D-133.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

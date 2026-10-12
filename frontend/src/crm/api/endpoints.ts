@@ -61,6 +61,7 @@ import type {
   LookupValue,
   ObjectKey,
   ObjectMeta,
+  ObjectRules,
   Page,
   ProductCreateBody,
   ProductDetail,
@@ -227,6 +228,15 @@ export const workspaceApi = {
  * Record engine client. `prefix` is '/platform' for the owner's Platform CRM or
  * `/w/<code>` for a workspace member (server enforces their permissions).
  */
+export interface LoginPolicy {
+  ipRanges: string[];
+  sessionHours: number | null;
+  updatedAt?: string;
+  yourIp?: string;
+}
+
+export type RuleBody = { name: string; message: string; field: string; filter: unknown; active?: boolean };
+
 export function recordsApiFor(prefix: string) {
   return {
   meta: (object: ObjectKey) => api<ObjectMeta>(`${prefix}/crm/meta/${object}`),
@@ -238,6 +248,13 @@ export function recordsApiFor(prefix: string) {
   updateField: (object: ObjectKey, key: string, body: FieldUpdateBody) =>
     api<ObjectMeta>(`${prefix}/crm/meta/${object}/fields/${enc(key)}`, { method: 'PATCH', body }),
   deleteField: (object: ObjectKey, key: string) => api<ObjectMeta>(`${prefix}/crm/meta/${object}/fields/${enc(key)}`, { method: 'DELETE' }),
+  rules: (object: ObjectKey) => api<ObjectRules>(`${prefix}/crm/meta/${object}/rules`),
+  createRule: (object: ObjectKey, body: RuleBody) => api<ObjectRules>(`${prefix}/crm/meta/${object}/rules`, { method: 'POST', body }),
+  updateRule: (object: ObjectKey, id: string, body: Partial<RuleBody>) =>
+    api<ObjectRules>(`${prefix}/crm/meta/${object}/rules/${enc(id)}`, { method: 'PATCH', body }),
+  deleteRule: (object: ObjectKey, id: string) => api<ObjectRules>(`${prefix}/crm/meta/${object}/rules/${enc(id)}`, { method: 'DELETE' }),
+  saveDefaults: (object: ObjectKey, defaults: Record<string, unknown>) =>
+    api<ObjectRules>(`${prefix}/crm/meta/${object}/defaults`, { method: 'PUT', body: { defaults } }),
 
   list: (object: ObjectKey, params: RecordListParams = {}) => api<RecordPage>(`${prefix}/crm/${object}${qs(params)}`),
   get: (object: ObjectKey, id: string) => api<RecordDetail>(`${prefix}/crm/${object}/${enc(id)}`),
@@ -507,6 +524,9 @@ export function workspaceToolsApi(code: string) {
     saveSso: (body: { kind: 'saml' | 'oidc'; oidcIssuer?: string; oidcClientId?: string; oidcClientSecret?: string; enabled: boolean; name?: string; idpMetadataXml?: string; idpMetadataUrl?: string; domains: string[]; jitProvisioning: boolean; defaultRoleKey: string }) =>
       api<SSOSettings>(`${base}/sso`, { method: 'PUT', body }),
     deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' }),
+    /** Where this business's people may work from, and how long a sign-in lasts. */
+    loginPolicy: () => api<LoginPolicy>(`${base}/login-policy`),
+    saveLoginPolicy: (body: { ipRanges: string[]; sessionHours: number | null }) => api<LoginPolicy>(`${base}/login-policy`, { method: 'PUT', body }),
     inviteLink: () => api<InviteLinkSettings>(`${base}/invite-link`),
     /** Recycle bin retention (D-84): null keeps deleted records until someone removes them. */
     binSettings: () => api<{ retentionDays: number | null }>(`${base}/recycle-bin`),

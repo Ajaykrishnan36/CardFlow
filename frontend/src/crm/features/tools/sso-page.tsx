@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { isApiError } from '@crm/api/client';
 import type { SSOSettings } from '@crm/api/types-features';
+import type { LoginPolicy } from '@crm/api/endpoints';
 import { Button } from '@crm/components/ui/button';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
 import { Field } from '@crm/components/ui/field';
@@ -39,6 +40,7 @@ export function SsoPage() {
       ) : (
         <SsoForm key={q.data.updatedAt ?? 'new'} s={q.data} />
       )}
+      <LoginPolicyCard />
     </PageContainer>
   );
 }
@@ -224,5 +226,68 @@ function SsoForm({ s }: { s: SSOSettings }) {
         onConfirm={() => del.mutate()}
       />
     </div>
+  );
+}
+
+/** Where people may work from and how long a sign-in lasts (D-142). */
+function LoginPolicyCard() {
+  const { code } = useWorkspace();
+  const api = useTools();
+  const key = toolKeys.one(code, 'login-policy');
+  const q = useQuery({ queryKey: key, queryFn: () => api.loginPolicy() });
+  if (!q.data) return null;
+  return <LoginPolicyForm key={q.data.updatedAt ?? 'new'} p={q.data} queryKey={key} />;
+}
+
+function LoginPolicyForm({ p, queryKey }: { p: LoginPolicy; queryKey: readonly unknown[] }) {
+  const { t } = useTranslation();
+  const api = useTools();
+  const qc = useQueryClient();
+  const [ranges, setRanges] = useState(p.ipRanges.join('\n'));
+  const [limit, setLimit] = useState(p.sessionHours != null);
+  const [hours, setHours] = useState(String(p.sessionHours ?? 12));
+  const list = ranges.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+  const save = useMutation({
+    mutationFn: () => api.saveLoginPolicy({ ipRanges: list, sessionHours: limit ? Number(hours) || 0 : null }),
+    onSuccess: (next) => {
+      qc.setQueryData(queryKey, next);
+      toast.success(t('tools.loginPolicy.saved'));
+    }
+  });
+  const fe = isApiError(save.error) ? save.error.fieldErrors : {};
+  return (
+    <Card className="mt-4">
+      <CardHeader title={t('tools.loginPolicy.title')} description={t('tools.loginPolicy.body')} />
+      <div className="space-y-4 p-5">
+        <Field label={t('tools.loginPolicy.networks')} hint={t('tools.loginPolicy.networksHint')} error={fe.ipRanges}>
+          <Textarea value={ranges} onChange={(e) => setRanges(e.target.value)} rows={3} placeholder={'203.0.113.0/24\n198.51.100.7'} className="font-mono text-[13px]" />
+        </Field>
+        {p.yourIp ? (
+          <p className="flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground">
+            {t('tools.loginPolicy.yourIp', { ip: p.yourIp })}
+            {list.includes(p.yourIp) ? null : (
+              <Button type="button" variant="outline" size="sm" onClick={() => setRanges((v) => (v.trim() ? `${v.trim()}\n${p.yourIp}` : p.yourIp ?? ''))}>
+                {t('tools.loginPolicy.addMine')}
+              </Button>
+            )}
+          </p>
+        ) : null}
+        {list.length === 0 ? <Alert tone="info">{t('tools.loginPolicy.anywhere')}</Alert> : null}
+        <SettingRow title={t('tools.loginPolicy.sessionTitle')} body={t('tools.loginPolicy.sessionBody')}>
+          <Switch checked={limit} onCheckedChange={setLimit} aria-label={t('tools.loginPolicy.sessionTitle')} />
+        </SettingRow>
+        {limit ? (
+          <Field label={t('tools.loginPolicy.hours')} error={fe.sessionHours} className="max-w-xs">
+            <Input type="number" min={1} max={720} value={hours} onChange={(e) => setHours(e.target.value)} />
+          </Field>
+        ) : null}
+        {save.isError && Object.keys(fe).length === 0 ? <Alert tone="danger">{errorText(save.error, t('common.genericError'))}</Alert> : null}
+        <div className="flex justify-end">
+          <Button onClick={() => save.mutate()} loading={save.isPending}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }

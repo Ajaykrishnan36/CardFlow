@@ -134,6 +134,7 @@ func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 			values["status"] = "active"
 		}
 	}
+	applyDefaults(ctx, tx, ws, spec, fields, values)
 	cs, fe := buildChanges(ctx, tx, ws, fields, values, true)
 	for k, v := range objectRules(spec, values, map[string]any{}, true) {
 		fe[k] = v
@@ -146,6 +147,9 @@ func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 	}
 	id, err := insertRecord(ctx, tx, ws, spec, a.ID, cs)
 	if err != nil {
+		return nil, err
+	}
+	if err := h.checkRules(ctx, tx, ws, spec, id, a); err != nil {
 		return nil, err
 	}
 	row, _, err := h.getRow(ctx, tx, ws, spec, id, nil)
@@ -225,6 +229,9 @@ func (h *Handler) updateValues(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 		return nil, shared.Validation(fe)
 	}
 	if err := updateRecord(ctx, tx, ws, spec, id, a.ID, current.Version, cs); err != nil {
+		return nil, err
+	}
+	if err := h.checkRules(ctx, tx, ws, spec, id, a); err != nil {
 		return nil, err
 	}
 	after, _, err := h.getRow(ctx, tx, ws, spec, id, nil)

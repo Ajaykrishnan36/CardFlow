@@ -27,6 +27,8 @@ function initialValues(object: ObjectKey, meta: ObjectMeta): Record<string, unkn
     if (byKey.has('status')) v.status = 'new';
     if (byKey.has('source')) v.source = 'manual';
   }
+  // What the business set under Rules & defaults wins over the built-in starting values.
+  for (const [k, d] of Object.entries(meta.defaults ?? {})) if (byKey.has(k)) v[k] = d;
   return v;
 }
 
