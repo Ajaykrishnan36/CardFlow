@@ -50,7 +50,7 @@ product really stands so the order of work can be chosen.
 | CRM-004 Customer 360 | Partly | No household, no hierarchy tree view, no merge undo. |
 | CRM-005 Opportunities | Partly | No stage-required fields as such — validation rules (D-141) now cover this by hand. |
 | CRM-006 Catalog and pricing | Built | |
-| CRM-007 Quote → cash | Partly | **No PDF for quotes or invoices.** No e-signature. |
+| CRM-007 Quote → cash | Partly | Print / PDF for quotes, orders and invoices built (D-144). No e-signature, no HSN or CGST/SGST split. |
 | CRM-008 Campaigns | Partly | No budget/cost, no approval, no bounce tracking. |
 | CRM-009 Activities, calendar, search | Partly | No recurrence exceptions, no search index. |
 | FIN-001/002 Money, receipts, refunds | Built | Concurrent allocation locking not proven by test. |
@@ -75,7 +75,7 @@ product really stands so the order of work can be chosen.
 | OWN-001…016 Platform owner console | Partly | Tenant list, provisioning, plans/limits, audit built. No SaaS billing, no MRR, no support-access grants (owner still has full access to every business), no reliability or security dashboards. |
 | ONB-001…009 Onboarding and migration | Partly | Checklist and CSV import with dry run built. No wizard, no background import, no batch rollback. |
 | Login security | Partly (D-142) | Allowed networks and sign-in-again hours built. No MFA enforcement, no step-up. |
-| Pickers and forms (your request) | Built (D-143) | Search by name / phone digits / number, second line, auto-fill, shorter New forms. Auto-fill is on the New form only, not yet when editing a record. |
+| Pickers and forms (your request) | Built (D-143) | Search by name / phone digits / number, second line, auto-fill, shorter New forms. Contact and Account now follow each other. Auto-fill is on the New form only, not yet when editing a record. |
 
 ## 3. Industry packs
 
@@ -86,7 +86,7 @@ bike dealer by hand.
 
 | Pack | Status | Biggest missing pieces |
 |---|---|---|
-| General business (GEN) | Mostly built | PDFs, refund-after-part-payment acceptance run. |
+| General business (GEN) | Mostly built | Refund-after-part-payment acceptance run. |
 | Bike and car dealers (AUTO, 265 cases) | Not built as a pack | Vehicle stock by VIN / engine number, booking as its own record, allocation of one vehicle to one booking, test-ride record with licence check, on-road price breakdown, exchange vehicle, finance application per lender, PDI and handover checklists, registration tracker, **service plan created at delivery with odometer**, job card found by registration number, recall list. |
 | Insurance agents (INS, 192 cases) | Not built | Policies, policy years and instalments, commission expected / received / clawback, collection modes, renewal ladder, claims checklist, book import. |
 | Beauty parlour and kits (BEA) | Not built | Everything: stock by batch and expiry, kits, reservations, packages. |
@@ -122,10 +122,10 @@ The sheet's own Notes tab says this column was filled from intentions. Against t
 | Deal pipeline | Yes | Yes |
 | Business accounts + individual contacts | Yes | Yes |
 | Business card scanner | Yes | Yes |
-| Quotes | Verify | Yes (no PDF) |
+| Quotes | Verify | Yes, with PDF |
 | Territory management | Verify | Yes |
 | Goal / target tracking | Verify | Partly — forecast targets. |
-| Invoicing | Yes | Yes (no PDF, no numbering series per branch) |
+| Invoicing | Yes | Yes, with PDF (no numbering series per branch) |
 | Subscriptions | Yes | Partly — the record exists; no automatic recurring billing run was verified. |
 | Payment tracking | Yes | Yes |
 | Reminders and renewals | Yes | Partly — tasks, contract renewal; no renewal ladder. |
@@ -159,7 +159,7 @@ Honest totals for "Your CRM" over the 39 rows: 15 Yes, 8 Partly, 16 No.
 
 ## 6. Suggested order for the bike dealer
 
-1. Quote and invoice PDF with the dealer's name and GST fields.
+1. ~~Quote and invoice PDF with the dealer's name and GSTIN~~ — built (D-144).
 2. Vehicle stock: model → variant → colour → VIN / engine number, status, unique VIN.
 3. Booking record with advance, promised date, and one vehicle allocated to one booking.
 4. Delivery: PDI and handover checklist, vehicle moves to the customer as an asset.
