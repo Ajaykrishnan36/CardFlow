@@ -501,7 +501,7 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 
 // allStandardObjects is the general CRM plus the industry packs.
 func allStandardObjects() []ObjectDefinition {
-	return append(standardObjects(), dealershipObjects()...)
+	return append(append(standardObjects(), dealershipObjects()...), consentObject())
 }
 
 // commercialUpgrades (D-118…D-127): the fields the commercial and service model adds to
@@ -881,7 +881,10 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	for _, d := range dealershipObjects() {
 		keys = append(keys, d.Key)
 	}
-	return h.grantPackAccess(ctx, "access:dealership-v1", keys)
+	if err := h.grantPackAccess(ctx, "access:dealership-v1", keys); err != nil {
+		return err
+	}
+	return h.grantPackAccess(ctx, "access:consents-v1", []string{"consents"})
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {

@@ -113,6 +113,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if e.HasCapability(CapMetadata) {
 		nav = append(nav, NavItem{Key: "objects", Label: "Objects & fields", Path: base + "/settings/objects", Icon: "box", Group: "Settings", Available: true})
 	}
+	// Forms for the business's website that turn into leads (D-146).
+	if e.HasCapability(CapMetadata) && e.Can("lead", "create") {
+		nav = append(nav, NavItem{Key: "web-forms", Label: "Web forms", Path: base + "/settings/web-forms", Icon: "file-text", Group: "Settings", Available: true})
+	}
 	if e.HasCapability(CapDeveloper) {
 		nav = append(nav, NavItem{Key: "developer", Label: "API & webhooks", Path: base + "/settings/developer", Icon: "code", Group: "Settings", Available: true})
 	}
@@ -131,6 +135,7 @@ var navGroups = map[string]string{
 	"purchase_orders": "Purchasing",
 	"income":          "Finance", "expenses": "Finance", "payments": "Finance", "refunds": "Finance", "credit_notes": "Finance",
 	"debit_notes": "Finance", "adjustments": "Finance",
+	"consents":      "Sales",
 	"vehicle_stock": "Dealership", "vehicle_bookings": "Dealership", "test_rides": "Dealership", "vehicle_registrations": "Dealership",
 	"service_dues": "Dealership", "odometer_readings": "Dealership",
 	"territories": "Sales operations", "work_orders": "Service", "service_resources": "Service", "resource_absences": "Service",

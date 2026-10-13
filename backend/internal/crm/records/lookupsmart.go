@@ -240,6 +240,7 @@ var laterFields = map[string][]string{
 	"vehicle_registrations": {"name", "filedOn", "rcIssuedOn", "rcHandedOn"},
 	"service_dues":          {"name", "workOrderId", "appointmentId", "doneOn", "closingOdometer", "overrideReason", "basis"},
 	"odometer_readings":     {"name"},
+	"consents":              {"withdrawnOn"},
 	"work_orders":           {"actualStart", "actualEnd", "actualCost", "invoiceId", "completionNotes"},
 }
 

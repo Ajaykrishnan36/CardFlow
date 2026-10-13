@@ -212,6 +212,7 @@ func (h *Handler) workspaceRoutes(r chi.Router) {
 	r.Get("/sso", h.handleGetSSO)
 	r.Put("/sso", h.handleSaveSSO)
 	r.Delete("/sso", h.handleDeleteSSO)
+	h.webFormRoutes(r)
 	r.Get("/login-policy", h.handleGetLoginPolicy)
 	r.Put("/login-policy", h.handleSaveLoginPolicy)
 	r.Get("/invite-link", h.handleGetInviteLink)
@@ -230,6 +231,8 @@ func (h *Handler) workspaceRoutes(r chi.Router) {
 func (h *Handler) PublicRoutes(r chi.Router) {
 	r.Post("/hooks/workflows/{token}", h.HandleWorkflowWebhook)
 	r.Get("/hooks/workflows/{token}", h.HandleWorkflowWebhook)
+	r.Get("/public/forms/{token}", h.HandlePublicForm)
+	r.Post("/public/forms/{token}", h.HandlePublicForm)
 	r.Get("/public/unsubscribe/{token}", h.HandleUnsubscribe)
 	r.Post("/public/unsubscribe/{token}", h.HandleUnsubscribe)
 }

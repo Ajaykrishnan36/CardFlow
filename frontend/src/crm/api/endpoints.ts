@@ -228,6 +228,28 @@ export const workspaceApi = {
  * Record engine client. `prefix` is '/platform' for the owner's Platform CRM or
  * `/w/<code>` for a workspace member (server enforces their permissions).
  */
+export interface WebForm {
+  id: string;
+  name: string;
+  heading: string;
+  intro: string;
+  fields: string[];
+  ownerId: string;
+  ownerName: string;
+  consentText: string;
+  thankYou: string;
+  active: boolean;
+  submissions: number;
+  lastSubmissionAt?: string;
+  url: string;
+  embed: string;
+}
+export type WebFormBody = Pick<WebForm, 'name' | 'heading' | 'intro' | 'fields' | 'ownerId' | 'consentText' | 'thankYou' | 'active'>;
+export interface WebFormList {
+  data: WebForm[];
+  fields: Array<{ Key: string; Label: string; Type: string }>;
+}
+
 export interface LoginPolicy {
   ipRanges: string[];
   sessionHours: number | null;
@@ -529,6 +551,11 @@ export function workspaceToolsApi(code: string) {
     saveSso: (body: { kind: 'saml' | 'oidc'; oidcIssuer?: string; oidcClientId?: string; oidcClientSecret?: string; enabled: boolean; name?: string; idpMetadataXml?: string; idpMetadataUrl?: string; domains: string[]; jitProvisioning: boolean; defaultRoleKey: string }) =>
       api<SSOSettings>(`${base}/sso`, { method: 'PUT', body }),
     deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' }),
+    /** Forms for the business's website that turn into leads. */
+    webForms: () => api<WebFormList>(`${base}/web-forms`),
+    saveWebForm: (id: string | null, body: Partial<WebFormBody>) =>
+      api<WebFormList>(id ? `${base}/web-forms/${enc(id)}` : `${base}/web-forms`, { method: id ? 'PATCH' : 'POST', body }),
+    deleteWebForm: (id: string) => api<WebFormList>(`${base}/web-forms/${enc(id)}`, { method: 'DELETE' }),
     /** Where this business's people may work from, and how long a sign-in lasts. */
     loginPolicy: () => api<LoginPolicy>(`${base}/login-policy`),
     saveLoginPolicy: (body: { ipRanges: string[]; sessionHours: number | null }) => api<LoginPolicy>(`${base}/login-policy`, { method: 'PUT', body }),

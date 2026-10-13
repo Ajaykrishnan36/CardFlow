@@ -133,6 +133,11 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 			return after, nil
 		}
 		return after, h.workOrderService(ctx, tx, ws, op, before, after)
+	case "consents":
+		if op == "delete" {
+			return after, nil
+		}
+		return h.consentSaved(ctx, tx, ws, a, op, before, after)
 	case "vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings":
 		if op == "delete" {
 			return after, nil

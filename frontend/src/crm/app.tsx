@@ -62,6 +62,7 @@ const ProvisionWorkspacePage = lazy(() => import('@crm/features/workspaces/provi
 const WorkspaceDetailPage = lazy(() => import('@crm/features/workspaces/workspace-detail-page').then((m) => ({ default: m.WorkspaceDetailPage })));
 const RecordListPage = lazy(() => import('@crm/features/records/record-list-page').then((m) => ({ default: m.RecordListPage })));
 const RecordDetailPage = lazy(() => import('@crm/features/records/record-detail-page').then((m) => ({ default: m.RecordDetailPage })));
+const WebFormsPage = lazy(() => import('@crm/features/tools/web-forms-page').then((m) => ({ default: m.WebFormsPage })));
 const RulesPage = lazy(() => import('@crm/features/records/rules-page').then((m) => ({ default: m.RulesPage })));
 const LayoutEditorPage = lazy(() => import('@crm/features/records/layout-editor-page').then((m) => ({ default: m.LayoutEditorPage })));
 const UsersPage = lazy(() => import('@crm/features/users/users-page').then((m) => ({ default: m.UsersPage })));
@@ -182,6 +183,7 @@ function AppRoutes() {
               <Route path="settings/teams" element={<TeamsPage />} />
               <Route path="settings/sso" element={<SsoPage />} />
               <Route path="settings/developer" element={<DeveloperPage />} />
+              <Route path="settings/web-forms" element={<WebFormsPage />} />
               <Route path="settings/objects" element={<ProductObjectsPage />} />
               <Route path="settings/objects/:key" element={<ProductObjectDetailPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [

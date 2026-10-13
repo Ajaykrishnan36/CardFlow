@@ -1158,6 +1158,29 @@ workflows, imports, permissions and the API work for these records as for any ot
   with many vehicles, checklist templates per model, e-signature and photos, stock transfer
   between branches, waiting list, parts.
 
+## D-146 — Web-to-lead forms and the consent log
+
+Gap tracker GAP-004; PRD CRM-001 and the first step of PRV-001 (catalogue group I, FF21 step 1).
+
+- **Web forms** (Settings → Web forms; needs "Customize the product"). A form has a
+  heading, the optional fields the business ticks (email, company, city, interest, message
+  — name and mobile are always asked), who gets the leads, a consent line and a thank-you.
+  It gets a public link (`/api/crm/v1/public/forms/{token}`) and an iframe snippet.
+- **A submission becomes a lead** owned by the form's owner, source Website. Only the
+  fields on the form are taken: a visitor can't choose the owner or set anything else. The
+  same mobile again adds "Enquired again" to the lead already there instead of a duplicate.
+  A site may also post JSON to the same address.
+- **Abuse.** A hidden field catches simple bots (thanked, nothing saved); one address may
+  send eight submissions in ten minutes; bodies are capped at 16 KB; a switched-off form is 404.
+- **Consent log.** A new object, Consents: who (contact or lead), for what purpose, by
+  which channel, the exact wording, when, how and the proof. A form with a consent line
+  requires the tick and writes a consent record. A consent must be about someone; a
+  withdrawal is dated and final (agreeing again is a new record); the wording can't be
+  rewritten afterwards.
+- **Not built:** refusing a message or a check when no consent covers it (nothing sends
+  SMS or WhatsApp yet), consent expiry sweep, notice versions and languages, erasure and
+  access requests, legal hold, retention, breach register, KYC by provider, CAPTCHA.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

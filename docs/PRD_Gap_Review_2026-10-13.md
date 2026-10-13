@@ -44,7 +44,7 @@ product really stands so the order of work can be chosen.
 
 | Req | Status | What is missing |
 |---|---|---|
-| CRM-001 Lead capture | Partly | Form, CSV, API, card scan built. No web-to-lead form, no consent capture. |
+| CRM-001 Lead capture | Built | Form, CSV, API, card scan, web-to-lead form with consent (D-146). No CAPTCHA. |
 | CRM-002 Follow-ups and assignment | Partly | Tasks and reminders built; assignment only as a workflow step. No quiet hours, no assignment-rule screen, no fallback queue. |
 | CRM-003 Conversion | Built | Repeat conversion returning the first result was not re-tested. |
 | CRM-004 Customer 360 | Partly | No household, no hierarchy tree view, no merge undo. |
@@ -87,7 +87,7 @@ bike dealer by hand.
 | Pack | Status | Biggest missing pieces |
 |---|---|---|
 | General business (GEN) | Mostly built | Refund-after-part-payment acceptance run. |
-| Bike and car dealers (AUTO, 265 cases) | Not built as a pack | Vehicle stock by VIN / engine number, booking as its own record, allocation of one vehicle to one booking, test-ride record with licence check, on-road price breakdown, exchange vehicle, finance application per lender, PDI and handover checklists, registration tracker, **service plan created at delivery with odometer**, job card found by registration number, recall list. |
+| Bike and car dealers (AUTO, 265 cases) | First slice built (D-145): stock by VIN, bookings with one vehicle each, test rides, delivery gate, registrations, service schedule and odometer. Still missing: | Vehicle stock by VIN / engine number, booking as its own record, allocation of one vehicle to one booking, test-ride record with licence check, on-road price breakdown, exchange vehicle, finance application per lender, PDI and handover checklists, registration tracker, **service plan created at delivery with odometer**, job card found by registration number, recall list. |
 | Insurance agents (INS, 192 cases) | Not built | Policies, policy years and instalments, commission expected / received / clawback, collection modes, renewal ladder, claims checklist, book import. |
 | Beauty parlour and kits (BEA) | Not built | Everything: stock by batch and expiry, kits, reservations, packages. |
 | Real estate (RE) | Not built | Everything: projects and units, holds, bookings, milestones, channel partners. |
@@ -104,7 +104,7 @@ invoice, payment). The dealership-specific records above are the real gap.
 | Record version on edits (ARC-011) | Built. Transactional outbox: events table exists; no idempotent consumer framework. |
 | Idempotency keys, cursor pagination (DEV-003) | Not built |
 | SSRF guard on workflow HTTP steps (SEC-005) | Not re-checked |
-| Consent records, notices, withdrawal (PRV-001) | **Not built** |
+| Consent records, notices, withdrawal (PRV-001) | Partly — consent log built (D-146); nothing yet refuses contact without consent |
 | Erasure, retention, legal hold, breach register (PRV-002, 004) | **Not built** |
 | KYC by provider, Aadhaar last four only (PRV-003) | **Not built** |
 | Load tests, failover, restore drills, monitoring, CI gates (NFR, OPS) | Not built / not evidenced |
@@ -160,13 +160,13 @@ Honest totals for "Your CRM" over the 39 rows: 15 Yes, 8 Partly, 16 No.
 ## 6. Suggested order for the bike dealer
 
 1. ~~Quote and invoice PDF with the dealer's name and GSTIN~~ — built (D-144).
-2. Vehicle stock: model → variant → colour → VIN / engine number, status, unique VIN.
-3. Booking record with advance, promised date, and one vehicle allocated to one booking.
-4. Delivery: PDI and handover checklist, vehicle moves to the customer as an asset.
-5. Service plan created at delivery (days and kilometres), odometer readings, reminders.
-6. Job card found by registration number; estimate approval; invoice from the job.
-7. Web-to-lead form and an assignment-rule screen.
-8. Consent record per customer and purpose (needed before any SMS or WhatsApp).
+2. ~~Vehicle stock by VIN~~ — built (D-145).
+3. ~~Booking with one vehicle per booking~~ — built (D-145).
+4. ~~Delivery checks, vehicle becomes the customer's asset~~ — built (D-145).
+5. ~~Service plan at delivery, odometer, next service~~ — built (D-145). Reminders to the customer still need an SMS/WhatsApp provider.
+6. ~~Job card found by registration number~~ — built. Estimate approval by the customer is not.
+7. ~~Web-to-lead form~~ — built (D-146). Assignment-rule screen is not.
+8. ~~Consent record~~ — built (D-146). Enforcement comes with the first messaging provider.
 
 ## 7. Decisions only you can make (PRD section 22 and above)
 
