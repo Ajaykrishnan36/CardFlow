@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CalendarClock, FileOutput, GitBranch, MapPin, Megaphone, Package, Pencil, Plus, Receipt, ShieldCheck, Tag, UserCheck, Users, Wrench, X } from 'lucide-react';
+import { CalendarClock, FileDown, FileOutput, GitBranch, MapPin, Megaphone, Package, Pencil, Plus, Receipt, ShieldCheck, Tag, UserCheck, Users, Wrench, X } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
-import { commerceApi, type BundleComponent, type PriceLineInput, type PriceResult } from '@crm/api/endpoints';
+import { businessApi, commerceApi, type BundleComponent, type PriceLineInput, type PriceResult } from '@crm/api/endpoints';
 import type { LookupTarget, LookupValue, ObjectKey, RecordRow } from '@crm/api/types';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
@@ -18,6 +18,7 @@ import { formatMoney } from '@crm/lib/money';
 import { cn } from '@crm/lib/utils';
 import { humanize, recordKeys } from './use-object-meta';
 import { recordHref, useRecordScope } from './record-scope';
+import { documentHtml, printInto, type PrintableObject } from './print-document';
 
 // Record-page panels of the commercial, sales-execution and service model (D-118…D-127):
 // priced lines of a document, price book entries and bundles, contact roles, the record's
@@ -171,10 +172,36 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
     },
     onError: (e) => toast.error(firstError(e))
   });
+  const [printing, setPrinting] = useState(false);
   if (!code) return null;
   const d = linesQ.data;
   const p = d?.pricing;
   const money = (n: number) => formatMoney(n, p?.currency);
+  const printable = object === 'quotes' || object === 'sales_orders' || object === 'invoices';
+  // The window is opened here, in the click, and filled once the business and customer are loaded.
+  const print = async () => {
+    if (!p) return;
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast.error('Allow pop-ups for this site to print or save the PDF.');
+      return;
+    }
+    win.document.write('<p style="font:14px sans-serif;padding:24px">Preparing the document…</p>');
+    setPrinting(true);
+    try {
+      const accountId = String(record.values.accountId ?? '');
+      const [business, account] = await Promise.all([
+        businessApi.profile(code),
+        accountId && scope.can('accounts', 'read') ? scope.api.get('accounts', accountId).then((r) => r.record).catch(() => null) : Promise.resolve(null)
+      ]);
+      printInto(win, documentHtml({ object: object as PrintableObject, record, pricing: p, business, account }));
+    } catch (e) {
+      win.close();
+      toast.error(firstError(e));
+    } finally {
+      setPrinting(false);
+    }
+  };
   const status = String(record.values.status ?? '');
   const approval = String(record.values.approvalStatus ?? '');
   return (
@@ -192,6 +219,11 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
         }
         actions={
           <span className="flex flex-wrap gap-1.5">
+            {printable && p && p.lines.length > 0 ? (
+              <Button size="sm" variant="outline" loading={printing} onClick={() => void print()}>
+                <FileDown /> Print / PDF
+              </Button>
+            ) : null}
             {d?.editable ? (
               <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
                 <Pencil /> {p && p.lines.length ? 'Edit items' : 'Add items'}

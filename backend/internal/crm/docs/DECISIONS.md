@@ -1101,6 +1101,21 @@ number, and should not have to fill in what the CRM already knows.
   left off the New form (`meta.createHidden`). A new record starts at its first status
   (New, Scheduled, Draft) instead of "None".
 
+## D-144 — Quotes, orders and invoices as a document (Print / PDF)
+
+Gap tracker GAP-003, PRD CRM-007.
+
+- A **Print / PDF** button on a quote, sales order or invoice with items opens the
+  document in its own window and starts the browser's print dialog; "Save as PDF" makes
+  the file. It is real text on an A4 page, not a picture of the screen.
+- It shows the business's name, address, phone, email, GSTIN and PAN (Settings →
+  Business profile), the customer and their billing address, every line with rate,
+  discount, tax rate and tax, and the totals. An invoice also shows what was paid,
+  credited and is still due. With a GSTIN on the profile an invoice is titled "Tax Invoice".
+- Figures are the server's (`/{object}/{id}/lines`); nothing is recalculated in the browser.
+- Not built: e-signature, a stored copy of the PDF on the record, sending it by email in
+  one step, HSN/SAC codes and the CGST/SGST/IGST split, per-branch number series.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.
