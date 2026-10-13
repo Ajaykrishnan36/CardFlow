@@ -38,10 +38,10 @@ func personMatch(target, expr string) string {
 	case "contacts", "leads":
 		return `EXISTS (SELECT 1 FROM crm.` + target + ` p WHERE p.id::text = (` + expr + `)::text AND p.workspace_id = $2 AND p.deleted_at IS NULL
 			AND (concat_ws(' ', p.first_name, p.last_name) ILIKE $1 OR p.phone ILIKE $1 OR p.mobile ILIKE $1
-			  OR ($4 <> '' AND (` + digitsOf("p.phone") + ` LIKE $4 OR ` + digitsOf("p.mobile") + ` LIKE $4))))`
+			  OR ($4::text <> '' AND (` + digitsOf("p.phone") + ` LIKE $4::text OR ` + digitsOf("p.mobile") + ` LIKE $4::text))))`
 	case "accounts":
 		return `EXISTS (SELECT 1 FROM crm.accounts p WHERE p.id::text = (` + expr + `)::text AND p.workspace_id = $2 AND p.deleted_at IS NULL
-			AND (p.name ILIKE $1 OR p.phone ILIKE $1 OR ($4 <> '' AND ` + digitsOf("p.phone") + ` LIKE $4)))`
+			AND (p.name ILIKE $1 OR p.phone ILIKE $1 OR ($4::text <> '' AND ` + digitsOf("p.phone") + ` LIKE $4::text)))`
 	}
 	return ""
 }
@@ -76,7 +76,7 @@ func recordLookupSQL(spec *objectSpec, fields []Field) string {
 		expr := rawExpr(f)
 		switch f.Type {
 		case "phone":
-			match = append(match, "($4 <> '' AND "+digitsOf(expr)+" LIKE $4)")
+			match = append(match, "($4::text <> '' AND "+digitsOf(expr)+" LIKE $4::text)")
 			if !f.inColumn() {
 				match = append(match, expr+" ILIKE $1")
 			}
@@ -106,9 +106,9 @@ func recordLookupSQL(spec *objectSpec, fields []Field) string {
 			}
 			switch f.Key {
 			case "accountId":
-				order = append(order, "($5 <> '' AND ("+expr+")::text = $5) DESC")
+				order = append(order, "($5::text <> '' AND ("+expr+")::text = $5::text) DESC")
 			case "contactId":
-				order = append(order, "($6 <> '' AND ("+expr+")::text = $6) DESC")
+				order = append(order, "($6::text <> '' AND ("+expr+")::text = $6::text) DESC")
 			}
 		}
 	}
@@ -118,7 +118,7 @@ func recordLookupSQL(spec *objectSpec, fields []Field) string {
 	}
 	order = append(order, "t.updated_at DESC")
 	return `SELECT t.id::text, ` + spec.TitleSQL + ` || ' · ' || t.code, ` + hintSQL + ` FROM crm.` + spec.Table + ` t
-		WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)) AND ($5 = $5 AND $6 = $6)
+		WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)) AND ($4::text IS NOT NULL AND $5::text IS NOT NULL AND $6::text IS NOT NULL)
 		  AND (` + strings.Join(match, " OR ") + `)
 		ORDER BY ` + strings.Join(order, ", ") + ` LIMIT 20`
 }

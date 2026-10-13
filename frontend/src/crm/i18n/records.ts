@@ -81,6 +81,7 @@ const strings = {
     lookupPlaceholder: 'Search…',
     lookupPeoplePlaceholder: 'Name, number or phone (last 4 digits)…',
     filledFrom: 'Filled in from {{name}}: {{fields}}',
+    clearedFor: '{{fields}} cleared — it did not belong to {{name}}',
     searching: 'Searching…',
     noMatches: 'No matches',
     lookupError: "Couldn't search. Try again.",

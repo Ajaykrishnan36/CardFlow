@@ -391,7 +391,7 @@ export function LookupCombobox({
         disabled={disabled}
         autoComplete="off"
         value={display}
-        placeholder={open && value ? selectedLabel : placeholder ?? t(target === 'users' || target === 'products' || target === 'workspaces' ? 'records.input.lookupPlaceholder' : 'records.input.lookupPeoplePlaceholder')}
+        placeholder={open && value ? selectedLabel : placeholder ?? t(['contacts', 'accounts', 'leads', 'assets', 'cases', 'appointments', 'work_orders', 'opportunities'].includes(target) ? 'records.input.lookupPeoplePlaceholder' : 'records.input.lookupPlaceholder')}
         leading={open ? <Search /> : undefined}
         onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}

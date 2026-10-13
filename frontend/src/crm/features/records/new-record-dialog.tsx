@@ -110,6 +110,8 @@ export function NewRecordDialog({
 
   const set = (key: string, v: unknown) => {
     setValues((prev) => ({ ...prev, [key]: v }));
+    // A hand-picked value carries its own label; forget the one the form filled in.
+    if (labels[key] !== undefined) setLabels(({ [key]: _old, ...rest }) => rest);
     if (errors[key]) setErrors(({ [key]: _removed, ...rest }) => rest);
   };
 
@@ -120,21 +122,34 @@ export function NewRecordDialog({
     try {
       const related = await scope.api.lookupRelated(field.lookup, picked.id);
       const byKey = fieldIndex(meta);
-      const filled: string[] = [];
-      setValues((prev) => {
-        const next = { ...prev };
-        for (const [k, v] of Object.entries(related)) {
-          const f = byKey.get(k);
-          if (!f || f.key === field.key || f.readOnly || f.type !== 'lookup' || f.lookup !== v.object || !isEmptyValue(next[k])) continue;
-          next[k] = v.id;
-          filled.push(k);
-        }
-        return next;
-      });
-      if (filled.length) {
-        setLabels((prev) => ({ ...prev, ...Object.fromEntries(filled.map((k) => [k, related[k]!.label])) }));
-        toast.message(t('records.input.filledFrom', { name: picked.label, fields: filled.map((k) => byKey.get(k)?.label ?? k).join(', ') }));
+      const usable = (k: string, v: { object?: string }) => {
+        const f = byKey.get(k);
+        return Boolean(f && f.key !== field.key && !f.readOnly && f.type === 'lookup' && f.lookup === v.object);
+      };
+      // Who the record is for must agree: the customer follows the last thing picked.
+      // Picking a contact (or a vehicle, a case…) sets its account; other fields are
+      // only filled when empty.
+      const person = (k: string) => k === 'accountId' || k === 'contactId';
+      const current = values;
+      const set: Record<string, { id: string; label: string } | null> = {};
+      for (const [k, v] of Object.entries(related)) {
+        if (!usable(k, v)) continue;
+        if (isEmptyValue(current[k]) || (person(k) && current[k] !== v.id)) set[k] = v;
       }
+      // An account was picked and the contact on the form belongs elsewhere: drop it
+      // (or replace it, when the account has exactly one contact — handled above).
+      if (field.key === 'accountId' && !set.contactId && !isEmptyValue(current.contactId) && byKey.get('contactId')?.lookup === 'contacts') {
+        const theirs = await scope.api.lookupRelated('contacts', String(current.contactId));
+        if (theirs.accountId?.id !== picked.id) set.contactId = null;
+      }
+      const keys = Object.keys(set);
+      if (!keys.length) return;
+      setValues((prev) => ({ ...prev, ...Object.fromEntries(keys.map((k) => [k, set[k]?.id ?? null])) }));
+      setLabels((prev) => ({ ...prev, ...Object.fromEntries(keys.map((k) => [k, set[k]?.label ?? ''])) }));
+      const filled = keys.filter((k) => set[k]);
+      const cleared = keys.filter((k) => !set[k]);
+      if (filled.length) toast.message(t('records.input.filledFrom', { name: picked.label, fields: filled.map((k) => byKey.get(k)?.label ?? k).join(', ') }));
+      if (cleared.length) toast.message(t('records.input.clearedFor', { name: picked.label, fields: cleared.map((k) => byKey.get(k)?.label ?? k).join(', ') }));
     } catch {
       // Filling is a convenience: the person can still pick the other fields by hand.
     }

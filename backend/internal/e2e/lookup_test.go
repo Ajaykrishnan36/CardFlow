@@ -96,4 +96,17 @@ func TestPickersFindByPhoneAndFillRelated(t *testing.T) {
 		t.Fatalf("staff found a contact they don't own: %s", truncate(r.Raw, 300))
 	}
 	want(t, call(t, "GET", base+"/lookup/assets/"+bike+"/related", staff, nil), 404, "staff asking about a bike they can't see")
+
+	// Every object's picker answers — also the ones with no phone or owner to search by.
+	objects := strings.Fields(`leads accounts contacts opportunities tasks events notes communications subscriptions catalog_items cases
+		income expenses price_books quotes sales_orders invoices purchase_orders solutions payments contracts assets sla_policies entitlements
+		appointments territories refunds credit_notes debit_notes work_orders service_resources resource_absences users`)
+	for _, key := range objects {
+		for _, q := range []string{"", "a", "3210"} {
+			r := call(t, "GET", base+"/lookup/"+key+"?q="+q+"&accountId="+acc1+"&contactId="+con1, boss, nil)
+			if r.Status != 200 {
+				t.Fatalf("picker for %s (q=%q): %d %s", key, q, r.Status, truncate(r.Raw, 200))
+			}
+		}
+	}
 }
