@@ -141,7 +141,9 @@ export function BusinessProfilePage() {
             <div className="p-5">
               {[
                 { key: 'dealership', trade: /automotive/i, industry: 'Automotive', label: 'Dealership (bikes and cars)', what: 'Vehicle stock by VIN, bookings, test rides, exchange vehicles, loan applications, registrations and the service schedule.' },
-                { key: 'insurance', trade: /insurance/i, industry: 'Insurance', label: 'Insurance agency', what: 'Policies, the premium schedule, renewals and commission expected against received.' }
+                { key: 'insurance', trade: /insurance/i, industry: 'Insurance', label: 'Insurance agency', what: 'Policies, the premium schedule, renewals, claims and commission expected against received.' },
+                { key: 'salon', trade: /beauty|salon/i, industry: 'Beauty & salon', label: 'Salon and makeup kits', what: 'Product stock with batch and expiry, kits and their bookings, client packages.' },
+                { key: 'real_estate', trade: /real estate/i, industry: 'Real estate', label: 'Real estate', what: 'Units and listings, holds and bookings, site visits.' }
               ].map((pack) => {
                 const byTrade = pack.trade.test(form.profile.industry ?? '');
                 const packs = (form.profile.packs ?? '').split(',').map((x) => x.trim()).filter(Boolean);

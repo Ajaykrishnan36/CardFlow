@@ -139,6 +139,10 @@ var navGroups = map[string]string{
 	"vehicle_stock": "Dealership", "vehicle_bookings": "Dealership", "test_rides": "Dealership", "vehicle_registrations": "Dealership",
 	"service_dues": "Dealership", "odometer_readings": "Dealership",
 	"vehicle_exchanges": "Dealership", "finance_applications": "Dealership", "stock_transfers": "Dealership",
+	"commission_rules": "Insurance", "insurance_claims": "Insurance",
+	"salon_products": "Salon", "product_usage": "Salon", "makeup_kits": "Salon", "kit_bookings": "Salon", "client_packages": "Salon",
+	"properties": "Real estate", "property_bookings": "Real estate", "site_visits": "Real estate",
+	"privacy_requests":   "Sales",
 	"insurance_policies": "Insurance", "premium_dues": "Insurance", "commissions": "Insurance",
 	"territories": "Sales operations", "work_orders": "Service", "service_resources": "Service", "resource_absences": "Service",
 }
@@ -155,7 +159,7 @@ func navGroup(key string) string {
 // may hide those; settings and analytics always stay).
 func IsRecordGroup(g string) bool {
 	switch g {
-	case "CRM", "App", "Sales", "Dealership", "Insurance", "Products", "Sales operations", "Service", "Purchasing", "Finance":
+	case "CRM", "App", "Sales", "Dealership", "Insurance", "Salon", "Real estate", "Products", "Sales operations", "Service", "Purchasing", "Finance":
 		return true
 	}
 	return false

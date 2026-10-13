@@ -149,7 +149,9 @@ func dealershipUpgrades() map[string]objectUpgrade {
 // invent a title for a booking or a test ride.
 var autoNamed = map[string]bool{"vehicle_stock": true, "vehicle_bookings": true, "test_rides": true, "vehicle_registrations": true,
 	"service_dues": true, "odometer_readings": true, "vehicle_exchanges": true, "finance_applications": true, "stock_transfers": true,
-	"insurance_policies": true, "premium_dues": true, "commissions": true}
+	"insurance_policies": true, "premium_dues": true, "commissions": true,
+	"commission_rules": true, "insurance_claims": true, "product_usage": true, "kit_bookings": true, "client_packages": true,
+	"property_bookings": true, "site_visits": true, "privacy_requests": true}
 
 func (h *Handler) labelOf(ctx context.Context, q querier, ws uuid.UUID, object string, id any) string {
 	spec := specFor(object)
@@ -174,12 +176,15 @@ func joinNonEmpty(sep string, parts ...string) string {
 
 // autoName fills the name of a new record that was saved without one.
 func (h *Handler) autoName(ctx context.Context, q querier, ws uuid.UUID, spec *objectSpec, values map[string]any) {
-	if !autoNamed[spec.Key] {
+	if !autoNamed[spec.Key] && !packMoreKeys[spec.Key] {
 		return
 	}
 	// These records also start at their first status (In stock, Booked, Scheduled…).
 	if spec.StatusField != "" && len(spec.Statuses) > 0 && isEmpty(values["status"]) {
 		values["status"] = spec.Statuses[0].Value
+	}
+	if !autoNamed[spec.Key] {
+		return
 	}
 	if !isEmpty(values["name"]) {
 		return
@@ -232,7 +237,15 @@ func (h *Handler) autoName(ctx context.Context, q querier, ws uuid.UUID, spec *o
 		name = joinNonEmpty(" — ", fmt.Sprintf("Commission year %d", int(y)), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]))
 	}
 	if name == "" {
-		name = spec.Singular
+		what := joinNonEmpty(" ", h.labelOf(ctx, q, ws, "properties", values["propertyId"]), h.labelOf(ctx, q, ws, "makeup_kits", values["kitId"]),
+			h.labelOf(ctx, q, ws, "salon_products", values["productId"]), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]), asString(values["eventName"]))
+		if spec.Key == "commission_rules" {
+			who = h.labelOf(ctx, q, ws, "accounts", values["insurerId"])
+			if r, ok := asNumber(values["rate"]); ok {
+				what = fmt.Sprintf("%g%%", r)
+			}
+		}
+		name = joinNonEmpty(" — ", joinNonEmpty(" ", spec.Singular+":", who), joinNonEmpty(" ", what, item))
 	}
 	if len(name) > 200 {
 		name = name[:200]

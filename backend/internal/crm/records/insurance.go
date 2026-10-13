@@ -126,6 +126,12 @@ func (h *Handler) policySaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op s
 	set := map[string]any{}
 	// What the customer pays, what the agent earns, what goes to the insurer.
 	premium, tax, fee := after.num("premium"), after.num("taxOnPremium"), after.num("agentFee")
+	if op == "create" && !after.has("commissionRate") && !after.has("commissionAmount") {
+		if rate, ok := h.ruleRate(ctx, tx, ws, after.Values, h.policyYearOf(ctx, tx, ws, after.Values["previousPolicyId"])); ok {
+			set["commissionRate"] = rate
+			after.Values["commissionRate"] = rate
+		}
+	}
 	commission := after.num("commissionAmount")
 	rateChanged := op == "create" || before.num("commissionRate") != after.num("commissionRate") || before.num("premium") != premium
 	if after.has("commissionRate") && (rateChanged || !after.has("commissionAmount")) {

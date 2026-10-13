@@ -1231,6 +1231,48 @@ Insurance or that switches the pack on.
   records, the yearly plan and project report, book import with staging, POSP payout
   split, licence validity blocks, masking of health data.
 
+## D-149 — Salon and real-estate first slices, insurance rules and claims, privacy requests
+
+Salon and real estate have no use-case catalogue, only sections 11 and 13 of the master
+PRD. These slices build the records and the rules that section calls must-not-break;
+everything else there is still open.
+
+- **Insurance.** *Commission rules* per insurer, optionally per plan, class and policy
+  year: a new policy with no rate typed takes the best-fitting rule (plan beats class beats
+  general). *Claims*: dated at intimation, tied to the policyholder, settled only with an
+  amount, rejected only with a reason, closed for good.
+- **Salon** (module `salon`; industry Beauty & salon). *Product stock* with batch, unit,
+  quantity, reorder level and expiry: status follows the numbers (Running low, Out of
+  stock, Expired). *Product usage* takes stock off under a row lock — never below zero,
+  never an expired or do-not-use product on a client, cost worked out, a recorded use
+  can't be edited. *Kits* and *kit bookings*: no two live bookings of one kit overlap; only
+  a Ready kit goes out; a return says how it came back — complete (needs cleaning unless
+  ticked cleaned), damaged (says what), or items missing (the kit is Incomplete and can't be
+  booked). *Client packages*: sessions used never exceed sessions bought, none after the
+  validity date, Used up / Expired set by the numbers.
+- **Real estate** (module `real_estate`). *Units & listings*; *holds & bookings* — one live
+  hold or booking per unit under a row lock, a hold lasts three days unless set, booking
+  needs the agreed price, commission worked out from the percentage, cancelling needs a
+  reason and frees the unit, completing marks it Sold or Leased; the unit's status can only
+  be changed through its booking. The hourly sweep expires holds that ran out. *Site
+  visits* leave a follow-up task when completed.
+- **Privacy requests** (admins only; staff sets don't get them): erasure, access,
+  correction, stop contact, grievance. Dated, due in 30 days. Completing needs identity
+  verified first. *Stop contact* withdraws every consent and puts the email on the campaign
+  unsubscribe list. *Erasure* does that and blanks the person's details on the contact or
+  lead, removes their notes and change history, and blanks the old values in the audit
+  trail; it is refused while a legal hold (with its reason) stands. Invoices, payments,
+  policies and bookings are kept and still point at the now-nameless record.
+- **Names.** A business that makes its own object with the name of a pack object gets a
+  variant key instead of an error, and pack rules run only on the built-in object — a
+  business that took the name first keeps its object untouched.
+- Not built: erasing copies held by third parties, files attached to the erased person,
+  retention schedules, KYC; salon staff commission, deposits, wedding/event bookings as a
+  record, purchase and reorder; real-estate payment milestones, channel-partner lead
+  registration, rental schedules, document checklists; insurer statement import, quote
+  comparison, the yearly plan and project report; dealer fleet bookings and checklist
+  templates.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

@@ -89,8 +89,8 @@ bike dealer by hand.
 | General business (GEN) | Mostly built | Refund-after-part-payment acceptance run. |
 | Bike and car dealers (AUTO, 265 cases) | First slice built (D-145): stock by VIN, bookings with one vehicle each, test rides, delivery gate, registrations, service schedule and odometer. Still missing: | Vehicle stock by VIN / engine number, booking as its own record, allocation of one vehicle to one booking, test-ride record with licence check, on-road price breakdown, exchange vehicle, finance application per lender, PDI and handover checklists, registration tracker, **service plan created at delivery with odometer**, job card found by registration number, recall list. |
 | Insurance agents (INS, 192 cases) | First slice built (D-148): policies, premium schedule, commission, renewal ladder, cancellation and clawback. Still missing: | Policies, policy years and instalments, commission expected / received / clawback, collection modes, renewal ladder, claims checklist, book import. |
-| Beauty parlour and kits (BEA) | Not built | Everything: stock by batch and expiry, kits, reservations, packages. |
-| Real estate (RE) | Not built | Everything: projects and units, holds, bookings, milestones, channel partners. |
+| Beauty parlour and kits (BEA) | First slice built (D-149): stock, usage, kits, kit bookings, packages. Still missing: | Everything: stock by batch and expiry, kits, reservations, packages. |
+| Real estate (RE) | First slice built (D-149): units, holds and bookings, site visits. Still missing: | Everything: projects and units, holds, bookings, milestones, channel partners. |
 
 For the bike company that is waiting: the customer-facing basics work today (customer,
 vehicle as an asset, service appointment with technician and bay, case, work order,
@@ -105,7 +105,7 @@ invoice, payment). The dealership-specific records above are the real gap.
 | Idempotency keys, cursor pagination (DEV-003) | Not built |
 | SSRF guard on workflow HTTP steps (SEC-005) | Not re-checked |
 | Consent records, notices, withdrawal (PRV-001) | Partly — consent log built (D-146); nothing yet refuses contact without consent |
-| Erasure, retention, legal hold, breach register (PRV-002, 004) | **Not built** |
+| Erasure, retention, legal hold, breach register (PRV-002, 004) | Partly — privacy requests with erasure and legal hold built (D-149); retention schedules and breach register not |
 | KYC by provider, Aadhaar last four only (PRV-003) | **Not built** |
 | Load tests, failover, restore drills, monitoring, CI gates (NFR, OPS) | Not built / not evidenced |
 

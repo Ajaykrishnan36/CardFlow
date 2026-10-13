@@ -272,6 +272,13 @@ func SystemRoles() []SystemRole {
 	if _, ok := stObj["vehicle_stock"]; ok {
 		stObj["vehicle_stock"], stRows["vehicle_stock"] = []string{"read"}, map[string]string{"scope": "workspace"}
 	}
+	// Privacy requests can erase a person's details: for admins, not for every staff member.
+	delete(stObj, "privacy_requests")
+	delete(stRows, "privacy_requests")
+	// Units are shared like stock: staff see them all to put a hold on one.
+	if _, ok := stObj["properties"]; ok {
+		stObj["properties"], stRows["properties"] = []string{"read"}, map[string]string{"scope": "workspace"}
+	}
 	return []SystemRole{
 		{Key: "SUPER_ADMIN", Name: "Super Admin", Rank: RankSuperAdmin,
 			Description: "Full access to every record, setting, user and role in the workspace — always.",

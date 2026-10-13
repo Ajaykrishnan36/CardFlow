@@ -513,6 +513,7 @@ func allStandardObjects() []ObjectDefinition {
 	all := append(standardObjects(), dealershipObjects()...)
 	all = append(all, dealershipMoreObjects()...)
 	all = append(all, insuranceObjects()...)
+	all = append(all, packMoreObjects()...)
 	return append(all, consentObject())
 }
 
@@ -903,7 +904,14 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	for _, d := range append(dealershipMoreObjects(), insuranceObjects()...) {
 		more = append(more, d.Key)
 	}
-	return h.grantPackAccess(ctx, "access:packs-v2", more)
+	if err := h.grantPackAccess(ctx, "access:packs-v2", more); err != nil {
+		return err
+	}
+	v3 := []string{}
+	for _, d := range packMoreObjects() {
+		v3 = append(v3, d.Key)
+	}
+	return h.grantPackAccess(ctx, "access:packs-v3", v3)
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {
@@ -969,7 +977,7 @@ func (h *Handler) reloadObjects(ctx context.Context) error {
 	registry.Unlock()
 	// The same order in every product's sidebar: the module catalog's (Salesforce-like) order.
 	packIndex := map[string]int{}
-	for i, d := range append(append(dealershipObjects(), dealershipMoreObjects()...), insuranceObjects()...) {
+	for i, d := range append(append(append(dealershipObjects(), dealershipMoreObjects()...), insuranceObjects()...), packMoreObjects()...) {
 		packIndex[d.Key] = i + 1
 	}
 	sort.SliceStable(catalog, func(i, j int) bool {
@@ -1217,7 +1225,9 @@ func (h *Handler) validateObject(ctx context.Context, d *ObjectDefinition, in ob
 			theirs := func(match func(x *ObjectDefinition) bool) bool {
 				for _, x := range defs {
 					if match(x) {
-						return x.WorkspaceID != nil && *x.WorkspaceID != *d.WorkspaceID
+						// Another business's object — or an industry pack's, which this business
+						// may never see — must not block the name.
+						return (x.WorkspaceID != nil && *x.WorkspaceID != *d.WorkspaceID) || (x.Standard && access.IndustryPacks[x.Module] != nil)
 					}
 				}
 				return false
@@ -1694,4 +1704,13 @@ func (h *Handler) handleListWorkspaceObjects(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"data": own, "icons": ObjectIcons, "lookupTargets": targets})
+}
+
+// standardObject reports whether a key is the built-in object of that name, and not a
+// business's own object that happened to take the name first.
+func standardObject(key string) bool {
+	registry.RLock()
+	defer registry.RUnlock()
+	d := registry.defs[key]
+	return d != nil && d.Standard
 }
