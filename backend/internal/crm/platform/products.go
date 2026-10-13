@@ -103,6 +103,7 @@ var ModuleCatalog = []ModuleInfo{
 	{Key: "notes", Label: "Notes", Description: "Notes on any account, contact, lead or opportunity.", Group: "Productivity"},
 	{Key: "files", Label: "Files", Description: "Attachments on records.", Group: "Productivity"},
 	{Key: "communications", Label: "Communications", Description: "A log of emails, SMS, WhatsApp messages and calls.", Group: "Engagement"},
+	{Key: "dealership", Label: "Dealership", Description: "For bike and car dealers: vehicle stock by VIN, bookings, test rides, registrations and the service schedule.", Group: "Industry packs"},
 	{Key: "forms", Label: "Forms", Description: "Multi-step public and internal forms.", Group: "Engagement"},
 	{Key: "submissions", Label: "Submissions", Description: "Form submissions with review and approvals.", Group: "Engagement"},
 	{Key: "tickets", Label: "Cases", Description: "Customer support cases from first contact to resolution — including tickets from a connected app.", Group: "Service"},

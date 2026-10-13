@@ -864,6 +864,9 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		own := sc.OwnersFor(target, actor(r))
+		if pickedByAll[target] {
+			own = nil
+		}
 		sql = recordLookupSQL(spec, fields)
 		rich = true
 		args = append(args, ws, own, lookupDigits(q), uuidOrEmpty(r.URL.Query().Get("accountId")), uuidOrEmpty(r.URL.Query().Get("contactId")))

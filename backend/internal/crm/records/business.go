@@ -45,7 +45,7 @@ type businessProfile struct {
 }
 
 // businessProfileKeys are the profile fields a business can fill in.
-var businessProfileKeys = []string{"industry", "phone", "email", "website", "address", "city", "state", "postalCode", "country", "gstin", "pan", "about"}
+var businessProfileKeys = []string{"industry", "phone", "email", "website", "address", "city", "state", "postalCode", "country", "gstin", "pan", "about", "packs"}
 
 func canEditBusiness(sc *Scope) bool {
 	return sc.Owner || sc.Eff.HasCapability(access.CapAccessManage) || sc.Eff.HasCapability(access.CapMembersManage)

@@ -17,7 +17,7 @@ func TestPluralizeAndKeys(t *testing.T) {
 
 func TestStandardObjectsBuildValidSpecs(t *testing.T) {
 	prefixes := map[string]bool{}
-	for _, d := range standardObjects() {
+	for _, d := range allStandardObjects() {
 		d := d
 		if !objectKeyRe.MatchString(d.Key) || reservedKeys[d.Key] {
 			t.Fatalf("%s: invalid key", d.Key)

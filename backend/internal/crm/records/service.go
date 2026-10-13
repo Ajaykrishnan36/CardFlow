@@ -135,6 +135,7 @@ func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 		}
 	}
 	applyDefaults(ctx, tx, ws, spec, fields, values)
+	h.autoName(ctx, tx, ws, spec, values)
 	cs, fe := buildChanges(ctx, tx, ws, fields, values, true)
 	for k, v := range objectRules(spec, values, map[string]any{}, true) {
 		fe[k] = v

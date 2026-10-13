@@ -229,10 +229,21 @@ func (h *Handler) onlyContact(ctx context.Context, sc *Scope, account uuid.UUID,
 var laterFields = map[string][]string{
 	"cases": {"slaDueAt", "closedAt", "firstResponseDueAt", "firstRespondedAt", "slaBreached", "escalatedAt", "assignedAt",
 		"lastCustomerUpdateAt", "entitlementExceeded", "resolution", "solutionId", "slaPolicyId"},
-	"appointments":    {"cancellationReason", "rescheduledFrom", "timezone"},
-	"opportunities":   {"lostReason"},
-	"leads":           {"lostReason"},
-	"assets":          {"workOrderId", "replacedOn"},
-	"entitlements":    {"casesUsed", "hoursUsed"},
-	"calendar_events": {},
+	"appointments":          {"cancellationReason", "rescheduledFrom", "timezone"},
+	"opportunities":         {"lostReason"},
+	"leads":                 {"lostReason"},
+	"entitlements":          {"casesUsed", "hoursUsed"},
+	"assets":                {"workOrderId", "replacedOn", "odometerDate", "avgDailyKm", "nextServiceDate", "nextServiceKm"},
+	"vehicle_stock":         {"name", "bookingId", "assetId"},
+	"vehicle_bookings":      {"name", "pdiPassed", "accessoriesFitted", "documentsHandedOver", "customerSignedOff", "deliveryDate", "deliveryOdometer", "cancellationReason", "refundAmount", "assetId", "orderId", "invoiceId"},
+	"test_rides":            {"name", "startOdometer", "endOdometer", "rating", "feedback"},
+	"vehicle_registrations": {"name", "filedOn", "rcIssuedOn", "rcHandedOn"},
+	"service_dues":          {"name", "workOrderId", "appointmentId", "doneOn", "closingOdometer", "overrideReason", "basis"},
+	"odometer_readings":     {"name"},
+	"work_orders":           {"actualStart", "actualEnd", "actualCost", "invoiceId", "completionNotes"},
 }
+
+// pickedByAll are records everyone chooses from — the price list, the stock, the people
+// who can be booked — whoever added them. Seeing them in a picker doesn't let anyone
+// open or change a record they otherwise couldn't.
+var pickedByAll = map[string]bool{"catalog_items": true, "price_books": true, "vehicle_stock": true, "service_resources": true}

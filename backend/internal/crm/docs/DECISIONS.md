@@ -1116,6 +1116,48 @@ Gap tracker GAP-003, PRD CRM-007.
 - Not built: e-signature, a stored copy of the PDF on the record, sending it by email in
   one step, HSN/SAC codes and the CGST/SGST/IGST split, per-branch number series.
 
+## D-145 — Dealership pack (bikes and cars), first slice
+
+From the Automotive use-case catalogue (`docs/usecases/`), flows FF2, FF3, FF5, FF6, FF7,
+FF9 and the core of FF22 / FF23. Built on the object engine, so lists, filters, reports,
+workflows, imports, permissions and the API work for these records as for any other.
+
+- **Module `dealership`.** On for a business whose industry is Automotive, or that switches
+  the pack on under Business profile → Industry packs (`profile.packs`). Other businesses
+  don't see it. It has its own sidebar section.
+- **Records.** Vehicle stock (VIN and engine number unique), Bookings, Test rides,
+  Registrations, Service schedule, Odometer readings. They name themselves (no title to
+  invent) and start at their first status. Vehicles on customers' hands stay Assets, which
+  gain registration number, VIN, odometer, average daily use and next service.
+- **One vehicle, one booking.** Only a vehicle In stock can be allocated, the row is locked
+  while it is, a different model is refused, and "Allocated" / "Delivered" can only be set
+  by the booking. Cancelling (a reason is required) or re-allocating frees the vehicle.
+- **Delivery gate.** A booking is delivered only with a vehicle, the pre-delivery
+  inspection passed, the handover ticked, the customer's sign-off and nothing left to pay
+  on its invoice. A delivered booking can't be un-delivered.
+- **What delivery creates.** The customer's vehicle (asset), a registration at
+  "Temporary", the first odometer reading, the free-service schedule from the model's
+  rule (first service after N days / km, then every N days / km — fields on the catalog
+  item; defaults 30 days / 750 km, then 120 days / 3,000 km, 3 free), and a thank-you task.
+- **Registration.** RC stages need the number; it is tidied and written to the vehicle,
+  which can then be found by it (job card by registration number, D-143).
+- **Service cycle.** A job card (work order) for a scheduled service marks it Booked, and
+  completing the job — odometer required — closes it. Closing the last waiting service
+  plans the next by days and by kilometres (using the vehicle's average daily use),
+  whichever is earlier. An odometer never goes backwards. A due date moved by hand needs a
+  reason. The hourly sweep turns a planned service into Due a week ahead and gives its
+  owner a call task, once.
+- **Test rides.** An expired licence refuses the ride; completing needs the licence check
+  and the signed indemnity; a completed ride leaves a follow-up task.
+- **Access.** New businesses get these objects in the Admin and Staff sets; existing
+  businesses' built-in sets are topped up once. Staff see the whole stock to allocate from
+  but can't add or change stock. Catalog items, price books, stock and resources can be
+  picked by everyone in a picker.
+- **Not in this slice:** on-road price breakdown as fixed components (use quote lines),
+  exchange valuation, finance applications per lender, insurance policies, fleet bookings
+  with many vehicles, checklist templates per model, e-signature and photos, stock transfer
+  between branches, waiting list, parts.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

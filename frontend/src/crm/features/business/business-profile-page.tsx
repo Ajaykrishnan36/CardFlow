@@ -7,7 +7,7 @@ import { Button } from '@crm/components/ui/button';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
 import { Field } from '@crm/components/ui/field';
 import { Input } from '@crm/components/ui/input';
-import { Textarea } from '@crm/components/ui/form-controls';
+import { Switch, Textarea } from '@crm/components/ui/form-controls';
 import { Skeleton } from '@crm/components/ui/spinner';
 import { ErrorState } from '@crm/components/states';
 import { PageContainer, PageHeader } from '@crm/components/page';
@@ -49,6 +49,7 @@ export function BusinessProfilePage() {
     mutationFn: () => {
       const profile: Record<string, string | null> = {};
       for (const f of fields) profile[f.key] = form!.profile[f.key]?.trim() || null;
+      profile.packs = form!.profile.packs?.trim() || null;
       return businessApi.update(code, { name: form!.name.trim(), currency: form!.currency.trim().toUpperCase(), timezone: form!.timezone.trim(), profile });
     },
     onSuccess: async (b) => {
@@ -133,6 +134,31 @@ export function BusinessProfilePage() {
                   )}
                 </Field>
               ))}
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="Industry packs" description="Extra menus and records for one trade. Switch on what your business needs; nothing is lost when a pack is switched off." />
+            <div className="p-5">
+              {(() => {
+                const byTrade = /automotive/i.test(form.profile.industry ?? '');
+                const packs = (form.profile.packs ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+                const on = byTrade || packs.includes('dealership');
+                return (
+                  <Switch
+                    checked={on}
+                    disabled={!canEdit || byTrade}
+                    onCheckedChange={(c) =>
+                      setForm({ ...form, profile: { ...form.profile, packs: (c ? [...packs, 'dealership'] : packs.filter((x) => x !== 'dealership')).join(',') } })
+                    }
+                    label="Dealership (bikes and cars)"
+                    description={
+                      byTrade
+                        ? 'On because your industry is Automotive: vehicle stock by VIN, bookings, test rides, registrations and the service schedule.'
+                        : 'Vehicle stock by VIN, bookings, test rides, registrations and the service schedule.'
+                    }
+                  />
+                );
+              })()}
             </div>
           </Card>
           {canEdit ? (

@@ -77,12 +77,13 @@ export function NewRecordDialog({
     const out: FormSection[] = [];
     for (const s of meta.layout.sections) {
       const later = new Set(meta.createHidden ?? []);
-      const fields = s.fields.map((k) => byKey.get(k)).filter((f): f is FieldDef => Boolean(f && !f.readOnly && (f.required || !later.has(f.key))));
+      const fields = s.fields.map((k) => byKey.get(k)).filter((f): f is FieldDef => Boolean(f && !f.readOnly && (!later.has(f.key) || (f.required && f.key !== 'name'))));
       fields.forEach((f) => used.add(f.key));
       if (fields.length) out.push({ id: s.id, title: s.title, columns: s.columns, fields });
     }
     // A required field hidden from the layout would make create impossible — surface it anyway.
-    const missing = meta.fields.filter((f) => f.required && !f.readOnly && !used.has(f.key));
+    const selfNamed = (meta.createHidden ?? []).includes('name');
+    const missing = meta.fields.filter((f) => f.required && !f.readOnly && !used.has(f.key) && !(selfNamed && f.key === 'name'));
     if (missing.length) out.push({ id: '__required', title: t('records.new.otherRequired'), columns: 2, fields: missing });
     return out;
   }, [meta, t]);

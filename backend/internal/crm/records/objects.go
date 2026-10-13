@@ -98,7 +98,13 @@ func ofLookup(key, label, target string) ObjectField {
 // listColumnsFor replaces the default list columns (the first few fields) where those
 // hide what matters: an appointment list shows who is coming and who is assigned.
 var listColumnsFor = map[string][]string{
-	"appointments": {"status", "startsAt", "contactId", "itemId", "resourceId"},
+	"appointments":          {"status", "startsAt", "contactId", "itemId", "resourceId"},
+	"vehicle_stock":         {"status", "itemId", "colour", "vin", "location", "bookingId"},
+	"vehicle_bookings":      {"status", "contactId", "itemId", "colour", "promisedDate", "vehicleId"},
+	"test_rides":            {"status", "scheduledAt", "contactId", "leadId", "itemId", "assignedTo"},
+	"vehicle_registrations": {"status", "contactId", "assetId", "registrationNumber", "rtoOffice"},
+	"service_dues":          {"status", "assetId", "contactId", "kind", "dueDate", "dueKm"},
+	"odometer_readings":     {"assetId", "reading", "readingDate", "source"},
 }
 
 func ofSelect(key, label string, o []Option) ObjectField {
@@ -487,7 +493,15 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:enterprise-v1", standardUpgrades()); err != nil {
 		return err
 	}
-	return applyObjectUpgrades(ctx, tx, "objects:commercial-v1", commercialUpgrades())
+	if err := applyObjectUpgrades(ctx, tx, "objects:commercial-v1", commercialUpgrades()); err != nil {
+		return err
+	}
+	return applyObjectUpgrades(ctx, tx, "objects:dealership-v1", dealershipUpgrades())
+}
+
+// allStandardObjects is the general CRM plus the industry packs.
+func allStandardObjects() []ObjectDefinition {
+	return append(standardObjects(), dealershipObjects()...)
 }
 
 // commercialUpgrades (D-118…D-127): the fields the commercial and service model adds to
@@ -813,7 +827,7 @@ func viewDDL(key string) []string {
 // view, and loads the registry.
 func (h *Handler) LoadObjects(ctx context.Context) error {
 	err := h.store.WithTx(ctx, func(tx pgx.Tx) error {
-		for _, d := range standardObjects() {
+		for _, d := range allStandardObjects() {
 			raw, _ := json.Marshal(d.ObjectBody)
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO crm.object_definitions (key, module, singular, plural, description, icon, prefix, definition, is_standard)
@@ -860,7 +874,14 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return h.reloadObjects(ctx)
+	if err := h.reloadObjects(ctx); err != nil {
+		return err
+	}
+	keys := []string{}
+	for _, d := range dealershipObjects() {
+		keys = append(keys, d.Key)
+	}
+	return h.grantPackAccess(ctx, "access:dealership-v1", keys)
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {
@@ -925,7 +946,17 @@ func (h *Handler) reloadObjects(ctx context.Context) error {
 	registry.defs, registry.specs = byKey, specsByKey
 	registry.Unlock()
 	// The same order in every product's sidebar: the module catalog's (Salesforce-like) order.
-	sort.SliceStable(catalog, func(i, j int) bool { return moduleOrder(catalog[i].Module) < moduleOrder(catalog[j].Module) })
+	packIndex := map[string]int{}
+	for i, d := range dealershipObjects() {
+		packIndex[d.Key] = i + 1
+	}
+	sort.SliceStable(catalog, func(i, j int) bool {
+		if a, b := moduleOrder(catalog[i].Module), moduleOrder(catalog[j].Module); a != b {
+			return a < b
+		}
+		// Within a pack, the order the work happens in: stock, booking, ride, registration, service.
+		return packIndex[catalog[i].Key] < packIndex[catalog[j].Key]
+	})
 	access.SetCustomObjects(catalog)
 	// Standard modules are available when their object is active; custom objects are modules of their own.
 	avail := map[string][]string{}

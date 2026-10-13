@@ -267,6 +267,11 @@ func SystemRoles() []SystemRole {
 		}
 		return only(o.Actions, "read", "create", "update", "convert", "import")
 	}, "own")
+	// The stock is shared: staff see every vehicle so they can allocate one, but only a
+	// stock controller (Admin) adds or changes it.
+	if _, ok := stObj["vehicle_stock"]; ok {
+		stObj["vehicle_stock"], stRows["vehicle_stock"] = []string{"read"}, map[string]string{"scope": "workspace"}
+	}
 	return []SystemRole{
 		{Key: "SUPER_ADMIN", Name: "Super Admin", Rank: RankSuperAdmin,
 			Description: "Full access to every record, setting, user and role in the workspace — always.",

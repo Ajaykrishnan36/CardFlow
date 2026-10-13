@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -307,7 +308,38 @@ func workspaceModules(ctx context.Context, q Querier, wsID uuid.UUID, isPlatform
 			modules[m] = true
 		}
 	}
-	return modules, products, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	// Industry packs are on only in the businesses that are in that trade (or asked for
+	// the pack), so a salon doesn't get a Vehicle stock menu.
+	var industry, packs string
+	_ = q.QueryRow(ctx, `SELECT lower(COALESCE(profile->>'industry', '')), lower(COALESCE(profile->>'packs', '')) FROM crm.workspaces WHERE id = $1`, wsID).Scan(&industry, &packs)
+	for module, trades := range IndustryPacks {
+		if !modules[module] || packOn(module, trades, industry, packs) {
+			continue
+		}
+		delete(modules, module)
+	}
+	return modules, products, nil
+}
+
+// IndustryPacks are modules meant for one trade: module key → the industries that get it
+// without asking. Any business can switch a pack on in its profile (profile.packs).
+var IndustryPacks = map[string][]string{"dealership": {"automotive"}}
+
+func packOn(module string, trades []string, industry, packs string) bool {
+	for _, p := range strings.Split(packs, ",") {
+		if strings.TrimSpace(p) == module {
+			return true
+		}
+	}
+	for _, t := range trades {
+		if strings.Contains(industry, t) {
+			return true
+		}
+	}
+	return false
 }
 
 // WorkspaceModules is the set of modules switched on in a workspace (every product).
