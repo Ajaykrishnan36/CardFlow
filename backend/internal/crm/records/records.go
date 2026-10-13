@@ -21,6 +21,8 @@ type LookupValue struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`
 	Object string `json:"object,omitempty"`
+	// Hint is the second line of a picker row: phone, email, who it belongs to.
+	Hint string `json:"hint,omitempty"`
 }
 
 type WorkspaceRef struct {

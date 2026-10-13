@@ -31,12 +31,16 @@ export interface FieldInputProps extends ControlProps {
   disabled?: boolean;
   /** Currency fields: the record's current currency for this amount. */
   currencyHint?: string;
+  /** Lookups: the account / contact already chosen on the form, so their records are listed first. */
+  lookupContext?: { accountId?: string; contactId?: string };
+  /** Lookups: the whole record picked (id, label), for forms that fill related fields. */
+  onPick?: (v: LookupValue | null) => void;
 }
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 
 /** Editor control for one field, chosen by FieldType. */
-export function FieldInput({ field, value, onChange, lookupLabel, links, disabled, currencyHint, ...control }: FieldInputProps) {
+export function FieldInput({ field, value, onChange, lookupLabel, links, disabled, currencyHint, lookupContext, onPick, ...control }: FieldInputProps) {
   const { t } = useTranslation();
   const scope = useRecordScope();
   const text = (type: string, inputMode?: 'email' | 'tel' | 'url' | 'text') => (
@@ -135,7 +139,11 @@ export function FieldInput({ field, value, onChange, lookupLabel, links, disable
           value={typeof value === 'string' ? value : value == null ? null : String(value)}
           label={lookupLabel}
           disabled={disabled}
-          onChange={(v) => onChange(v?.id ?? null)}
+          context={lookupContext}
+          onChange={(v) => {
+            onChange(v?.id ?? null);
+            onPick?.(v);
+          }}
         />
       ) : (
         text('text')
@@ -289,6 +297,7 @@ export function LookupCombobox({
   disabled,
   invalid,
   placeholder,
+  context,
   id,
   'aria-describedby': describedBy
 }: ControlProps & {
@@ -298,6 +307,7 @@ export function LookupCombobox({
   onChange: (v: LookupValue | null) => void;
   disabled?: boolean;
   placeholder?: string;
+  context?: { accountId?: string; contactId?: string };
 }) {
   const { t } = useTranslation();
   const scope = useRecordScope();
@@ -312,6 +322,11 @@ export function LookupCombobox({
   useEffect(() => {
     if (label) setSelectedLabel(label);
   }, [label]);
+  // Don't rank a record by itself: the account picker ignores the chosen account.
+  const ctx = {
+    accountId: target === 'accounts' ? undefined : context?.accountId || undefined,
+    contactId: target === 'contacts' ? undefined : context?.contactId || undefined
+  };
 
   useEffect(() => {
     const h = setTimeout(() => setDebounced(text.trim()), 250);
@@ -319,8 +334,8 @@ export function LookupCombobox({
   }, [text]);
 
   const q = useQuery({
-    queryKey: ['lookup', scope.prefix, target, debounced],
-    queryFn: () => scope.api.lookup(target, debounced),
+    queryKey: ['lookup', scope.prefix, target, debounced, ctx.accountId ?? '', ctx.contactId ?? ''],
+    queryFn: () => scope.api.lookup(target, debounced, ctx),
     enabled: open,
     staleTime: 30_000
   });
@@ -376,7 +391,7 @@ export function LookupCombobox({
         disabled={disabled}
         autoComplete="off"
         value={display}
-        placeholder={open && value ? selectedLabel : placeholder ?? t('records.input.lookupPlaceholder')}
+        placeholder={open && value ? selectedLabel : placeholder ?? t(target === 'users' || target === 'products' || target === 'workspaces' ? 'records.input.lookupPlaceholder' : 'records.input.lookupPeoplePlaceholder')}
         leading={open ? <Search /> : undefined}
         onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)}
@@ -435,12 +450,13 @@ export function LookupCombobox({
                 onMouseEnter={() => setActive(i)}
                 onClick={() => choose(r)}
                 className={cn(
-                  'flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-[13px]',
+                  'cursor-pointer rounded px-2 py-1.5 text-[13px]',
                   i === active ? 'bg-muted' : '',
                   r.id === value && 'font-semibold text-primary'
                 )}
               >
-                <span className="truncate">{r.label}</span>
+                <span className="block truncate">{r.label}</span>
+                {r.hint ? <span className="block truncate text-xs font-normal text-muted-foreground">{r.hint}</span> : null}
               </li>
             ))
           )}

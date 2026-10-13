@@ -1077,6 +1077,30 @@ Gap tracker GAP-002 (the part that is not the SSO bug, which D-140 fixed).
 - Not built: a per-business password policy. A password belongs to the person, not to one
   business, so it stays one rule for everyone. Owner-console MFA is still D-133.
 
+## D-143 — Pickers work the way a counter does
+
+Asked for by the first dealership: staff know a customer by name or by the end of a phone
+number, and should not have to fill in what the CRM already knows.
+
+- **Search.** Every record picker (Contact, Account, Asset, Case, …) matches any part of
+  the name, any run of three or more digits of a phone number however it was typed in
+  ("3210", "98765 43210", "+91-98765"), and identifiers such as a serial or registration
+  number. A record is also found through the person it belongs to: typing a customer's
+  name or number in the Asset picker finds their vehicles.
+- **Second line.** Each match shows phone, email, the owner and the identifier, so two
+  customers with the same name can be told apart.
+- **Fill.** Choosing a record fills the form's *empty* fields that the record answers
+  (`GET /lookup/{object}/{id}/related`): a contact brings its account; an asset its owner,
+  the owner's account, product and contract; an individual's account its one contact.
+  Nothing already typed is overwritten, and a toast says what was filled.
+- **Order.** With an account or contact already on the form, their records come first.
+- The same access rules apply as before: a person limited to their own records neither
+  finds nor learns about anyone else's. Fields hidden from the viewer are not searched or shown.
+- **Shorter "New" forms.** Fields the CRM fills in itself or that only matter later
+  (closed on, SLA clocks, cancellation reason, resolution…) stay on the record page and are
+  left off the New form (`meta.createHidden`). A new record starts at its first status
+  (New, Scheduled, Draft) instead of "None".
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

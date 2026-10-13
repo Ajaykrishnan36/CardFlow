@@ -145,6 +145,7 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 	r.Post(prefix+"/crm/communications/{id}/send", h.handleSendCommunication)
 
 	r.Get(prefix+"/lookup/{target}", h.handleLookup)
+	r.Get(prefix+"/lookup/{target}/{id}/related", h.handleLookupRelated)
 	r.Get(prefix+"/search", h.handleSearch)
 	r.Get(prefix+"/files/{fileId}", h.handleDownloadFile)
 	r.Delete(prefix+"/files/{fileId}", h.handleDeleteFile)
@@ -837,6 +838,7 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	like := "%" + strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(q) + "%"
 	var sql string
+	rich := false // record pickers also return a second line
 	args := []any{like}
 	switch target {
 	case "users":
@@ -856,15 +858,15 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 			shared.WriteError(w, r, shared.NotFound("object_not_found"))
 			return
 		}
-		parts := make([]string, len(spec.SearchSQL))
-		for i, c := range spec.SearchSQL {
-			parts[i] = c + " ILIKE $1"
+		fields, err := allFields(r.Context(), h.store.Pool, ws, spec)
+		if err != nil {
+			shared.WriteError(w, r, err)
+			return
 		}
 		own := sc.OwnersFor(target, actor(r))
-		sql = `SELECT t.id::text, ` + spec.TitleSQL + ` || ' · ' || t.code FROM crm.` + spec.Table + ` t
-			WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)) AND (` + strings.Join(parts, " OR ") + `)
-			ORDER BY t.updated_at DESC LIMIT 20`
-		args = append(args, ws, own)
+		sql = recordLookupSQL(spec, fields)
+		rich = true
+		args = append(args, ws, own, lookupDigits(q), uuidOrEmpty(r.URL.Query().Get("accountId")), uuidOrEmpty(r.URL.Query().Get("contactId")))
 	}
 	rows, err := h.store.Pool.Query(r.Context(), sql, args...)
 	if err != nil {
@@ -875,7 +877,11 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 	out := []LookupValue{}
 	for rows.Next() {
 		var v LookupValue
-		if err := rows.Scan(&v.ID, &v.Label); err != nil {
+		dest := []any{&v.ID, &v.Label}
+		if rich {
+			dest = append(dest, &v.Hint)
+		}
+		if err := rows.Scan(dest...); err != nil {
 			shared.WriteError(w, r, err)
 			return
 		}

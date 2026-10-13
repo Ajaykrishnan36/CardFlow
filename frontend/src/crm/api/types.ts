@@ -493,6 +493,8 @@ export interface ObjectMeta {
   custom?: boolean;
   /** Objects a new lookup / relations field can link to. */
   lookupTargets?: Array<{ key: string; label: string }>;
+  /** Fields the "New …" form leaves out: filled in later, or by the CRM. */
+  createHidden?: string[];
   /** What a new record starts with (set under Rules & defaults). */
   defaults?: Record<string, unknown>;
 }
@@ -517,6 +519,8 @@ export interface LookupValue {
   id: string;
   label: string;
   object?: LookupTarget;
+  /** Second line in a picker: phone, email, who it belongs to. */
+  hint?: string;
 }
 
 export interface RecordWorkspaceRef {

@@ -79,6 +79,8 @@ const strings = {
     tagsPlaceholder: 'Type and press Enter',
     removeTag: 'Remove {{tag}}',
     lookupPlaceholder: 'Search…',
+    lookupPeoplePlaceholder: 'Name, number or phone (last 4 digits)…',
+    filledFrom: 'Filled in from {{name}}: {{fields}}',
     searching: 'Searching…',
     noMatches: 'No matches',
     lookupError: "Couldn't search. Try again.",

@@ -264,7 +264,12 @@ export function recordsApiFor(prefix: string) {
   remove: (object: ObjectKey, id: string) => api<void>(`${prefix}/crm/${object}/${enc(id)}`, { method: 'DELETE' }),
   convertLead: (id: string, body: ConvertBody, idempotencyKey: string) =>
     api<ConvertResult>(`${prefix}/crm/leads/${enc(id)}/convert`, { method: 'POST', body, headers: { 'Idempotency-Key': idempotencyKey } }),
-  lookup: (target: LookupTarget, q = '') => api<{ data: LookupValue[] }>(`${prefix}/lookup/${target}${qs({ q })}`).then((r) => r.data),
+  /** ctx: the account / contact already chosen on the form — their records are listed first. */
+  lookup: (target: LookupTarget, q = '', ctx: { accountId?: string; contactId?: string } = {}) =>
+    api<{ data: LookupValue[] }>(`${prefix}/lookup/${target}${qs({ q, ...ctx })}`).then((r) => r.data),
+  /** What a chosen record links to (a contact's account, an asset's owner…), to fill the rest of a form. */
+  lookupRelated: (target: LookupTarget, id: string) =>
+    api<{ lookups: Record<string, LookupValue> }>(`${prefix}/lookup/${target}/${enc(id)}/related`).then((r) => r.lookups),
 
   // Lists: grouped boards, bulk actions, recycle bin, CSV, merge.
   groups: (object: ObjectKey, params: RecordListParams & { field: string }) =>

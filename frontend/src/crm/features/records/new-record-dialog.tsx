@@ -27,6 +27,8 @@ function initialValues(object: ObjectKey, meta: ObjectMeta): Record<string, unkn
     if (byKey.has('status')) v.status = 'new';
     if (byKey.has('source')) v.source = 'manual';
   }
+  // A record starts at the first step of its life (Scheduled, New, Draft…), not at "None".
+  if (meta.statusField && byKey.has(meta.statusField) && v[meta.statusField] === undefined && meta.statuses?.[0]) v[meta.statusField] = meta.statuses[0].value;
   // What the business set under Rules & defaults wins over the built-in starting values.
   for (const [k, d] of Object.entries(meta.defaults ?? {})) if (byKey.has(k)) v[k] = d;
   return v;
@@ -54,6 +56,8 @@ export function NewRecordDialog({
   const qc = useQueryClient();
   const scope = useRecordScope();
   const [values, setValues] = useState<Record<string, unknown>>({});
+  // Labels of lookups the form filled in by itself (the picker only knows what was picked in it).
+  const [labels, setLabels] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const Icon = objectIcon(object, meta?.icon);
@@ -61,6 +65,7 @@ export function NewRecordDialog({
   useEffect(() => {
     if (!open) return;
     setValues({ ...initialValues(object, meta), ...(defaults ?? {}) });
+    setLabels({});
     setErrors({});
     setFormError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,7 +76,8 @@ export function NewRecordDialog({
     const used = new Set<string>();
     const out: FormSection[] = [];
     for (const s of meta.layout.sections) {
-      const fields = s.fields.map((k) => byKey.get(k)).filter((f): f is FieldDef => Boolean(f && !f.readOnly));
+      const later = new Set(meta.createHidden ?? []);
+      const fields = s.fields.map((k) => byKey.get(k)).filter((f): f is FieldDef => Boolean(f && !f.readOnly && (f.required || !later.has(f.key))));
       fields.forEach((f) => used.add(f.key));
       if (fields.length) out.push({ id: s.id, title: s.title, columns: s.columns, fields });
     }
@@ -105,6 +111,33 @@ export function NewRecordDialog({
   const set = (key: string, v: unknown) => {
     setValues((prev) => ({ ...prev, [key]: v }));
     if (errors[key]) setErrors(({ [key]: _removed, ...rest }) => rest);
+  };
+
+  // Choosing a customer, a vehicle or any other record fills the empty fields it answers:
+  // a contact brings its account, an asset its owner, product and contract.
+  const fillFrom = async (field: FieldDef, picked: { id: string; label: string } | null) => {
+    if (!picked || !field.lookup) return;
+    try {
+      const related = await scope.api.lookupRelated(field.lookup, picked.id);
+      const byKey = fieldIndex(meta);
+      const filled: string[] = [];
+      setValues((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(related)) {
+          const f = byKey.get(k);
+          if (!f || f.key === field.key || f.readOnly || f.type !== 'lookup' || f.lookup !== v.object || !isEmptyValue(next[k])) continue;
+          next[k] = v.id;
+          filled.push(k);
+        }
+        return next;
+      });
+      if (filled.length) {
+        setLabels((prev) => ({ ...prev, ...Object.fromEntries(filled.map((k) => [k, related[k]!.label])) }));
+        toast.message(t('records.input.filledFrom', { name: picked.label, fields: filled.map((k) => byKey.get(k)?.label ?? k).join(', ') }));
+      }
+    } catch {
+      // Filling is a convenience: the person can still pick the other fields by hand.
+    }
   };
 
   const onSubmit = (e: FormEvent) => {
@@ -146,7 +179,17 @@ export function NewRecordDialog({
                 <legend className="mb-3 w-full border-b pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{s.title}</legend>
                 <div className={cn('grid gap-x-5 gap-y-4', s.columns === 2 && 'sm:grid-cols-2')}>
                   {s.fields.map((f) => (
-                    <FieldEditor key={f.key} field={f} value={values[f.key]} onChange={(v) => set(f.key, v)} error={errors[f.key]} disabled={create.isPending} />
+                    <FieldEditor
+                      key={f.key}
+                      field={f}
+                      value={values[f.key]}
+                      onChange={(v) => set(f.key, v)}
+                      error={errors[f.key]}
+                      disabled={create.isPending}
+                      lookupLabel={labels[f.key]}
+                      lookupContext={{ accountId: values.accountId as string | undefined, contactId: values.contactId as string | undefined }}
+                      onPick={(v) => void fillFrom(f, v)}
+                    />
                   ))}
                 </div>
               </fieldset>
