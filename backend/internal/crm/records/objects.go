@@ -105,6 +105,12 @@ var listColumnsFor = map[string][]string{
 	"vehicle_registrations": {"status", "contactId", "assetId", "registrationNumber", "rtoOffice"},
 	"service_dues":          {"status", "assetId", "contactId", "kind", "dueDate", "dueKm"},
 	"odometer_readings":     {"assetId", "reading", "readingDate", "source"},
+	"vehicle_exchanges":     {"status", "contactId", "makeModel", "expectedPrice", "offeredPrice", "validUntil"},
+	"finance_applications":  {"status", "bookingId", "lenderId", "loanAmount", "emi", "tenureMonths"},
+	"stock_transfers":       {"status", "vehicleId", "fromLocation", "toLocation", "sentOn"},
+	"insurance_policies":    {"status", "contactId", "insurerId", "policyNumber", "premium", "endDate"},
+	"premium_dues":          {"status", "policyId", "contactId", "dueDate", "amount", "paidOn"},
+	"commissions":           {"status", "policyId", "insurerId", "policyYear", "expectedAmount", "receivedAmount"},
 }
 
 func ofSelect(key, label string, o []Option) ObjectField {
@@ -496,12 +502,18 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:commercial-v1", commercialUpgrades()); err != nil {
 		return err
 	}
-	return applyObjectUpgrades(ctx, tx, "objects:dealership-v1", dealershipUpgrades())
+	if err := applyObjectUpgrades(ctx, tx, "objects:dealership-v1", dealershipUpgrades()); err != nil {
+		return err
+	}
+	return applyObjectUpgrades(ctx, tx, "objects:dealership-v2", dealershipMoreUpgrades())
 }
 
 // allStandardObjects is the general CRM plus the industry packs.
 func allStandardObjects() []ObjectDefinition {
-	return append(append(standardObjects(), dealershipObjects()...), consentObject())
+	all := append(standardObjects(), dealershipObjects()...)
+	all = append(all, dealershipMoreObjects()...)
+	all = append(all, insuranceObjects()...)
+	return append(all, consentObject())
 }
 
 // commercialUpgrades (D-118…D-127): the fields the commercial and service model adds to
@@ -884,7 +896,14 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	if err := h.grantPackAccess(ctx, "access:dealership-v1", keys); err != nil {
 		return err
 	}
-	return h.grantPackAccess(ctx, "access:consents-v1", []string{"consents"})
+	if err := h.grantPackAccess(ctx, "access:consents-v1", []string{"consents"}); err != nil {
+		return err
+	}
+	more := []string{}
+	for _, d := range append(dealershipMoreObjects(), insuranceObjects()...) {
+		more = append(more, d.Key)
+	}
+	return h.grantPackAccess(ctx, "access:packs-v2", more)
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {
@@ -950,7 +969,7 @@ func (h *Handler) reloadObjects(ctx context.Context) error {
 	registry.Unlock()
 	// The same order in every product's sidebar: the module catalog's (Salesforce-like) order.
 	packIndex := map[string]int{}
-	for i, d := range dealershipObjects() {
+	for i, d := range append(append(dealershipObjects(), dealershipMoreObjects()...), insuranceObjects()...) {
 		packIndex[d.Key] = i + 1
 	}
 	sort.SliceStable(catalog, func(i, j int) bool {

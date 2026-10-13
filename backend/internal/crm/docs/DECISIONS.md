@@ -1181,6 +1181,56 @@ Gap tracker GAP-004; PRD CRM-001 and the first step of PRV-001 (catalogue group 
   SMS or WhatsApp yet), consent expiry sweep, notice versions and languages, erasure and
   access requests, legal hold, retention, breach register, KYC by provider, CAPTCHA.
 
+## D-147 — Dealership pack, second slice: price, exchange, loans, transfers
+
+Automotive catalogue A16, B1–B11 (in part), C5 and FF4.
+
+- **On-road price.** A booking carries the parts — ex-showroom, road tax and registration,
+  insurance, handling, number plate, TCS, accessories, extended warranty — and the server
+  adds them up, less discount and exchange value. Balance to pay is that less the advance.
+  A booking with no parts keeps a typed on-road price. Rates are typed, not looked up.
+- **Exchange vehicles.** An evaluation needs an offer; an offer is valid seven days unless
+  set otherwise; an accepted offer comes off the booking's price and a declined one goes
+  back on; a vehicle with a loan still running can't be taken in.
+- **Loan applications**, one per lender per booking. The EMI is worked out from amount,
+  rate and tenure. A rejection says why; disbursal only follows approval; approving one
+  lender closes the customer's other applications and names the financier on the booking.
+- **Stock transfers.** Only a free vehicle travels; on the way it can't be allocated or
+  moved again; the receiving side confirms and the vehicle's location changes.
+- Not built: fleet bookings with many vehicles, checklist templates per model, e-signature
+  and photos, tax rates by model class, lender and insurer payout ageing reports.
+
+## D-148 — Insurance pack, first slice
+
+From the Insurance Agent catalogue: C1, C2, C6, C8 (per record), C11, D1, D4, D7, D11,
+D12, G1–G6 and the core of J. Module `insurance`, on for a business whose industry is
+Insurance or that switches the pack on.
+
+- **Policies.** The agent types premium, tax, fee, commission (rate or amount), direct
+  costs and how the premium is collected. The server shows what the customer pays in the
+  year, the commission, the profit (commission + fee − costs) and, when the agent
+  collects, the amount to remit to the insurer — never counted as income. Policy numbers
+  are unique. A policy can't end before it starts.
+- **Issue.** In force needs the policy number, start date and premium. Issuing writes the
+  year's premium schedule by frequency (the instalments add up exactly) and the expected
+  commission for that policy year.
+- **Premiums.** Paid is dated with its amount; a part payment isn't Paid; remitting needs
+  the customer's payment first. The hourly sweep marks a missed premium Overdue with a
+  call task, and past the grace period Lapsed — and the policy with it, with a revival
+  task. Paying the missed premiums brings a lapsed policy back in force.
+- **Commission.** Received (plus TDS) against expected gives the difference and Short paid
+  or Received.
+- **Renewal.** Renewed opens the next term the day after as a proposal carrying everything
+  over (once); issuing it expects the next policy year's commission as a renewal. The
+  sweep reminds the owner 60, 30, 15, 7 and 1 days before the end, once per step, and
+  stops when the next term exists.
+- **Cancellation** needs a reason, cancels unpaid instalments, writes off expected
+  commission and, for a free-look or non-payment cancellation, records the clawback.
+- Not built: commission rules per plan and policy year, insurer statement import, quote
+  comparison across insurers, claims as their own process, nominee and insured members as
+  records, the yearly plan and project report, book import with staging, POSP payout
+  split, licence validity blocks, masking of health data.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

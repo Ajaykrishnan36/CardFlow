@@ -661,6 +661,7 @@ func (h *Handler) Sweep(ctx context.Context) {
 	}
 	defer func() { _, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(7203121)`) }()
 	h.sweepServiceDues(ctx)
+	h.sweepInsurance(ctx)
 	for name, fn := range map[string]func(context.Context) error{
 		"sla": h.sweepSLA, "contracts": h.sweepContracts, "invoices": h.sweepInvoices,
 	} {

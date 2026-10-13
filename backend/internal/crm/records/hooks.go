@@ -138,7 +138,13 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 			return after, nil
 		}
 		return h.consentSaved(ctx, tx, ws, a, op, before, after)
-	case "vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings":
+	case "insurance_policies", "premium_dues", "commissions":
+		if op == "delete" {
+			return after, nil
+		}
+		return h.insuranceSaved(ctx, tx, ws, spec, a, op, before, after)
+	case "vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings",
+		"vehicle_exchanges", "finance_applications", "stock_transfers":
 		if op == "delete" {
 			return after, nil
 		}

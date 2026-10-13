@@ -148,7 +148,8 @@ func dealershipUpgrades() map[string]objectUpgrade {
 // autoNamed objects name themselves from what they are about: nobody should have to
 // invent a title for a booking or a test ride.
 var autoNamed = map[string]bool{"vehicle_stock": true, "vehicle_bookings": true, "test_rides": true, "vehicle_registrations": true,
-	"service_dues": true, "odometer_readings": true}
+	"service_dues": true, "odometer_readings": true, "vehicle_exchanges": true, "finance_applications": true, "stock_transfers": true,
+	"insurance_policies": true, "premium_dues": true, "commissions": true}
 
 func (h *Handler) labelOf(ctx context.Context, q querier, ws uuid.UUID, object string, id any) string {
 	spec := specFor(object)
@@ -215,6 +216,20 @@ func (h *Handler) autoName(ctx context.Context, q querier, ws uuid.UUID, spec *o
 	case "odometer_readings":
 		km, _ := asNumber(values["reading"])
 		name = joinNonEmpty(" — ", fmt.Sprintf("%d km", int(km)), asset)
+	case "vehicle_exchanges":
+		name = joinNonEmpty(" — ", joinNonEmpty(" ", asString(values["makeModel"]), asString(values["registrationNumber"])), who)
+	case "finance_applications":
+		name = joinNonEmpty(" — ", h.labelOf(ctx, q, ws, "accounts", values["lenderId"]), h.labelOf(ctx, q, ws, "vehicle_bookings", values["bookingId"]))
+	case "stock_transfers":
+		name = joinNonEmpty(" → ", h.labelOf(ctx, q, ws, "vehicle_stock", values["vehicleId"]), asString(values["toLocation"]))
+	case "insurance_policies":
+		name = joinNonEmpty(" — ", who, joinNonEmpty(" ", item, asString(values["policyNumber"])))
+	case "premium_dues":
+		n, _ := asNumber(values["instalmentNumber"])
+		name = joinNonEmpty(" — ", fmt.Sprintf("Premium %d", int(n)), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]))
+	case "commissions":
+		y, _ := asNumber(values["policyYear"])
+		name = joinNonEmpty(" — ", fmt.Sprintf("Commission year %d", int(y)), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]))
 	}
 	if name == "" {
 		name = spec.Singular
@@ -257,6 +272,12 @@ func (h *Handler) dealerSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec
 		return h.serviceDueSaved(ctx, tx, ws, a, op, before, after)
 	case "odometer_readings":
 		return after, h.odometerSaved(ctx, tx, ws, op, after)
+	case "vehicle_exchanges":
+		return h.exchangeSaved(ctx, tx, ws, op, before, after)
+	case "finance_applications":
+		return h.financeSaved(ctx, tx, ws, op, before, after)
+	case "stock_transfers":
+		return h.transferSaved(ctx, tx, ws, op, before, after)
 	}
 	return after, nil
 }
@@ -306,6 +327,9 @@ func (h *Handler) bookingSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a a
 	}
 	if op == "create" && !after.has("bookingDate") {
 		set["bookingDate"] = today()
+	}
+	if status != "delivered" || was != "delivered" {
+		bookingPrice(after, set)
 	}
 
 	if status == "cancelled" {

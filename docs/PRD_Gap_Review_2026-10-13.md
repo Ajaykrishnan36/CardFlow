@@ -88,7 +88,7 @@ bike dealer by hand.
 |---|---|---|
 | General business (GEN) | Mostly built | Refund-after-part-payment acceptance run. |
 | Bike and car dealers (AUTO, 265 cases) | First slice built (D-145): stock by VIN, bookings with one vehicle each, test rides, delivery gate, registrations, service schedule and odometer. Still missing: | Vehicle stock by VIN / engine number, booking as its own record, allocation of one vehicle to one booking, test-ride record with licence check, on-road price breakdown, exchange vehicle, finance application per lender, PDI and handover checklists, registration tracker, **service plan created at delivery with odometer**, job card found by registration number, recall list. |
-| Insurance agents (INS, 192 cases) | Not built | Policies, policy years and instalments, commission expected / received / clawback, collection modes, renewal ladder, claims checklist, book import. |
+| Insurance agents (INS, 192 cases) | First slice built (D-148): policies, premium schedule, commission, renewal ladder, cancellation and clawback. Still missing: | Policies, policy years and instalments, commission expected / received / clawback, collection modes, renewal ladder, claims checklist, book import. |
 | Beauty parlour and kits (BEA) | Not built | Everything: stock by batch and expiry, kits, reservations, packages. |
 | Real estate (RE) | Not built | Everything: projects and units, holds, bookings, milestones, channel partners. |
 

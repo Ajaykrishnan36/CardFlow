@@ -326,7 +326,7 @@ func workspaceModules(ctx context.Context, q Querier, wsID uuid.UUID, isPlatform
 
 // IndustryPacks are modules meant for one trade: module key → the industries that get it
 // without asking. Any business can switch a pack on in its profile (profile.packs).
-var IndustryPacks = map[string][]string{"dealership": {"automotive"}}
+var IndustryPacks = map[string][]string{"dealership": {"automotive"}, "insurance": {"insurance"}}
 
 func packOn(module string, trades []string, industry, packs string) bool {
 	for _, p := range strings.Split(packs, ",") {

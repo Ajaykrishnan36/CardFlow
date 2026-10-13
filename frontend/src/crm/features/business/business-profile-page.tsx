@@ -139,26 +139,26 @@ export function BusinessProfilePage() {
           <Card>
             <CardHeader title="Industry packs" description="Extra menus and records for one trade. Switch on what your business needs; nothing is lost when a pack is switched off." />
             <div className="p-5">
-              {(() => {
-                const byTrade = /automotive/i.test(form.profile.industry ?? '');
+              {[
+                { key: 'dealership', trade: /automotive/i, industry: 'Automotive', label: 'Dealership (bikes and cars)', what: 'Vehicle stock by VIN, bookings, test rides, exchange vehicles, loan applications, registrations and the service schedule.' },
+                { key: 'insurance', trade: /insurance/i, industry: 'Insurance', label: 'Insurance agency', what: 'Policies, the premium schedule, renewals and commission expected against received.' }
+              ].map((pack) => {
+                const byTrade = pack.trade.test(form.profile.industry ?? '');
                 const packs = (form.profile.packs ?? '').split(',').map((x) => x.trim()).filter(Boolean);
-                const on = byTrade || packs.includes('dealership');
                 return (
                   <Switch
-                    checked={on}
+                    key={pack.key}
+                    className="py-1.5"
+                    checked={byTrade || packs.includes(pack.key)}
                     disabled={!canEdit || byTrade}
                     onCheckedChange={(c) =>
-                      setForm({ ...form, profile: { ...form.profile, packs: (c ? [...packs, 'dealership'] : packs.filter((x) => x !== 'dealership')).join(',') } })
+                      setForm({ ...form, profile: { ...form.profile, packs: (c ? [...packs, pack.key] : packs.filter((x) => x !== pack.key)).join(',') } })
                     }
-                    label="Dealership (bikes and cars)"
-                    description={
-                      byTrade
-                        ? 'On because your industry is Automotive: vehicle stock by VIN, bookings, test rides, registrations and the service schedule.'
-                        : 'Vehicle stock by VIN, bookings, test rides, registrations and the service schedule.'
-                    }
+                    label={pack.label}
+                    description={byTrade ? `On because your industry is ${pack.industry}. ${pack.what}` : pack.what}
                   />
                 );
-              })()}
+              })}
             </div>
           </Card>
           {canEdit ? (
