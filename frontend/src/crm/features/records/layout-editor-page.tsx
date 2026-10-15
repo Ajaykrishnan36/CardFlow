@@ -644,7 +644,7 @@ function LayoutEditorView({ object }: { object: ObjectKey }) {
                                   }}
                                   onHighlight={() => addToHighlights(key)}
                                   onRemove={() => update((l) => hideField(l, key))}
-                                  onEdit={!f.standard ? () => setFieldDialog({ mode: 'edit', field: f }) : undefined}
+                                  onEdit={!f.standard || isDropdown(f) ? () => setFieldDialog({ mode: 'edit', field: f }) : undefined}
                                 />
                               );
                             })}
@@ -1035,6 +1035,14 @@ function FieldPalette({
                         <EyeOff /> {t('records.layout.hideField')}
                       </MenuItem>
                     ) : null}
+                    {f.standard && isDropdown(f) ? (
+                      <>
+                        <MenuSeparator />
+                        <MenuItem onSelect={() => onEditField(f)}>
+                          <Pencil /> {t('records.layout.editField')}
+                        </MenuItem>
+                      </>
+                    ) : null}
                     {!f.standard ? (
                       <>
                         <MenuSeparator />
@@ -1157,3 +1165,7 @@ function EditorSkeleton() {
   );
 }
 
+/** Built-in dropdowns take the business's own values (stages have their own editor). */
+function isDropdown(f: FieldDef): boolean {
+  return (f.type === 'select' || f.type === 'multiselect') && !f.readOnly && f.key !== 'status';
+}

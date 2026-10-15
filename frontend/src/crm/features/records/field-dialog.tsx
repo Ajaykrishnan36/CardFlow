@@ -53,6 +53,8 @@ interface OptionRow {
   valueTouched: boolean;
   /** Existing option of a saved field: its value is stored on records, so it can't change. */
   locked?: boolean;
+  /** Comes with the CRM (built-in dropdown): it can't be renamed or removed. */
+  builtIn?: boolean;
 }
 
 export type FieldDialogState = { mode: 'create'; sectionId?: string } | { mode: 'edit'; field: FieldDef } | null;
@@ -82,6 +84,8 @@ export function FieldDialog({
   const { api: recordsApi } = useRecordScope();
   const open = state !== null;
   const editing = state?.mode === 'edit' ? state.field : null;
+  /** A built-in dropdown: only the business's own values can be added or removed. */
+  const builtIn = Boolean(editing?.standard);
 
   const [label, setLabel] = useState('');
   const [key, setKey] = useState('');
@@ -106,7 +110,7 @@ export function FieldDialog({
       setKey(f.key);
       setKeyTouched(true);
       setType(f.type);
-      setOptions((f.options ?? []).map((o) => ({ ...o, valueTouched: true, locked: true })));
+      setOptions((f.options ?? []).map((o) => ({ ...o, valueTouched: true, locked: true, builtIn: f.standard && !(f.addedOptions ?? []).includes(o.value) })));
       setRequired(f.required);
       setUnique(Boolean(f.unique));
       setLookup(f.lookup ?? '');
@@ -140,6 +144,10 @@ export function FieldDialog({
   const mutation = useMutation({
     mutationFn: async (): Promise<{ meta: ObjectMeta; key: string }> => {
       const opts: Option[] | undefined = hasOptions ? options.filter((o) => o.label.trim()).map((o) => ({ value: o.value.trim(), label: o.label.trim() })) : undefined;
+      if (editing && builtIn) {
+        const m = await recordsApi.updateField(object, editing.key, { options: opts });
+        return { meta: m, key: editing.key };
+      }
       if (editing) {
         const m = await recordsApi.updateField(object, editing.key, { label: label.trim(), required, unique: canBeUnique ? unique : undefined, options: opts, helpText: helpText.trim() || undefined });
         return { meta: m, key: editing.key };
@@ -215,7 +223,7 @@ export function FieldDialog({
         <div className="border-b px-5 py-4 pr-12">
           <DialogTitle className="text-base font-semibold">{editing ? t('records.fieldDialog.editTitle', { label: editing.label }) : t('records.fieldDialog.newTitle')}</DialogTitle>
           <DialogDescription className="text-[13px] text-muted-foreground">
-            {editing ? t('records.fieldDialog.editBody') : t('records.fieldDialog.newBody', { object: meta.labelSingular.toLowerCase() })}
+            {builtIn ? t('records.fieldDialog.builtInBody') : editing ? t('records.fieldDialog.editBody') : t('records.fieldDialog.newBody', { object: meta.labelSingular.toLowerCase() })}
           </DialogDescription>
         </div>
         <form onSubmit={onSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
@@ -225,7 +233,8 @@ export function FieldDialog({
               <Field label={t('records.fieldDialog.label')} error={errors.label}>
                 <Input
                   value={label}
-                  autoFocus
+                  autoFocus={!builtIn}
+                  disabled={builtIn}
                   maxLength={80}
                   onChange={(e) => {
                     setLabel(e.target.value);
@@ -286,7 +295,13 @@ export function FieldDialog({
                   </div>
                   {options.map((o, i) => (
                     <div key={i} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2rem] items-center gap-2">
-                      <Input value={o.label} onChange={(e) => updateOption(i, { label: e.target.value })} aria-label={t('records.fieldDialog.optionLabelN', { n: i + 1 })} />
+                      <Input
+                        value={o.label}
+                        disabled={o.builtIn}
+                        title={o.builtIn ? t('records.fieldDialog.builtInOption') : undefined}
+                        onChange={(e) => updateOption(i, { label: e.target.value })}
+                        aria-label={t('records.fieldDialog.optionLabelN', { n: i + 1 })}
+                      />
                       <Input
                         className="font-mono"
                         value={o.value}
@@ -300,7 +315,7 @@ export function FieldDialog({
                         size="icon-sm"
                         onClick={() => setOptions((rows) => rows.filter((_, j) => j !== i))}
                         aria-label={t('records.fieldDialog.removeOption', { n: i + 1 })}
-                        disabled={options.length <= 1}
+                        disabled={options.length <= 1 || o.builtIn}
                       >
                         <Trash2 />
                       </Button>
@@ -314,11 +329,15 @@ export function FieldDialog({
               </fieldset>
             ) : null}
 
-            <Field label={t('records.fieldDialog.helpText')} error={errors.helpText} hint={t('records.fieldDialog.helpTextHint')}>
-              <Textarea rows={2} maxLength={300} value={helpText} onChange={(e) => setHelpText(e.target.value)} />
-            </Field>
-            <Checkbox checked={required} onCheckedChange={setRequired} label={t('records.fieldDialog.required')} description={t('records.fieldDialog.requiredHint')} />
-            {canBeUnique ? (
+            {builtIn ? null : (
+              <>
+                <Field label={t('records.fieldDialog.helpText')} error={errors.helpText} hint={t('records.fieldDialog.helpTextHint')}>
+                  <Textarea rows={2} maxLength={300} value={helpText} onChange={(e) => setHelpText(e.target.value)} />
+                </Field>
+                <Checkbox checked={required} onCheckedChange={setRequired} label={t('records.fieldDialog.required')} description={t('records.fieldDialog.requiredHint')} />
+              </>
+            )}
+            {canBeUnique && !builtIn ? (
               <div>
                 <Checkbox checked={unique} onCheckedChange={setUnique} label={t('records.fieldDialog.unique')} description={t('records.fieldDialog.uniqueHint', { objects: meta.labelPlural.toLowerCase() })} />
                 {errors.unique ? <p className="mt-1 text-[13px] text-danger">{errors.unique}</p> : null}

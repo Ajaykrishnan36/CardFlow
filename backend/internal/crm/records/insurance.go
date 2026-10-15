@@ -38,6 +38,7 @@ func insuranceObjects() []ObjectDefinition {
 				Fields: []ObjectField{
 					ofReq(ofLookup("contactId", "Policyholder", "contacts")), ofLookup("accountId", "Household / company", "accounts"),
 					ofReq(ofLookup("insurerId", "Insurer", "accounts")), ofLookup("itemId", "Plan", "catalog_items"),
+					ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("quoteId", "Quote", "quotes"),
 					ofSelect("policyClass", "Class", opts("life", "Life", "health", "Health", "motor", "Motor", "general", "General")),
 					{Key: "policyNumber", Label: "Policy number", Type: "text", Unique: true},
 					of("sumAssured", "Sum assured / cover", "currency"), of("startDate", "Starts", "date"), of("endDate", "Ends / renewal date", "date"),

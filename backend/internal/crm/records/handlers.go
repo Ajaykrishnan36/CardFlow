@@ -526,7 +526,11 @@ func (h *Handler) handleUpdateField(w http.ResponseWriter, r *http.Request) {
 			WHERE workspace_id = $1 AND object_key = $2 AND key = $3 AND status = 'published' FOR UPDATE`, ws, spec.Key, key).
 			Scan(&label, &typ, &required, &raw, &helpText, &unique)
 		if errors.Is(err, pgx.ErrNoRows) {
-			if _, std := spec.field(key); std {
+			if f, std := spec.field(key); std {
+				// A built-in dropdown takes the business's own values (D-154); nothing else changes.
+				if in.Options != nil && (f.Type == "select" || f.Type == "multiselect") {
+					return h.saveAddedOptions(r.Context(), tx, ws, spec, f, *in.Options)
+				}
 				return shared.Forbidden("standard_field", "Standard fields can't be changed; hide them from the layout instead.")
 			}
 			return shared.NotFound("field_not_found")

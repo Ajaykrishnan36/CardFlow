@@ -87,6 +87,8 @@ func (h *Handler) notifyForEvent(ctx context.Context, tx pgx.Tx, ev Event) error
 		_ = tx.QueryRow(ctx, `SELECT display_name FROM crm.identities WHERE id = $1`, *ev.ActorID).Scan(&by)
 	} else if ev.Source == "workflow" {
 		by = "A workflow"
+	} else {
+		by = "The CRM" // made by the CRM itself: a renewal follow-up, the next service, a premium due
 	}
 	h.notify(ctx, tx, ev.WorkspaceID, owner, "assigned", fmt.Sprintf("%s assigned you %s %s", by, articleFor(spec.Singular), spec.Singular), ev.Title, link, ev.ActorID)
 	return nil

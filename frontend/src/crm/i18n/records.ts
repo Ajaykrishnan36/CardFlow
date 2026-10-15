@@ -354,6 +354,8 @@ const strings = {
     newBody: 'Adds a field to every {{object}}. You can place it on the layout right away.',
     editTitle: 'Edit “{{label}}”',
     editBody: 'Changes apply to every record. Stored values are kept.',
+    builtInBody: 'This dropdown comes with the CRM. Add your own values after the built-in ones; the built-in values stay.',
+    builtInOption: 'Comes with the CRM',
     label: 'Label',
     key: 'API key',
     keyHint: 'Lowercase letters, numbers and underscores. Can’t be changed later.',

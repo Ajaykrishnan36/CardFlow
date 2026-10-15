@@ -509,7 +509,10 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:dealership-v2", dealershipMoreUpgrades()); err != nil {
 		return err
 	}
-	return applyObjectUpgrades(ctx, tx, "objects:common-v1", commonOpsUpgrades())
+	if err := applyObjectUpgrades(ctx, tx, "objects:common-v1", commonOpsUpgrades()); err != nil {
+		return err
+	}
+	return applyObjectUpgrades(ctx, tx, "objects:links-v1", linkUpgrades())
 }
 
 // allStandardObjects is the general CRM plus the industry packs.

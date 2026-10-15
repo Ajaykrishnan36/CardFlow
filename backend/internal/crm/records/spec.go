@@ -26,6 +26,8 @@ type Field struct {
 	Lookup   string   `json:"lookup,omitempty"` // lookup / relations: the object linked to
 	HelpText string   `json:"helpText,omitempty"`
 	Unique   bool     `json:"unique,omitempty"` // no two records may share a value
+	// AddedOptions: values of a built-in dropdown this business added (D-154); removable.
+	AddedOptions []string `json:"addedOptions,omitempty"`
 
 	column string // standard fields stored in a column; "" = stored in custom jsonb
 	isInt  bool   // int column (numbers are rounded)

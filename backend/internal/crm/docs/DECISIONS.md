@@ -1368,6 +1368,38 @@ deployment settings changed — listed in HANDOVER.md, "Moving the project to an
 repository". The phone app's API address (`CRM_API_ORIGIN`) and the web dev server's API
 target (`API_PROXY_TARGET`) are now build settings instead of being written in the code.
 
+## D-154 — Gaps found by the round-5 end-to-end test, fixed generically
+
+The round-5 test (three businesses' worth of real data on the local copy) found places where
+data didn't flow on by itself or where a business couldn't adapt the CRM. Each is fixed once,
+for every business:
+
+- **Documents start with what they were made from.** A new quote for an opportunity starts with
+  the opportunity's products, priced exactly as there; a new contract for an order (or quote, or
+  opportunity) starts with what was sold, and its value is their total. Only a new document with
+  no amount of its own inherits: revisions, renewals and conversions keep their own lines.
+- **Workflows can reach the people and records around a record.** `{{trigger.owner.name}}`,
+  `{{trigger.owner.email}}`, `{{trigger.owner.phone}}` (whoever the record belongs to — e.g. the
+  person a case was just given to) and `{{trigger.related.<lookup>.<field>}}` (any linked record,
+  e.g. `{{trigger.related.contactId.email}}` on an order or case) — so "email the customer when the
+  order is confirmed" and "email the technician the case was assigned to" need no code.
+- **Round robin respects leave.** Assignment (round robin, least busy, random) skips anyone whose
+  linked service resource has an absence covering now; if everyone is away nobody is skipped.
+  Booking a person who is away was already refused.
+- **Built-in dropdowns take the business's own values.** An admin can add values after the
+  built-in ones of any built-in picklist (a "Bike service" case category, a "Walk-in" source)
+  from the page-layout editor. Built-in values can't be removed; an added value can be removed
+  once no record uses it. Statuses are not extended this way. Values belong to one business
+  (`crm.field_option_additions`).
+- **Records made from a sale point back at it:** policies link to their opportunity and quote;
+  memberships to the order they were sold on and the opportunity.
+- An assignment the CRM made by itself (a renewal follow-up, the next service) now reads "The CRM
+  assigned you …" instead of "Someone assigned you …".
+
+Still open (found by the same test): dealership service dues are not on the shared Upcoming page;
+no Projects module (milestones, timesheets); no guardian link for a student or patient who is a
+minor; no medical-records module.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

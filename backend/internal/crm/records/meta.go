@@ -100,6 +100,9 @@ func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSp
 			}
 		}
 	}
+	if err := addedOptions(ctx, q, wsID, spec, fields); err != nil {
+		return nil, err
+	}
 	return append(fields, custom...), nil
 }
 

@@ -74,7 +74,7 @@ func commonOpsObjects() []ObjectDefinition {
 				st("active", "Active", "success"), st("frozen", "Frozen", "warning"), st("used_up", "Used up", "neutral"),
 				st("expired", "Expired", "danger"), st("cancelled", "Cancelled", "neutral")},
 				Fields: []ObjectField{
-					ofReq(ofLookup("contactId", "Member", "contacts")), ofLookup("itemId", "Plan / package", "catalog_items"), ofLookup("branchId", "Branch", "business_branches"),
+					ofReq(ofLookup("contactId", "Member", "contacts")), ofLookup("itemId", "Plan / package", "catalog_items"), ofLookup("orderId", "Sold on order", "sales_orders"), ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("branchId", "Branch", "business_branches"),
 					ofReq(of("startDate", "Starts", "date")), ofReq(of("endDate", "Ends", "date")),
 					of("sessionsTotal", "Sessions included (empty = unlimited)", "number"), of("sessionsUsed", "Sessions used", "number"), of("sessionsLeft", "Sessions left", "number"),
 					of("frozenFrom", "Frozen from", "date"), of("frozenUntil", "Frozen until", "date"), of("freezeDays", "Days frozen so far", "number"),
@@ -145,6 +145,14 @@ func commonOpsUpgrades() map[string]objectUpgrade {
 		"quotes":         {fields: []ObjectField{branch}},
 		"care_schedules": {fields: []ObjectField{branch}},
 		"due_items":      {fields: []ObjectField{branch}},
+	}
+}
+
+// linkUpgrades (D-154): records made from a sale point back at it.
+func linkUpgrades() map[string]objectUpgrade {
+	return map[string]objectUpgrade{
+		"insurance_policies": {fields: []ObjectField{ofLookup("opportunityId", "Opportunity", "opportunities"), ofLookup("quoteId", "Quote", "quotes")}},
+		"memberships":        {fields: []ObjectField{ofLookup("orderId", "Sold on order", "sales_orders"), ofLookup("opportunityId", "Opportunity", "opportunities")}},
 	}
 }
 

@@ -37,6 +37,12 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 			return nil, err
 		}
 	}
+	// A new quote or contract starts with the products of what it was made from (D-154).
+	if op == "create" && a.Source != sourcePricing && (spec.Key == "quotes" || spec.Key == "contracts") {
+		if after, err = h.inheritLines(ctx, tx, ws, spec, after); err != nil {
+			return nil, err
+		}
+	}
 	switch spec.Key {
 	case "care_schedules", "due_items", "call_logs":
 		if op == "delete" || !standardObject(spec.Key) {

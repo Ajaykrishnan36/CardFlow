@@ -412,7 +412,8 @@ func (h *Handler) triggerWorkflows(ctx context.Context, tx pgx.Tx, ev Event) err
 			}
 		}
 		trig := map[string]any{"type": ev.Type, "object": ev.Object, "recordId": ev.RecordID.String(), "record": ev.Record,
-			"previous": ev.Previous, "changedFields": ev.Changed, "actorId": ev.ActorID}
+			"previous": ev.Previous, "changedFields": ev.Changed, "actorId": ev.ActorID, "owner": recordOwner(ctx, tx, ev.Record),
+			"related": h.relatedRecords(ctx, tx, ev.WorkspaceID, spec, ev.Record)}
 		if _, err := h.startRun(ctx, tx, ev.WorkspaceID, w.id, w.version, w.def, w.name, w.creator, trig, nil, ev.Depth+1); err != nil {
 			return err
 		}
@@ -1121,7 +1122,10 @@ func (h *Handler) assignmentPool(ctx context.Context, ws uuid.UUID, cfg map[stri
 				out = append(out, id)
 			}
 		}
-		return out, rows.Err()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return h.withoutAway(ctx, ws, out), nil
 	}
 	for _, s := range asStrings(cfg["members"]) {
 		id, err := uuid.Parse(s)
@@ -1134,7 +1138,42 @@ func (h *Handler) assignmentPool(ctx context.Context, ws uuid.UUID, cfg map[stri
 			out = append(out, id)
 		}
 	}
-	return out, nil
+	return h.withoutAway(ctx, ws, out), nil
+}
+
+// withoutAway drops people who are on leave right now: a service resource linked to them
+// has an absence covering this moment (D-154). If everyone is away, nobody is dropped —
+// the record still needs an owner, and the notification tells them.
+func (h *Handler) withoutAway(ctx context.Context, ws uuid.UUID, pool []uuid.UUID) []uuid.UUID {
+	if len(pool) == 0 {
+		return pool
+	}
+	rows, err := h.store.Pool.Query(ctx, `SELECT DISTINCT r.custom->>'userId' FROM crm.object_records r
+		JOIN crm.object_records x ON x.workspace_id = r.workspace_id AND x.object_key = 'resource_absences' AND x.deleted_at IS NULL
+			AND x.custom->>'resourceId' = r.id::text AND COALESCE(x.custom->>'startsAt', '') <> '' AND COALESCE(x.custom->>'endsAt', '') <> ''
+			AND (x.custom->>'startsAt')::timestamptz <= now() AND (x.custom->>'endsAt')::timestamptz > now()
+		WHERE r.workspace_id = $1 AND r.object_key = 'service_resources' AND r.deleted_at IS NULL AND COALESCE(r.custom->>'userId', '') <> ''`, ws)
+	if err != nil {
+		return pool
+	}
+	defer rows.Close()
+	away := map[string]bool{}
+	for rows.Next() {
+		var s string
+		if rows.Scan(&s) == nil {
+			away[s] = true
+		}
+	}
+	out := make([]uuid.UUID, 0, len(pool))
+	for _, id := range pool {
+		if !away[id.String()] {
+			out = append(out, id)
+		}
+	}
+	if len(out) == 0 {
+		return pool
+	}
+	return out
 }
 
 // runCode runs a small JavaScript function body with `input` (trigger + earlier steps).
@@ -1258,4 +1297,58 @@ func (c *cronSpec) next(from time.Time) time.Time {
 		t = t.Add(time.Minute)
 	}
 	return from.Add(24 * time.Hour)
+}
+
+// recordOwner: who the record belongs to, for {{trigger.owner.name}}, {{trigger.owner.email}}
+// and {{trigger.owner.phone}} — so a workflow can tell the person a record was given to.
+func recordOwner(ctx context.Context, q interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, record map[string]any) map[string]any {
+	out := map[string]any{"id": "", "name": "", "email": "", "phone": ""}
+	s, _ := record["ownerId"].(string)
+	id, err := uuid.Parse(s)
+	if err != nil {
+		return out
+	}
+	var name, email, phone string
+	if q.QueryRow(ctx, `SELECT i.display_name,
+			COALESCE((SELECT value_normalized FROM crm.verified_identifiers WHERE identity_id = i.id AND kind = 'email' ORDER BY verified_at DESC NULLS LAST LIMIT 1), ''),
+			COALESCE((SELECT value_normalized FROM crm.verified_identifiers WHERE identity_id = i.id AND kind = 'phone' ORDER BY verified_at DESC NULLS LAST LIMIT 1), '')
+		FROM crm.identities i WHERE i.id = $1`, id).Scan(&name, &email, &phone) == nil {
+		out["id"], out["name"], out["email"], out["phone"] = id.String(), name, email, phone
+	}
+	return out
+}
+
+// relatedRecords: the records this one links to, by lookup field — {{trigger.related.contactId.email}}
+// is the email of the order's contact, {{trigger.related.accountId.phone}} its account's phone
+// (D-154). Any object, any lookup; a link the record doesn't have is simply empty.
+func (h *Handler) relatedRecords(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *objectSpec, record map[string]any) map[string]any {
+	out := map[string]any{}
+	if spec == nil {
+		return out
+	}
+	fields, err := allFieldsRaw(ctx, tx, ws, spec)
+	if err != nil {
+		return out
+	}
+	n := 0
+	for _, f := range fields {
+		if f.Type != "lookup" || f.Lookup == "" || f.Lookup == "users" || n >= 8 {
+			continue
+		}
+		s, _ := record[f.Key].(string)
+		id, err := uuid.Parse(s)
+		target := specFor(f.Lookup)
+		if err != nil || target == nil {
+			continue
+		}
+		row, _, err := h.getRow(ctx, tx, ws, target, id, nil)
+		if err != nil || row == nil {
+			continue
+		}
+		out[f.Key] = rowSnapshot(row)
+		n++
+	}
+	return out
 }

@@ -458,6 +458,8 @@ export interface FieldDef {
   helpText?: string;
   /** No two records may share a value. */
   unique?: boolean;
+  /** Values this business added to a built-in dropdown; only these can be removed. */
+  addedOptions?: string[];
 }
 
 export interface LayoutSection {
