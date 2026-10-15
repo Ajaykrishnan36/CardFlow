@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"sort"
@@ -911,7 +912,15 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	for _, d := range packMoreObjects() {
 		v3 = append(v3, d.Key)
 	}
-	return h.grantPackAccess(ctx, "access:packs-v3", v3)
+	if err := h.grantPackAccess(ctx, "access:packs-v3", v3); err != nil {
+		return err
+	}
+	// Moving the real-estate objects to their new names must never stop the CRM from
+	// starting: if it can't be done, say so and carry on with the old names.
+	if err := h.retirePackNames(ctx); err != nil {
+		slog.Error("crm: real-estate objects not moved to their new names; they keep the old ones", "error", err)
+	}
+	return h.grantPackAccess(ctx, "access:packs-v4", []string{"property_units", "property_visits"})
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {
@@ -1713,4 +1722,82 @@ func standardObject(key string) bool {
 	defer registry.RUnlock()
 	d := registry.defs[key]
 	return d != nil && d.Standard
+}
+
+// retirePackNames moves the real-estate objects off their first names (D-150). A
+// business could already own an object called "properties" or "site_visits", which kept
+// the pack's object from being created; the pack now uses names no business can take.
+// Where the built-in object did get the old name, its records — with their notes,
+// files, views, layouts and history — move to the new name, and the old one is
+// archived. A business's own object under the old name is never touched.
+func (h *Handler) retirePackNames(ctx context.Context) error {
+	moves := map[string]string{"properties": "property_units", "site_visits": "property_visits"}
+	tables := []string{"object_records", "activities", "approval_requests", "favorites", "files", "record_team_members", "message_links",
+		"views", "layouts", "field_defaults", "field_definitions", "validation_rules", "reports", "campaigns", "card_links"}
+	moved := false
+	err := h.store.WithTx(ctx, func(tx pgx.Tx) error {
+		for from, to := range moves {
+			var standard bool
+			err := tx.QueryRow(ctx, `SELECT is_standard FROM crm.object_definitions WHERE key = $1 AND status <> 'archived'`, from).Scan(&standard)
+			if errors.Is(err, pgx.ErrNoRows) || (err == nil && !standard) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			// The new object takes over the old one's definition and its code prefix, so record
+			// numbers carry on (PRP-000003 follows PRP-000002). The old one keeps a parked prefix.
+			var prefix string
+			if err := tx.QueryRow(ctx, `SELECT prefix FROM crm.object_definitions WHERE key = $1 FOR UPDATE`, from).Scan(&prefix); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE crm.object_definitions SET prefix = left(prefix, 4) || 'X', updated_at = now() WHERE key = $1`, from); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO crm.object_definitions (key, module, singular, plural, description, icon, prefix, definition, is_standard, status)
+				SELECT $2, module, singular, plural, description, icon, $3, definition, true, 'active' FROM crm.object_definitions WHERE key = $1
+				ON CONFLICT (key) DO UPDATE SET prefix = EXCLUDED.prefix, status = 'active', updated_at = now()`, from, to, prefix); err != nil {
+				return err
+			}
+			for _, ddl := range viewDDL(to) {
+				if _, err := tx.Exec(ctx, ddl); err != nil {
+					return err
+				}
+			}
+			for _, t := range tables {
+				if _, err := tx.Exec(ctx, `UPDATE crm.`+t+` SET object_key = $2 WHERE object_key = $1`, from, to); err != nil {
+					return fmt.Errorf("moving %s in %s: %w", from, t, err)
+				}
+			}
+			// Lookups on other records that pointed at the old object now name the new one.
+			if _, err := tx.Exec(ctx, `UPDATE crm.object_definitions SET status = 'archived', updated_at = now() WHERE key = $1 AND is_standard`, from); err != nil {
+				return err
+			}
+			moved = true
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	// Built-in objects whose saved definition still links to an old name (Holds & bookings
+	// → Unit) link to the new one. Safe to run every start-up; a business's own fields are
+	// left alone, since "site_visits" may be that business's own object.
+	relinked := int64(0)
+	for from, to := range moves {
+		tag, err := h.store.Pool.Exec(ctx, `
+			UPDATE crm.object_definitions SET definition = jsonb_set(definition, '{fields}', (
+			       SELECT jsonb_agg(CASE WHEN f->>'lookup' = $1 THEN f || jsonb_build_object('lookup', $2::text) ELSE f END)
+			       FROM jsonb_array_elements(definition->'fields') f)), updated_at = now()
+			 WHERE is_standard AND definition->'fields' @> jsonb_build_array(jsonb_build_object('lookup', $1::text))`, from, to)
+		if err != nil {
+			return err
+		}
+		relinked += tag.RowsAffected()
+	}
+	if !moved && relinked == 0 {
+		return nil
+	}
+	return h.reloadObjects(ctx)
 }

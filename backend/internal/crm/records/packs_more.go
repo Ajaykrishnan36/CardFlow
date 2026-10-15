@@ -14,7 +14,7 @@ import (
 //
 //	insurance    commission_rules, insurance_claims
 //	salon        salon_products, product_usage, makeup_kits, kit_bookings, client_packages
-//	real_estate  properties, property_bookings, site_visits
+//	real_estate  properties, property_bookings, property_visits
 //	privacy      privacy_requests (access, correction, erasure, grievance)
 //
 // Salon and real estate had no use-case catalogue, only a page each in the master PRD,
@@ -98,7 +98,7 @@ func packMoreObjects() []ObjectDefinition {
 					of("lastUsedOn", "Last used on", "date"), of("notes", "Notes", "textarea")}}},
 
 		// ---- real estate ----
-		{Key: "properties", Module: "real_estate", Singular: "Unit", Plural: "Units & listings", Icon: "home", Prefix: "PRP",
+		{Key: "property_units", Module: "real_estate", Singular: "Unit", Plural: "Units & listings", Icon: "home", Prefix: "PRP",
 			Description: "Every unit or listing: project, tower, floor, size, price and whether it is free, on hold, booked or sold.",
 			ObjectBody: ObjectBody{NameLabel: "Unit / listing", StatusLabel: "Status", Statuses: []StatusOption{
 				st("available", "Available", "success"), st("on_hold", "On hold", "warning"), st("booked", "Booked", "primary"),
@@ -117,19 +117,19 @@ func packMoreObjects() []ObjectDefinition {
 				st("hold", "On hold", "warning"), st("booked", "Booked", "primary"), st("agreement", "Agreement signed", "primary"),
 				st("completed", "Completed", "success"), st("cancelled", "Cancelled", "danger"), st("expired", "Hold expired", "neutral")},
 				Fields: []ObjectField{
-					ofReq(ofLookup("propertyId", "Unit", "properties")), ofReq(ofLookup("contactId", "Buyer / tenant", "contacts")),
+					ofReq(ofLookup("propertyId", "Unit", "property_units")), ofReq(ofLookup("contactId", "Buyer / tenant", "contacts")),
 					of("holdUntil", "Held until", "date"), of("agreedPrice", "Agreed price / rent", "currency"), of("tokenAmount", "Token / deposit received", "currency"),
 					ofLookup("brokerId", "Channel partner / co-broker", "accounts"), of("commissionPercent", "Commission", "percent"), of("commissionAmount", "Commission amount", "currency"),
 					ofLookup("opportunityId", "Opportunity", "opportunities"),
 					ofSelect("cancellationReason", "Why it was cancelled", opts("changed_mind", "Changed their mind", "loan_rejected", "Loan not approved", "price", "Price",
 						"bought_elsewhere", "Chose another property", "documents", "Paperwork problem", "other", "Other")),
 					of("completedOn", "Registered / handed over on", "date"), of("notes", "Notes", "textarea")}}},
-		{Key: "site_visits", Module: "real_estate", Singular: "Site visit", Plural: "Site visits", Icon: "map-pin", Prefix: "SIV",
+		{Key: "property_visits", Module: "real_estate", Singular: "Site visit", Plural: "Site visits", Icon: "map-pin", Prefix: "SIV",
 			Description: "A visit to a unit: who came, when, with which agent, and what they thought.",
 			ObjectBody: ObjectBody{NameLabel: "Visit", StatusLabel: "Status", Statuses: []StatusOption{
 				st("scheduled", "Scheduled", "primary"), st("completed", "Completed", "success"), st("no_show", "No show", "danger"), st("cancelled", "Cancelled", "neutral")},
 				Fields: []ObjectField{
-					ofReq(ofLookup("propertyId", "Unit", "properties")), ofLookup("contactId", "Visitor", "contacts"), ofLookup("leadId", "Lead", "leads"),
+					ofReq(ofLookup("propertyId", "Unit", "property_units")), ofLookup("contactId", "Visitor", "contacts"), ofLookup("leadId", "Lead", "leads"),
 					ofReq(of("scheduledAt", "When", "datetime")), ofLookup("agent", "Shown by", "users"),
 					ofSelect("interest", "Interest after the visit", opts("hot", "Hot", "warm", "Warm", "cold", "Cold")),
 					of("feedback", "What they said", "textarea"), ofLookup("opportunityId", "Opportunity", "opportunities")}}},
@@ -367,7 +367,7 @@ func (h *Handler) packSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 			set["status"] = want
 		}
 
-	case "properties":
+	case "property_units":
 		if op == "update" && before.text("bookingId") != after.text("bookingId") {
 			return nil, refuse("bookingId", "A unit is held or booked from its hold or booking, not from here.")
 		}
@@ -388,11 +388,11 @@ func (h *Handler) packSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		if op == "update" && closed(was) && status != was {
 			return nil, refuse("status", "This hold or booking is finished. Make a new one.")
 		}
-		uStatus, uName, err := lockRecord(ctx, tx, ws, "properties", unit)
+		uStatus, uName, err := lockRecord(ctx, tx, ws, "property_units", unit)
 		if err != nil {
 			return nil, refuse("propertyId", "That unit isn't in your listings.")
 		}
-		u, _, err := h.getRow(ctx, tx, ws, specFor("properties"), unit, nil)
+		u, _, err := h.getRow(ctx, tx, ws, specFor("property_units"), unit, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -438,12 +438,12 @@ func (h *Handler) packSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 			}
 		}
 		if len(unitSet) > 0 && (fmt.Sprint(unitSet["status"]) != uStatus || fmt.Sprint(unitSet["bookingId"]) != u.text("bookingId")) {
-			if _, err := h.updateValues(ctx, tx, ws, specFor("properties"), unit, actorInfo{Kind: "system", Source: sourcePack}, unitSet, nil, nil); err != nil {
+			if _, err := h.updateValues(ctx, tx, ws, specFor("property_units"), unit, actorInfo{Kind: "system", Source: sourcePack}, unitSet, nil, nil); err != nil {
 				return nil, err
 			}
 		}
 
-	case "site_visits":
+	case "property_visits":
 		if !after.has("contactId") && !after.has("leadId") {
 			return nil, refuse("contactId", "Pick the lead or contact who is visiting.")
 		}

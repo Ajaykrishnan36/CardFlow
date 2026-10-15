@@ -276,8 +276,8 @@ func SystemRoles() []SystemRole {
 	delete(stObj, "privacy_requests")
 	delete(stRows, "privacy_requests")
 	// Units are shared like stock: staff see them all to put a hold on one.
-	if _, ok := stObj["properties"]; ok {
-		stObj["properties"], stRows["properties"] = []string{"read"}, map[string]string{"scope": "workspace"}
+	if _, ok := stObj["property_units"]; ok {
+		stObj["property_units"], stRows["property_units"] = []string{"read"}, map[string]string{"scope": "workspace"}
 	}
 	return []SystemRole{
 		{Key: "SUPER_ADMIN", Name: "Super Admin", Rank: RankSuperAdmin,

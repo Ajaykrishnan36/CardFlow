@@ -151,7 +151,7 @@ var autoNamed = map[string]bool{"vehicle_stock": true, "vehicle_bookings": true,
 	"service_dues": true, "odometer_readings": true, "vehicle_exchanges": true, "finance_applications": true, "stock_transfers": true,
 	"insurance_policies": true, "premium_dues": true, "commissions": true,
 	"commission_rules": true, "insurance_claims": true, "product_usage": true, "kit_bookings": true, "client_packages": true,
-	"property_bookings": true, "site_visits": true, "privacy_requests": true}
+	"property_bookings": true, "property_visits": true, "privacy_requests": true}
 
 func (h *Handler) labelOf(ctx context.Context, q querier, ws uuid.UUID, object string, id any) string {
 	spec := specFor(object)
@@ -237,7 +237,7 @@ func (h *Handler) autoName(ctx context.Context, q querier, ws uuid.UUID, spec *o
 		name = joinNonEmpty(" — ", fmt.Sprintf("Commission year %d", int(y)), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]))
 	}
 	if name == "" {
-		what := joinNonEmpty(" ", h.labelOf(ctx, q, ws, "properties", values["propertyId"]), h.labelOf(ctx, q, ws, "makeup_kits", values["kitId"]),
+		what := joinNonEmpty(" ", h.labelOf(ctx, q, ws, "property_units", values["propertyId"]), h.labelOf(ctx, q, ws, "makeup_kits", values["kitId"]),
 			h.labelOf(ctx, q, ws, "salon_products", values["productId"]), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]), asString(values["eventName"]))
 		if spec.Key == "commission_rules" {
 			who = h.labelOf(ctx, q, ws, "accounts", values["insurerId"])

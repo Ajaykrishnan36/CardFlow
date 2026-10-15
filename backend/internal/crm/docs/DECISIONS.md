@@ -1273,6 +1273,26 @@ everything else there is still open.
   comparison, the yearly plan and project report; dealer fleet bookings and checklist
   templates.
 
+## D-150 — Real-estate objects get names no business can take
+
+Found by the data test in account 8887776655 (15 Oct 2026): a business had made its own
+object called "Site visits" before the real-estate pack existed. Object names are unique
+across the platform, so the pack's own `site_visits` was never created and the menu item
+was missing in every real-estate business. "properties" had the same risk.
+
+- The pack's objects are now `property_units` and `property_visits`. Their screen names
+  stay "Units & listings" and "Site visits"; record numbers keep their PRP / SIV prefix.
+- On start-up, where the built-in object did get an old name, its records move to the new
+  name with their notes, files, views, layouts, team members and history, the new object
+  takes over the code prefix so numbers carry on, and the old definition is archived.
+  Built-in definitions that linked to the old name (Holds & bookings → Unit) are relinked.
+  A business's own object under an old name is never touched.
+- The move runs in one transaction. If it fails it is logged and the CRM starts anyway with
+  the old names — the first version of this move stopped the CRM from starting on the local
+  copy (a foreign key on the object name; rolled back, nothing lost) and was fixed before push.
+- Service staff who must find any customer's vehicle need record access beyond "own": the
+  test account got a "Service desk" permission set for that. This is configuration, not code.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

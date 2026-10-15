@@ -97,51 +97,51 @@ func TestRealEstateHoldsAndBookings(t *testing.T) {
 	post := func(object string, v map[string]any) resp {
 		return call(t, "POST", crmAPI+"/w/"+ws+"/crm/"+object, boss, map[string]any{"values": v})
 	}
-	unit := create(t, boss, ws, "properties", map[string]any{"name": "A-302", "project": "Green Meadows", "listingType": "sale", "configuration": "2bhk", "area": 1150, "price": 6500000})
-	flat := create(t, boss, ws, "properties", map[string]any{"name": "B-101", "project": "Green Meadows", "listingType": "rent", "price": 22000})
+	unit := create(t, boss, ws, "property_units", map[string]any{"name": "A-302", "project": "Green Meadows", "listingType": "sale", "configuration": "2bhk", "area": 1150, "price": 6500000})
+	flat := create(t, boss, ws, "property_units", map[string]any{"name": "B-101", "project": "Green Meadows", "listingType": "rent", "price": 22000})
 	buyer := create(t, boss, ws, "contacts", map[string]any{"firstName": "Suresh", "lastName": "M", "mobile": "+91 98430 12001"})
 	rival := create(t, boss, ws, "contacts", map[string]any{"firstName": "Kavya", "lastName": "P", "mobile": "+91 98430 12002"})
 
-	mustRefuse(t, "adding a unit already booked", post("properties", map[string]any{"name": "C-1", "status": "booked"}), "status")
+	mustRefuse(t, "adding a unit already booked", post("property_units", map[string]any{"name": "C-1", "status": "booked"}), "status")
 	h1 := create(t, boss, ws, "property_bookings", map[string]any{"propertyId": unit, "contactId": buyer})
 	if g := get(t, boss, ws, "property_bookings", h1); g["status"] != "hold" || g["holdUntil"] != time.Now().AddDate(0, 0, 3).Format("2006-01-02") {
 		t.Fatalf("a new hold lasts three days: %v", g)
 	}
-	if u := get(t, boss, ws, "properties", unit); u["status"] != "on_hold" || u["bookingId"] != h1 {
+	if u := get(t, boss, ws, "property_units", unit); u["status"] != "on_hold" || u["bookingId"] != h1 {
 		t.Fatalf("the unit shows the hold: %v", u)
 	}
 	// Two agents, one unit: only the first gets it.
 	mustRefuse(t, "a second hold on the same unit", post("property_bookings", map[string]any{"propertyId": unit, "contactId": rival}), "propertyId")
-	mustRefuse(t, "freeing the unit by hand", edit(t, boss, ws, "properties", unit, map[string]any{"status": "available"}), "status")
+	mustRefuse(t, "freeing the unit by hand", edit(t, boss, ws, "property_units", unit, map[string]any{"status": "available"}), "status")
 	mustRefuse(t, "booking with no price", edit(t, boss, ws, "property_bookings", h1, map[string]any{"status": "booked"}), "agreedPrice")
 	broker := create(t, boss, ws, "accounts", map[string]any{"name": "City Realty", "type": "partner"})
 	want(t, edit(t, boss, ws, "property_bookings", h1, map[string]any{"status": "booked", "agreedPrice": 6400000, "tokenAmount": 200000, "brokerId": broker, "commissionPercent": 2}), 200, "book the unit")
 	if g := get(t, boss, ws, "property_bookings", h1); num2(g["commissionAmount"]) != 128000 {
 		t.Fatalf("2%% of 64,00,000 is 1,28,000: %v", g["commissionAmount"])
 	}
-	if get(t, boss, ws, "properties", unit)["status"] != "booked" {
+	if get(t, boss, ws, "property_units", unit)["status"] != "booked" {
 		t.Fatal("the unit is Booked")
 	}
 	// Cancelled with a reason: the unit is free again and the other buyer can have it.
 	mustRefuse(t, "cancelling with no reason", edit(t, boss, ws, "property_bookings", h1, map[string]any{"status": "cancelled"}), "cancellationReason")
 	want(t, edit(t, boss, ws, "property_bookings", h1, map[string]any{"status": "cancelled", "cancellationReason": "loan_rejected"}), 200, "cancel")
-	if u := get(t, boss, ws, "properties", unit); u["status"] != "available" || u["bookingId"] != nil {
+	if u := get(t, boss, ws, "property_units", unit); u["status"] != "available" || u["bookingId"] != nil {
 		t.Fatalf("a cancelled booking frees the unit: %v", u)
 	}
 	mustRefuse(t, "reviving a cancelled booking", edit(t, boss, ws, "property_bookings", h1, map[string]any{"status": "booked"}), "status")
 	h2 := create(t, boss, ws, "property_bookings", map[string]any{"propertyId": unit, "contactId": rival, "status": "booked", "agreedPrice": 6500000})
 	want(t, edit(t, boss, ws, "property_bookings", h2, map[string]any{"status": "completed"}), 200, "registered")
-	if get(t, boss, ws, "properties", unit)["status"] != "sold" {
+	if get(t, boss, ws, "property_units", unit)["status"] != "sold" {
 		t.Fatal("a completed sale marks the unit Sold")
 	}
 	lease := create(t, boss, ws, "property_bookings", map[string]any{"propertyId": flat, "contactId": buyer, "status": "booked", "agreedPrice": 21000})
 	want(t, edit(t, boss, ws, "property_bookings", lease, map[string]any{"status": "completed"}), 200, "lease signed")
-	if get(t, boss, ws, "properties", flat)["status"] != "leased" {
+	if get(t, boss, ws, "property_units", flat)["status"] != "leased" {
 		t.Fatal("a completed rental marks the unit Leased")
 	}
 	// A visit leaves a follow-up.
-	v := create(t, boss, ws, "site_visits", map[string]any{"propertyId": unit, "contactId": buyer, "scheduledAt": time.Now().Format(time.RFC3339)})
-	want(t, edit(t, boss, ws, "site_visits", v, map[string]any{"status": "completed", "interest": "warm"}), 200, "visit done")
+	v := create(t, boss, ws, "property_visits", map[string]any{"propertyId": unit, "contactId": buyer, "scheduledAt": time.Now().Format(time.RFC3339)})
+	want(t, edit(t, boss, ws, "property_visits", v, map[string]any{"status": "completed", "interest": "warm"}), 200, "visit done")
 	if tk := call(t, "GET", crmAPI+"/w/"+ws+"/crm/tasks?pageSize=50", boss, nil); !strings.Contains(tk.Raw, "Follow up after the site visit") {
 		t.Fatal("a completed visit leaves a follow-up task")
 	}

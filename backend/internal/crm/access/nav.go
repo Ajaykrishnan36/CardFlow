@@ -141,7 +141,7 @@ var navGroups = map[string]string{
 	"vehicle_exchanges": "Dealership", "finance_applications": "Dealership", "stock_transfers": "Dealership",
 	"commission_rules": "Insurance", "insurance_claims": "Insurance",
 	"salon_products": "Salon", "product_usage": "Salon", "makeup_kits": "Salon", "kit_bookings": "Salon", "client_packages": "Salon",
-	"properties": "Real estate", "property_bookings": "Real estate", "site_visits": "Real estate",
+	"property_units": "Real estate", "property_bookings": "Real estate", "property_visits": "Real estate",
 	"privacy_requests":   "Sales",
 	"insurance_policies": "Insurance", "premium_dues": "Insurance", "commissions": "Insurance",
 	"territories": "Sales operations", "work_orders": "Service", "service_resources": "Service", "resource_absences": "Service",

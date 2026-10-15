@@ -245,9 +245,9 @@ var laterFields = map[string][]string{
 	"product_usage":         {"name", "cost"},
 	"kit_bookings":          {"name", "returnCondition", "returnNotes", "cleaned"},
 	"client_packages":       {"name", "sessionsLeft", "lastUsedOn"},
-	"properties":            {"bookingId"},
+	"property_units":        {"bookingId"},
 	"property_bookings":     {"name", "commissionAmount", "cancellationReason", "completedOn"},
-	"site_visits":           {"name", "interest", "feedback"},
+	"property_visits":       {"name", "interest", "feedback"},
 	"privacy_requests":      {"name", "outcome", "completedOn"},
 	"makeup_kits":           {"lastCleanedOn"},
 	"vehicle_exchanges":     {"name", "offeredPrice", "validUntil", "evaluatedBy", "notes"},
@@ -263,4 +263,4 @@ var laterFields = map[string][]string{
 // pickedByAll are records everyone chooses from — the price list, the stock, the people
 // who can be booked — whoever added them. Seeing them in a picker doesn't let anyone
 // open or change a record they otherwise couldn't.
-var pickedByAll = map[string]bool{"catalog_items": true, "price_books": true, "vehicle_stock": true, "service_resources": true, "properties": true, "makeup_kits": true, "salon_products": true}
+var pickedByAll = map[string]bool{"catalog_items": true, "price_books": true, "vehicle_stock": true, "service_resources": true, "property_units": true, "makeup_kits": true, "salon_products": true}

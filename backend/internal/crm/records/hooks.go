@@ -139,7 +139,7 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		}
 		return h.consentSaved(ctx, tx, ws, a, op, before, after)
 	case "commission_rules", "insurance_claims", "salon_products", "product_usage", "makeup_kits", "kit_bookings", "client_packages",
-		"properties", "property_bookings", "site_visits", "privacy_requests", "insurance_policies", "premium_dues", "commissions",
+		"property_units", "property_bookings", "property_visits", "privacy_requests", "insurance_policies", "premium_dues", "commissions",
 		"vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings",
 		"vehicle_exchanges", "finance_applications", "stock_transfers":
 		// A business that made its own object under one of these names before the pack
@@ -156,7 +156,7 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 func (h *Handler) packRouter(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *objectSpec, a actorInfo, op string, before, after *Row) (*Row, error) {
 	switch spec.Key {
 	case "commission_rules", "insurance_claims", "salon_products", "product_usage", "makeup_kits", "kit_bookings", "client_packages",
-		"properties", "property_bookings", "site_visits", "privacy_requests":
+		"property_units", "property_bookings", "property_visits", "privacy_requests":
 		if op == "delete" {
 			return after, nil
 		}
