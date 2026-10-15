@@ -87,6 +87,27 @@ Notes:
   `git -C ~/Documents/CardFlow push git@github.com:Ajaykrishnancreations/CardFlow.git main`.
   The saved HTTPS login (`Ajaykrishnan36`) has no write access to it.
 
+### Moving the project to another GitHub repository or account
+
+The code has no tie to a GitHub repository: the Go module is named `cardflow-backend`
+(a local name in `backend/go.mod`, not a GitHub address), and every import uses that name.
+Copying the whole folder to a new repository builds as it is. What does change on a move:
+
+1. **Where Render and Vercel build from.** In each dashboard, connect the service to the
+   new repository and branch. Nothing in the code says which repository deploys.
+2. **`frontend/vercel.json`** sends `/api/*` to the API server
+   (`https://cardflow-api-fsij.onrender.com`). Change it if the API moves to a new address
+   (Vercel can't read settings inside this file).
+3. **`render.yaml`**: `ALLOWED_ORIGINS` lists the web and API addresses. Change it if either moves.
+4. **Settings on the API server** (Render → Environment): `CRM_BASE_URL` is the web address
+   used in emails, web-form links and sign-in links. Set it whenever the web address changes
+   (without it, production falls back to `https://card-flow-kappa.vercel.app`).
+5. **Phone app builds**: set `CRM_API_ORIGIN` (for example in `frontend/.env.local`) to the API
+   address before building the Android/iOS app; without it the app uses today's Render address.
+6. **Local development** needs nothing. `API_PROXY_TARGET` can point the web dev server at
+   another local API (default `http://127.0.0.1:8080`).
+7. Update the addresses in section 2 of this file and the push command in section 3.
+
 ## 4. Running it on your Mac
 
 Prerequisites: Go, Node 20+, Postgres (local database `cardflow_db`), Redis (optional).

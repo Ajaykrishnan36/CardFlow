@@ -240,6 +240,7 @@ var accountSpec = objectSpec{
 		typed("phone", "Phone", "phone", "phone"),
 		typed("annualRevenue", "Annual revenue", "currency", "annual_revenue"),
 		intf(typed("employees", "Employees", "number", "employees")),
+		help(typed("creditLimit", "Credit limit", "currency", "credit_limit"), "Orders and invoices above this, counting what is still owed, are stopped unless a reason is written."),
 		text("billingStreet", "Billing street", "billing_street"),
 		text("billingCity", "Billing city", "billing_city"),
 		text("billingState", "Billing state / province", "billing_state"),

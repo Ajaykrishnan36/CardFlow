@@ -28,6 +28,7 @@ import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys
 import { layoutHref, listHref, recordHref, scopedLookupHref, useRecordScope } from './record-scope';
 import { RunWorkflowButton } from './run-workflow';
 import { isForbidden, RecordNoAccess } from './record-states';
+import { ChecklistCard } from './checklist-card';
 import {
   AccountTerritoryCard, BookAppointmentButton, BundleCard, CaseWorkOrderButton, ContactRolesCard, CreditNoteCard, DocumentLinesCard, EntitlementUsageCard,
   PriceEntriesCard, RecordCampaignsCard, RecordTeamCard, TerritoryMembersCard, hasContactRoles, hasLines, hasRecordTeam
@@ -468,6 +469,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div ref={mainRef} className="min-w-0 lg:col-span-2">
+          {inWorkspace ? <ChecklistCard object={object} record={record} /> : null}
           {inWorkspace && hasLines(object) ? <DocumentLinesCard object={object} record={record} /> : null}
           {ticketId ? <TicketConversation code={workspaceCode} ticketId={ticketId} canReply={canEdit} /> : null}
           <Card className="overflow-hidden">

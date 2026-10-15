@@ -228,6 +228,57 @@ export const workspaceApi = {
  * Record engine client. `prefix` is '/platform' for the owner's Platform CRM or
  * `/w/<code>` for a workspace member (server enforces their permissions).
  */
+export interface UpcomingTile {
+  key: string;
+  label: string;
+  items: number;
+  customers: number;
+  range?: string;
+}
+export interface UpcomingSummary {
+  tiles: UpcomingTile[];
+  missingDueDate: number;
+  timezone: string;
+  today: string;
+  note: string;
+}
+export interface UpcomingRow {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  kind: string;
+  dueDate: string;
+  daysLeft: number;
+  contactId?: string;
+  customer: string;
+  phone?: string;
+  accountId?: string;
+  assetId?: string;
+  asset?: string;
+  owner?: string;
+  lastOutcome?: string;
+  nextActionAt?: string;
+  claimedBy?: string;
+  claimedUntil?: string;
+  version: number;
+}
+export interface ChecklistStep {
+  id: string;
+  name: string;
+  done: boolean;
+  required: boolean;
+  doneBy?: string;
+  doneAt?: string;
+  version: number;
+}
+export interface RecordChecklist {
+  id: string;
+  name: string;
+  stage: string;
+  steps: ChecklistStep[];
+}
+
 export interface WebForm {
   id: string;
   name: string;
@@ -551,6 +602,13 @@ export function workspaceToolsApi(code: string) {
     saveSso: (body: { kind: 'saml' | 'oidc'; oidcIssuer?: string; oidcClientId?: string; oidcClientSecret?: string; enabled: boolean; name?: string; idpMetadataXml?: string; idpMetadataUrl?: string; domains: string[]; jitProvisioning: boolean; defaultRoleKey: string }) =>
       api<SSOSettings>(`${base}/sso`, { method: 'PUT', body }),
     deleteSso: () => api<void>(`${base}/sso`, { method: 'DELETE' }),
+    /** The Upcoming list (D-151): tiles and the rows behind each tile. */
+    upcomingSummary: (params: { scope?: string; kind?: string }) => api<UpcomingSummary>(`${base}/upcoming/summary${qs(params)}`),
+    upcomingList: (params: { window: string; scope?: string; kind?: string; page?: number; pageSize?: number }) =>
+      api<{ data: UpcomingRow[]; total: number; page: number; pageSize: number }>(`${base}/upcoming/list${qs(params)}`),
+    claimDue: (id: string) => api<{ ok: boolean }>(`${base}/upcoming/${enc(id)}/claim`, { method: 'POST', body: {} }),
+    /** The checklists of one record (D-152), made if missing. */
+    recordChecklists: (object: string, id: string) => api<{ data: RecordChecklist[] }>(`${base}/checklists/${enc(object)}/${enc(id)}`),
     /** Forms for the business's website that turn into leads. */
     webForms: () => api<WebFormList>(`${base}/web-forms`),
     saveWebForm: (id: string | null, body: Partial<WebFormBody>) =>

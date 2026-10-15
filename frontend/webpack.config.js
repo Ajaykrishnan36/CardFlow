@@ -25,6 +25,10 @@ function loadRevenueCatKeys() {
     }
     defs[`process.env.${name}`] = JSON.stringify(value);
   });
+  // Where the native app shell finds the API. Set CRM_API_ORIGIN when the server moves;
+  // the default is today's server so an unset build keeps working.
+  const origin = process.env.CRM_API_ORIGIN || local.CRM_API_ORIGIN || 'https://cardflow-api-fsij.onrender.com';
+  defs['process.env.CRM_API_ORIGIN'] = JSON.stringify(origin.replace(/\/+$/, ''));
   return defs;
 }
 
@@ -96,7 +100,8 @@ module.exports = {
     proxy: [
       {
         context: ['/api'],
-        target: 'http://127.0.0.1:8080'
+        // The local API for the dev server; API_PROXY_TARGET overrides it.
+        target: process.env.API_PROXY_TARGET || 'http://127.0.0.1:8080'
       }
     ],
     open: false,

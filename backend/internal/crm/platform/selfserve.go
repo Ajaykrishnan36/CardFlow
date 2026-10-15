@@ -31,6 +31,7 @@ var StandardModules = []string{
 	"leads", "accounts", "contacts", "opportunities", "tasks", "calendar", "notes", "files",
 	"communications", "tickets", "catalog", "subscriptions", "workflows", "reports",
 	"finance", "sales_docs", "knowledge", "cards", "dealership", "insurance", "salon", "real_estate",
+	"care", "memberships", "inventory", "reservations", "checklists",
 }
 
 // SelfServeSettings is the owner's switchboard for self-serve (crm.platform_settings 'self_serve').

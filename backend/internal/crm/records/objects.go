@@ -506,7 +506,10 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:dealership-v1", dealershipUpgrades()); err != nil {
 		return err
 	}
-	return applyObjectUpgrades(ctx, tx, "objects:dealership-v2", dealershipMoreUpgrades())
+	if err := applyObjectUpgrades(ctx, tx, "objects:dealership-v2", dealershipMoreUpgrades()); err != nil {
+		return err
+	}
+	return applyObjectUpgrades(ctx, tx, "objects:common-v1", commonOpsUpgrades())
 }
 
 // allStandardObjects is the general CRM plus the industry packs.
@@ -515,6 +518,8 @@ func allStandardObjects() []ObjectDefinition {
 	all = append(all, dealershipMoreObjects()...)
 	all = append(all, insuranceObjects()...)
 	all = append(all, packMoreObjects()...)
+	all = append(all, careObjects()...)
+	all = append(all, commonOpsObjects()...)
 	return append(all, consentObject())
 }
 
@@ -920,7 +925,14 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	if err := h.retirePackNames(ctx); err != nil {
 		slog.Error("crm: real-estate objects not moved to their new names; they keep the old ones", "error", err)
 	}
-	return h.grantPackAccess(ctx, "access:packs-v4", []string{"property_units", "property_visits"})
+	if err := h.grantPackAccess(ctx, "access:packs-v4", []string{"property_units", "property_visits"}); err != nil {
+		return err
+	}
+	common := []string{}
+	for _, d := range append(careObjects(), commonOpsObjects()...) {
+		common = append(common, d.Key)
+	}
+	return h.grantPackAccess(ctx, "access:common-v1", common)
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {

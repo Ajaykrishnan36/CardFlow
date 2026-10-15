@@ -1293,6 +1293,81 @@ was missing in every real-estate business. "properties" had the same risk.
 - Service staff who must find any customer's vehicle need record access beyond "own": the
   test account got a "Service desk" permission set for that. This is configuration, not code.
 
+## D-151 — Customer care: the Upcoming cycle for every business
+
+Every one of the 110 business PRDs (section 5, U01–U15) asks for the same cycle: see what is
+coming up, call, note the outcome, book, mark it done, and have the next one planned. It is
+built once, in a module every business gets (`care`):
+
+- **Recurring schedules** (`care_schedules`): for a customer (and optionally their asset or
+  contract), what comes up (service, renewal, follow-up, payment, review, recall…), every N
+  days / weeks / calendar months / years, counted from when the last one was done or from
+  the fixed plan, with an optional stop date. Month arithmetic is calendar-correct (31 Jan +
+  1 month = 28/29 Feb).
+- **Due items** (`due_items`): one occurrence. An active schedule always has exactly one
+  waiting (locked while created; the hourly sweep repairs a missing one). Done needs the date
+  it was done; skipped needs a reason; both plan the next occurrence once. Finished items
+  stay finished. Pausing or ending a schedule skips what was waiting.
+- **Call log** (`call_logs`): the outcome of every call or visit. No answer / busy → follow
+  up tomorrow; connected / callback / interested need a follow-up date; booked marks the item
+  Booked; declined or done elsewhere skips it (and plans the next). No call outcome ever
+  marks the work itself done.
+- **Upcoming page** (menu: Customer care → Upcoming): tiles for Overdue, Today, Next 3/7/10/30
+  days, Not contacted, Call back today, Booked, Done — each with items and distinct
+  customers, in the business's time zone, and each opening exactly the list it counts (the
+  same query). Rows show the customer, a tap-to-call number, what is due, days left, the last
+  call and the owner, with Call (claims the customer for 30 minutes so two people don't call
+  at once — a second caller is told who), Book (a prefilled appointment), Done and Skip.
+- Memberships' renewals and payment-plan instalments appear on the same list.
+- Not built: calls placed through a telephony provider, SMS/WhatsApp reminders to the
+  customer, an outcome funnel report (the report builder can group call outcomes), usage-
+  based schedules (km/hours) outside the dealership pack.
+
+## D-152 — Shared operations modules, for every business
+
+The rest of what the 110 PRDs ask for again and again, built once without any trade-specific
+code. All are normal records (lists, filters, reports, imports, API, workflows, permissions):
+
+- **Stock** (`stock_lots`, `stock_moves`): item, branch/place, batch or serial, expiry,
+  on hand / reserved / available, reorder level, hold. Stock changes only through movements
+  (received, issued, returned, reserved, released, moved, damaged, counted) under a row
+  lock: never below zero, never issued while expired or on hold, damage and counts need a
+  reason, a move to another place lands on the same item and batch there.
+- **Reservations** (`item_reservations`): any asset or service resource for a time window,
+  never overlapping another live reservation, counting a gap before and after; holds expire;
+  a return says how it came back (damage needs detail); deposit returned can't exceed taken.
+- **Memberships & packages** (`memberships`): validity, sessions bought/used/left, freezes
+  that push the end date, no use while frozen or outside validity; the renewal call goes on
+  Upcoming and moves with the end date.
+- **Checklists** (`checklist_templates`, `checklist_items`): for any record type and stage,
+  steps that must be done before a record reaches that stage — the save is refused naming
+  the open steps. Steps show on the record page with who ticked them and when.
+- **Document versions** (`doc_revisions`): numbered versions of any document attached to a
+  record; approval needs the customer's name; approving a new version replaces the old one;
+  an approved version can't be edited.
+- **Payment plans** (`instalments`): amounts due by date for an invoice, contract or deal;
+  part paid / paid / overdue by the numbers; refundable deposits flagged as held money; each
+  instalment sits on Upcoming until paid.
+- **Commissions & payouts** (`payout_entries`): to a staff member or partner; amount from
+  rate × basis; nobody approves their own; paid only after approval; clawback needs a reason.
+- **Branches** (`business_branches`), with a branch field on deals, cases, work orders,
+  appointments, quotes, orders, invoices, schedules, due items, stock and reservations.
+- **Credit limit** on accounts: an order or invoice that takes the customer past it (counting
+  unpaid invoices and confirmed orders) is refused unless a reason is written. Drafts are not checked.
+- **Units** on catalog items (sold in, units per pack).
+- **Service desk** permission set in every business (not assigned automatically): every
+  customer, asset, case, job card, appointment, due item and call.
+- Staff see the whole stock, branches and checklist templates but don't change them.
+- Not built: unit conversion arithmetic, purchase orders from low stock, branch-scoped access,
+  holiday calendars, languages other than English, e-signature.
+
+## D-153 — Nothing in the code depends on which GitHub repository holds it
+
+The Go module is named `cardflow-backend` (not a GitHub path). Moving the project only needs
+deployment settings changed — listed in HANDOVER.md, "Moving the project to another GitHub
+repository". The phone app's API address (`CRM_API_ORIGIN`) and the web dev server's API
+target (`API_PROXY_TARGET`) are now build settings instead of being written in the code.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

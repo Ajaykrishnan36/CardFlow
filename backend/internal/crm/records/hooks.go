@@ -26,7 +26,29 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 	if err != nil {
 		return nil, err
 	}
+	// A checklist set up for the stage this record is entering must be done first (D-152).
+	if op == "create" || op == "update" {
+		if err := h.checklistGate(ctx, tx, ws, spec, op, before, after); err != nil {
+			return nil, err
+		}
+	}
+	if (spec.Key == "sales_orders" || spec.Key == "invoices") && (op == "create" || op == "update") && a.Kind != "system" {
+		if err := h.creditCheck(ctx, tx, ws, spec, op, before, after); err != nil {
+			return nil, err
+		}
+	}
 	switch spec.Key {
+	case "care_schedules", "due_items", "call_logs":
+		if op == "delete" || !standardObject(spec.Key) {
+			return after, nil
+		}
+		return h.careSaved(ctx, tx, ws, spec, a, op, before, after)
+	case "stock_lots", "stock_moves", "item_reservations", "memberships", "checklist_templates", "checklist_items", "doc_revisions",
+		"instalments", "payout_entries", "business_branches":
+		if op == "delete" || !standardObject(spec.Key) {
+			return after, nil
+		}
+		return h.opsSaved(ctx, tx, ws, spec, a, op, before, after)
 	case "accounts":
 		return after, h.noLoop(ctx, tx, ws, op, after, "accounts", "parent_account_id", "parentAccountId", "An account can't be placed under itself or under one of its own child accounts.")
 	case "contacts":

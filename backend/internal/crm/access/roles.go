@@ -275,6 +275,16 @@ func SystemRoles() []SystemRole {
 	// Privacy requests can erase a person's details: for admins, not for every staff member.
 	delete(stObj, "privacy_requests")
 	delete(stRows, "privacy_requests")
+	// Shared reference records: staff see them all, admins change them (D-152).
+	for _, k := range []string{"stock_lots", "business_branches", "checklist_templates"} {
+		if _, ok := stObj[k]; ok {
+			stObj[k], stRows[k] = []string{"read"}, map[string]string{"scope": "workspace"}
+		}
+	}
+	// Checklist steps belong to records staff already work on: they tick any of them.
+	if _, ok := stObj["checklist_items"]; ok {
+		stRows["checklist_items"] = map[string]string{"scope": "workspace"}
+	}
 	// Units are shared like stock: staff see them all to put a hold on one.
 	if _, ok := stObj["property_units"]; ok {
 		stObj["property_units"], stRows["property_units"] = []string{"read"}, map[string]string{"scope": "workspace"}
@@ -479,4 +489,19 @@ func ParseRules(raw []byte) Rules {
 	var r Rules
 	_ = json.Unmarshal(raw, &r)
 	return Normalize(r)
+}
+
+// ServiceDeskRules is the standard "Service desk" permission set (D-152).
+func ServiceDeskRules() Rules {
+	read := []string{"read"}
+	work := []string{"read", "create", "update"}
+	objs := map[string][]string{"contact": read, "account": read, "assets": {"read", "update"}, "cases": work, "work_orders": work,
+		"appointments": work, "due_items": work, "call_logs": work, "care_schedules": read, "service_dues": {"read", "update"},
+		"odometer_readings": {"read", "create"}, "vehicle_registrations": read, "item_reservations": work, "checklist_items": work,
+		"tasks": work, "notes": work, "stock_lots": read, "stock_moves": {"read", "create"}}
+	rows := map[string]map[string]string{}
+	for k := range objs {
+		rows[k] = map[string]string{"scope": "workspace"}
+	}
+	return Normalize(Rules{Objects: objs, Rows: rows, Capabilities: []string{CapDashboard}})
 }

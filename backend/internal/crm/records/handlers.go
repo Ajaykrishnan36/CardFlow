@@ -213,6 +213,8 @@ func (h *Handler) workspaceRoutes(r chi.Router) {
 	r.Put("/sso", h.handleSaveSSO)
 	r.Delete("/sso", h.handleDeleteSSO)
 	h.webFormRoutes(r)
+	h.careRoutes(r)
+	r.Get("/checklists/{object}/{id}", h.handleRecordChecklists)
 	r.Get("/login-policy", h.handleGetLoginPolicy)
 	r.Put("/login-policy", h.handleSaveLoginPolicy)
 	r.Get("/invite-link", h.handleGetInviteLink)

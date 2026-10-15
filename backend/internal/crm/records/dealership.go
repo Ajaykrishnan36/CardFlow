@@ -151,7 +151,9 @@ var autoNamed = map[string]bool{"vehicle_stock": true, "vehicle_bookings": true,
 	"service_dues": true, "odometer_readings": true, "vehicle_exchanges": true, "finance_applications": true, "stock_transfers": true,
 	"insurance_policies": true, "premium_dues": true, "commissions": true,
 	"commission_rules": true, "insurance_claims": true, "product_usage": true, "kit_bookings": true, "client_packages": true,
-	"property_bookings": true, "property_visits": true, "privacy_requests": true}
+	"property_bookings": true, "property_visits": true, "privacy_requests": true,
+	"care_schedules": true, "due_items": true, "call_logs": true, "stock_lots": true, "stock_moves": true, "item_reservations": true,
+	"memberships": true, "checklist_items": true, "instalments": true, "payout_entries": true}
 
 func (h *Handler) labelOf(ctx context.Context, q querier, ws uuid.UUID, object string, id any) string {
 	spec := specFor(object)
@@ -227,6 +229,30 @@ func (h *Handler) autoName(ctx context.Context, q querier, ws uuid.UUID, spec *o
 		name = joinNonEmpty(" — ", h.labelOf(ctx, q, ws, "accounts", values["lenderId"]), h.labelOf(ctx, q, ws, "vehicle_bookings", values["bookingId"]))
 	case "stock_transfers":
 		name = joinNonEmpty(" → ", h.labelOf(ctx, q, ws, "vehicle_stock", values["vehicleId"]), asString(values["toLocation"]))
+	case "care_schedules":
+		every := ""
+		if n, ok := asNumber(values["intervalValue"]); ok {
+			every = fmt.Sprintf("every %d %s", int(n), asString(values["intervalUnit"]))
+		}
+		name = joinNonEmpty(" — ", joinNonEmpty(" ", labelOf(careKindLabels, asString(values["kind"])), every), who, asset)
+	case "call_logs":
+		name = joinNonEmpty(" — ", "Call", who, time.Now().Format("2 Jan 15:04"))
+	case "stock_lots":
+		name = joinNonEmpty(" · ", item, asString(values["batchNumber"]), asString(values["location"]))
+	case "stock_moves":
+		n, _ := asNumber(values["quantity"])
+		name = joinNonEmpty(" — ", fmt.Sprintf("%s %g", asString(values["moveType"]), n), h.labelOf(ctx, q, ws, "stock_lots", values["lotId"]))
+	case "item_reservations":
+		name = joinNonEmpty(" — ", joinNonEmpty(" ", h.labelOf(ctx, q, ws, "assets", values["assetId"]), h.labelOf(ctx, q, ws, "service_resources", values["resourceId"])), who)
+	case "memberships":
+		name = joinNonEmpty(" — ", item, who)
+	case "instalments":
+		amt, _ := asNumber(values["amount"])
+		name = joinNonEmpty(" — ", joinNonEmpty(" ", asString(values["milestone"]), fmt.Sprintf("%.2f due %s", amt, asString(values["dueDate"]))), who)
+	case "payout_entries":
+		amt, _ := asNumber(values["amount"])
+		name = joinNonEmpty(" — ", fmt.Sprintf("%s %.2f", labelOf(map[string]string{"commission": "Commission", "referral": "Referral reward", "incentive": "Incentive", "rebate": "Rebate", "fee_share": "Fee share"}, asString(values["kind"])), amt),
+			joinNonEmpty(" ", h.labelOf(ctx, q, ws, "users", values["payeeUserId"]), h.labelOf(ctx, q, ws, "accounts", values["payeeAccountId"])))
 	case "insurance_policies":
 		name = joinNonEmpty(" — ", who, joinNonEmpty(" ", item, asString(values["policyNumber"])))
 	case "premium_dues":

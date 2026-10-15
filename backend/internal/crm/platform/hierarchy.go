@@ -53,6 +53,18 @@ func EnsureRoleTree(ctx context.Context, tx pgx.Tx, ws uuid.UUID) error {
 			return err
 		}
 	}
+	// A ready-made set for service staff: every customer, vehicle/asset, case, job card,
+	// appointment and due item in the business, not only their own (D-152). Not given to
+	// anyone automatically.
+	if _, ok := DefaultPermissionSetFor(ctx, tx, ws, "SERVICE_DESK"); !ok {
+		raw, _ := json.Marshal(access.ServiceDeskRules())
+		if _, err := tx.Exec(ctx, `INSERT INTO crm.permission_sets (workspace_id, name, description, rules, system_key)
+			SELECT $1, CASE WHEN EXISTS (SELECT 1 FROM crm.permission_sets WHERE workspace_id = $1 AND lower(name) = 'service desk') THEN 'Service desk (standard)' ELSE 'Service desk' END,
+			       'Service staff: see every customer, vehicle or asset, case, job card, appointment and due item; log calls and update service work.', $2, 'SERVICE_DESK'`,
+			ws, raw); err != nil {
+			return err
+		}
+	}
 	for _, s := range defaultSets {
 		if _, ok := DefaultPermissionSetFor(ctx, tx, ws, s.key); ok {
 			continue

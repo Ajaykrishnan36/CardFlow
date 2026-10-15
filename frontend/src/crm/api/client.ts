@@ -6,7 +6,7 @@
 /** Running inside the native app shell (not a browser tab). */
 export const IS_NATIVE = Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
 /** Where the API lives: this origin in a browser, the server's address in the native shell. */
-export const API_ORIGIN = IS_NATIVE ? 'https://cardflow-api-fsij.onrender.com' : '';
+export const API_ORIGIN = IS_NATIVE ? process.env.CRM_API_ORIGIN || '' : '';
 export const API_BASE = `${API_ORIGIN}/api/crm/v1`;
 const CSRF_COOKIE = 'crm_csrf';
 const TOKEN_KEY = 'cf_session';

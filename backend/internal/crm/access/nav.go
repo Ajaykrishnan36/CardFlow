@@ -47,6 +47,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 			nav = append(nav, NavItem{Key: o.Module, Label: o.Label, Path: base + "/" + o.Module, Icon: icons[o.Key], Group: "Sales", Available: true})
 		}
 	}
+	// The Upcoming list: what is due, by day, to call and book (D-151).
+	if e.Can("due_items", "read") {
+		nav = append(nav, NavItem{Key: "upcoming", Label: "Upcoming", Path: base + "/upcoming", Icon: "calendar", Group: "Customer care", Available: true})
+	}
 	// Forecasts are worked out from opportunities (D-112).
 	if e.Can("opportunities", "read") {
 		nav = append(nav, NavItem{Key: "forecasts", Label: "Forecasts", Path: base + "/forecasts", Icon: "trending-up", Group: "Sales", Available: true})
@@ -142,7 +146,11 @@ var navGroups = map[string]string{
 	"commission_rules": "Insurance", "insurance_claims": "Insurance",
 	"salon_products": "Salon", "product_usage": "Salon", "makeup_kits": "Salon", "kit_bookings": "Salon", "client_packages": "Salon",
 	"property_units": "Real estate", "property_bookings": "Real estate", "property_visits": "Real estate",
-	"privacy_requests":   "Sales",
+	"privacy_requests": "Sales",
+	"care_schedules":   "Customer care", "due_items": "Customer care", "call_logs": "Customer care", "memberships": "Customer care",
+	"stock_lots": "Operations", "stock_moves": "Operations", "item_reservations": "Operations", "checklist_templates": "Operations",
+	"checklist_items": "Operations", "doc_revisions": "Operations", "business_branches": "Operations",
+	"instalments": "Sales operations", "payout_entries": "Sales operations",
 	"insurance_policies": "Insurance", "premium_dues": "Insurance", "commissions": "Insurance",
 	"territories": "Sales operations", "work_orders": "Service", "service_resources": "Service", "resource_absences": "Service",
 }
@@ -159,7 +167,7 @@ func navGroup(key string) string {
 // may hide those; settings and analytics always stay).
 func IsRecordGroup(g string) bool {
 	switch g {
-	case "CRM", "App", "Sales", "Dealership", "Insurance", "Salon", "Real estate", "Products", "Sales operations", "Service", "Purchasing", "Finance":
+	case "CRM", "App", "Sales", "Customer care", "Operations", "Dealership", "Insurance", "Salon", "Real estate", "Products", "Sales operations", "Service", "Purchasing", "Finance":
 		return true
 	}
 	return false

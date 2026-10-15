@@ -241,6 +241,17 @@ var laterFields = map[string][]string{
 	"service_dues":          {"name", "workOrderId", "appointmentId", "doneOn", "closingOdometer", "overrideReason", "basis"},
 	"odometer_readings":     {"name"},
 	"commission_rules":      {"name"},
+	"care_schedules":        {"name", "nextDueDate", "lastDoneOn", "cycles"},
+	"due_items":             {"name", "cycle", "claimedBy", "claimedUntil", "lastOutcome", "lastContactAt", "doneOn", "skipReason"},
+	"call_logs":             {"name", "calledAt"},
+	"stock_lots":            {"name", "reserved", "available", "holdReason"},
+	"stock_moves":           {"name", "movedOn"},
+	"item_reservations":     {"name", "holdUntil", "depositReturned", "returnCondition", "returnNotes"},
+	"memberships":           {"name", "sessionsUsed", "sessionsLeft", "frozenFrom", "frozenUntil", "freezeDays", "lastUsedOn", "renewalDueId", "cancelReason"},
+	"checklist_items":       {"name", "done", "doneBy", "doneAt"},
+	"doc_revisions":         {"version", "approvedByName", "approvedOn", "feedback"},
+	"instalments":           {"name", "paidAmount", "paidOn", "paymentId", "waiveReason", "dueItemId"},
+	"payout_entries":        {"name", "amount", "approvedBy", "approvedOn", "paidOn", "reference", "reason"},
 	"insurance_claims":      {"name", "amountSettled", "settledOn", "rejectionReason"},
 	"product_usage":         {"name", "cost"},
 	"kit_bookings":          {"name", "returnCondition", "returnNotes", "cleaned"},
@@ -263,4 +274,4 @@ var laterFields = map[string][]string{
 // pickedByAll are records everyone chooses from — the price list, the stock, the people
 // who can be booked — whoever added them. Seeing them in a picker doesn't let anyone
 // open or change a record they otherwise couldn't.
-var pickedByAll = map[string]bool{"catalog_items": true, "price_books": true, "vehicle_stock": true, "service_resources": true, "property_units": true, "makeup_kits": true, "salon_products": true}
+var pickedByAll = map[string]bool{"catalog_items": true, "price_books": true, "vehicle_stock": true, "service_resources": true, "property_units": true, "makeup_kits": true, "salon_products": true, "stock_lots": true, "business_branches": true, "checklist_templates": true}
