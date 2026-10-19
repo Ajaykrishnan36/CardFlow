@@ -1474,6 +1474,17 @@ If one tenant grows very large, it can be moved to its own database with the sam
 
 The create form (D-155) no longer asks for the person's address; the business's is "Address".
 
+## D-157 — A tenant's own domain is connected by the server
+
+Saving a domain in Business profile adds it to the site's Vercel project through Vercel's API
+(`VERCEL_API_TOKEN`, `VERCEL_PROJECT_ID`, optional `VERCEL_TEAM_ID` on Render); changing it
+removes the old one. The profile shows the one DNS record the domain's owner adds at their
+registrar — `CNAME <host> → cname.vercel-dns.com` for a subdomain, `A @ → 76.76.21.21` for the
+bare domain, plus any TXT proof Vercel asks for — and "Check again" says when it is live.
+Without the Vercel settings the same record is shown and the platform owner adds the domain
+in Vercel. The tenant's /<slug>/… address needs no DNS and always works. A DNS record at the
+customer's registrar can only be added by whoever owns the domain.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

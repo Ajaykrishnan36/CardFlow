@@ -706,6 +706,15 @@ export interface PincodeInfo {
   areas: string[];
 }
 
+export interface DomainStatus {
+  domain: string;
+  automatic: boolean;
+  added: boolean;
+  live: boolean;
+  records: Array<{ type: string; name: string; value: string; why?: string }>;
+  message: string;
+}
+
 export interface PublicTenant {
   slug: string;
   code: string;
@@ -845,6 +854,9 @@ export const businessApi = {
   uploadCardImage: (code: string, side: 'front' | 'back', file: File) => uploadAny<BusinessProfile>(`/w/${enc(code)}/business/card-images/${side}`, file),
   removeCardImage: (code: string, side: 'front' | 'back') => api<BusinessProfile>(`/w/${enc(code)}/business/card-images/${side}`, { method: 'DELETE' }),
   cardImageUrl: (code: string, side: 'front' | 'back') => `${API_BASE}/w/${enc(code)}/business/card-images/${side}`,
+  /** The tenant's own domain: the DNS record to add and whether it is live (D-157). */
+  domain: (code: string) => api<DomainStatus>(`/w/${enc(code)}/business/domain`),
+  checkDomain: (code: string) => api<DomainStatus>(`/w/${enc(code)}/business/domain/check`, { method: 'POST' }),
   profile: (code: string) => api<BusinessProfile>(`/w/${enc(code)}/business`),
   update: (code: string, body: { name?: string; currency?: string; timezone?: string; profile?: Record<string, string | null> }) =>
     api<BusinessProfile>(`/w/${enc(code)}/business`, { method: 'PATCH', body }),

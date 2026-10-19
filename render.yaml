@@ -31,5 +31,12 @@ services:
         sync: false
       - key: REVENUECAT_SECRET_API_KEY
         sync: false
+      # A tenant's own domain is added to the Vercel project by the server (D-157).
+      - key: VERCEL_API_TOKEN
+        sync: false
+      - key: VERCEL_PROJECT_ID
+        sync: false
+      - key: VERCEL_TEAM_ID
+        sync: false
       - key: ALLOWED_ORIGINS
         value: https://card-flow-kappa.vercel.app,https://cardflow-api-fsij.onrender.com

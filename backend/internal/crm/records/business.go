@@ -1,6 +1,7 @@
 package records
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -28,6 +29,7 @@ func (h *Handler) businessRoutes(r chi.Router) {
 	r.Get("/business", h.handleGetBusiness)
 	r.Patch("/business", h.handleUpdateBusiness)
 	h.cardImageRoutes(r)
+	h.domainRoutes(r)
 	r.Get("/getting-started", h.handleGettingStarted)
 	// The business's plan, what it uses, and the plans on offer (any member may look).
 	r.Get("/plan", func(w http.ResponseWriter, r *http.Request) {
@@ -157,6 +159,11 @@ func (h *Handler) handleUpdateBusiness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a := actorFromRequest(r, "ui")
+	_, domainGiven := in.Profile["customDomain"]
+	domainBefore := ""
+	if domainGiven {
+		domainBefore, _ = h.tenantDomain(r)
+	}
 	err := h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
 		ctx := r.Context()
 		var before []byte
@@ -196,6 +203,15 @@ func (h *Handler) handleUpdateBusiness(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
+	}
+	if domainGiven {
+		if after, err := h.tenantDomain(r); err == nil && after != domainBefore {
+			go func() { // connect it on the hosting (D-157) without holding up the save
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				h.domainChanged(ctx, domainBefore, after)
+			}()
+		}
 	}
 	b, err := h.loadBusiness(r)
 	respond(w, r, http.StatusOK, b, err)

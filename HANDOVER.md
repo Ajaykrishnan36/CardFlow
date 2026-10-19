@@ -378,18 +378,34 @@ layout.
       `DEV_MOCK_SMS=false` and `ENV=production` on Render so codes are sent, not shown.
 - [ ] Vercel: the project must serve `/api/*` from Render (it's in `frontend/vercel.json`).
 
-## Tenant addresses and own domains (D-155, D-156)
+## Tenant addresses and own domains (D-155, D-156, D-157)
 
 Each tenant (brand) has one permanent address: `https://<site>/<tenant>/login`, and every page
-under `https://<site>/<tenant>/…`, for all of its businesses. To give a tenant its own domain
-(for example `crm.ajaytraders.in`):
+under `https://<site>/<tenant>/…`, for all of its businesses. This needs no DNS at all.
 
-1. The business enters the domain in **Business profile → Login address → Your own domain**.
-2. The business adds a DNS record: `CNAME crm.ajaytraders.in → cname.vercel-dns.com`.
-3. The platform owner adds the same domain to the Vercel project (Project → Settings →
-   Domains). Vercel issues the HTTPS certificate.
+A tenant can also use its own domain (for example `crm.ajaytraders.in`):
 
-Opening the domain then shows that business's sign-in page. Address lookups use India Post
-(`CRM_PINCODE_API`, default https://api.postalpincode.in) and OpenStreetMap Nominatim
-(`CRM_GEOCODER_URL`); both are free and need no key.
+1. The business enters it in **Business profile → Login address → Your own domain** and saves.
+2. The server adds the domain to the Vercel project by itself — once these are set on Render
+   (Environment): `VERCEL_API_TOKEN` (Vercel → Account settings → Tokens), `VERCEL_PROJECT_ID`
+   (Vercel project → Settings → General → Project ID) and, for a team account, `VERCEL_TEAM_ID`.
+   Without them the page still shows the record, and the platform owner adds the domain in
+   Vercel → Project → Settings → Domains.
+3. The page shows the one DNS record the business adds where it bought the domain:
+   `CNAME <host> → cname.vercel-dns.com` for a subdomain, `A @ → 76.76.21.21` for the bare
+   domain (plus a TXT record if Vercel asks for proof). "Check again" shows when it is live;
+   Vercel issues the HTTPS certificate by itself.
 
+Address lookups use India Post (`CRM_PINCODE_API`, default https://api.postalpincode.in) and
+OpenStreetMap Nominatim (`CRM_GEOCODER_URL`); both are free and need no key.
+
+## Clearing all customer data (local or live)
+
+The fresh-start tool erases every customer's data and keeps only the platform owner's login
+and one person + business (`CRM_FRESH_START_PHONE`, default +91 98765 43211;
+`CRM_FRESH_START_BUSINESS`, default "Ajay traders"). It runs once per value of
+`CRM_FRESH_START`, which must start with `erase-everything-`:
+
+- Live: Render → cardflow-api → Environment → add `CRM_FRESH_START = erase-everything-2026-10-19`
+  → Save (the service restarts and erases once; leaving the setting does nothing more).
+- Local: `cd backend && CRM_FRESH_START=erase-everything-local-2026-10-19 go run ./cmd/api/`

@@ -178,6 +178,8 @@ export function BusinessProfilePage() {
             </div>
           </Card>
           <LoginAddressCard
+            code={code}
+            savedDomain={q.data?.profile.customDomain ?? ''}
             loginPath={q.data?.loginPath ?? `/${code}/login`}
             domain={form.profile.customDomain ?? ''}
             onDomain={(d) => setForm({ ...form, profile: { ...form.profile, customDomain: d } })}
@@ -229,8 +231,27 @@ export function BusinessProfilePage() {
 }
 
 /** The business's own sign-in address, and its own domain (D-155). */
-function LoginAddressCard({ loginPath, domain, onDomain, error, disabled }: { loginPath: string; domain: string; onDomain: (d: string) => void; error?: string; disabled: boolean }) {
+function LoginAddressCard({
+  code,
+  savedDomain,
+  loginPath,
+  domain,
+  onDomain,
+  error,
+  disabled
+}: {
+  code: string;
+  savedDomain: string;
+  loginPath: string;
+  domain: string;
+  onDomain: (d: string) => void;
+  error?: string;
+  disabled: boolean;
+}) {
   const url = `${window.location.origin}${loginPath}`;
+  const status = useQuery({ queryKey: ['workspace', code, 'domain', savedDomain], queryFn: () => businessApi.domain(code), enabled: Boolean(savedDomain), staleTime: 30_000 });
+  const check = useMutation({ mutationFn: () => businessApi.checkDomain(code), onSuccess: (d) => status.refetch().then(() => d) });
+  const st = check.data ?? status.data;
   return (
     <Card>
       <CardHeader title="Login address" description="Your team signs in to this business here. Share this link, or use your own domain." />
@@ -252,10 +273,46 @@ function LoginAddressCard({ loginPath, domain, onDomain, error, disabled }: { lo
         <Field
           label="Your own domain"
           error={error}
-          hint="For example crm.yourbusiness.com. Point it (CNAME) at this site and ask us to connect it; then opening it shows your business's sign-in."
+          hint="Optional. For example crm.yourbusiness.com. Save, then add the record shown below where you bought the domain."
         >
           <Input value={domain} onChange={(e) => onDomain(e.target.value)} placeholder="crm.yourbusiness.com" disabled={disabled} />
         </Field>
+        {savedDomain && st ? (
+          <div className="rounded-lg border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium">
+                {st.domain}{' '}
+                <Badge tone={st.live ? 'success' : 'warning'}>{st.live ? 'Connected' : 'Waiting for DNS'}</Badge>
+              </p>
+              {!disabled ? (
+                <Button type="button" size="sm" variant="outline" loading={check.isPending} onClick={() => check.mutate()}>
+                  Check again
+                </Button>
+              ) : null}
+            </div>
+            <p className="mt-1 text-[13px] text-muted-foreground">{st.message}</p>
+            {!st.live && st.records.length ? (
+              <table className="mt-3 w-full text-left text-[13px]">
+                <thead className="text-xs text-muted-foreground">
+                  <tr>
+                    <th className="py-1 pr-3 font-medium">Type</th>
+                    <th className="py-1 pr-3 font-medium">Name / host</th>
+                    <th className="py-1 font-medium">Value / points to</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {st.records.map((r) => (
+                    <tr key={`${r.type}-${r.name}-${r.value}`} className="border-t">
+                      <td className="py-1.5 pr-3 font-mono">{r.type}</td>
+                      <td className="py-1.5 pr-3 font-mono">{r.name}</td>
+                      <td className="break-all py-1.5 font-mono">{r.value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </Card>
   );
