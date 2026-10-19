@@ -377,3 +377,18 @@ layout.
       section" — ask Fast2SMS to allow the server, or switch to MSG91). Then set
       `DEV_MOCK_SMS=false` and `ENV=production` on Render so codes are sent, not shown.
 - [ ] Vercel: the project must serve `/api/*` from Render (it's in `frontend/vercel.json`).
+
+## A business's own domain (D-155)
+
+Each business signs in at `https://<site>/<business-code>/login`. To give a business its own
+domain (for example `crm.ajaytraders.in`):
+
+1. The business enters the domain in **Business profile → Login address → Your own domain**.
+2. The business adds a DNS record: `CNAME crm.ajaytraders.in → cname.vercel-dns.com`.
+3. The platform owner adds the same domain to the Vercel project (Project → Settings →
+   Domains). Vercel issues the HTTPS certificate.
+
+Opening the domain then shows that business's sign-in page. Address lookups use India Post
+(`CRM_PINCODE_API`, default https://api.postalpincode.in) and OpenStreetMap Nominatim
+(`CRM_GEOCODER_URL`); both are free and need no key.
+

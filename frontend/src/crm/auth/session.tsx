@@ -31,7 +31,7 @@ export function useCapabilities(enabled: boolean) {
   return useQuery({ queryKey: ['capabilities'], queryFn: meApi.capabilities, enabled, staleTime: 60_000 });
 }
 
-function isAuthStep(path: string) {
+export function isAuthStep(path: string) {
   return path === '/crm/mfa/setup' || path === '/crm/mfa/verify' || path === '/crm/change-password';
 }
 

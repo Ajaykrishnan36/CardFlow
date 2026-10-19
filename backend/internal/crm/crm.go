@@ -235,6 +235,7 @@ func (m *Module) Mount(r chi.Router) {
 		m.plans.OwnerRoutes(r)
 		m.records.Routes(r)
 		m.records.PublicRoutes(r)
+		m.platform.PublicTenantRoutes(r)
 		r.Get("/oauth/{provider}/callback", m.oauthCallback)
 		r.Get("/oauth/providers", m.oauthProviders)
 		m.samlRoutes(r)

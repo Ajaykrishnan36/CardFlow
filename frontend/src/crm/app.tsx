@@ -12,6 +12,7 @@ import { FullPageLoader } from '@crm/components/states';
 import { safeReturnTo } from '@crm/lib/utils';
 import { useUI } from '@crm/lib/ui-store';
 import { LoginPage, OwnerLoginPage } from '@crm/features/auth/login-pages';
+import { RootLoginPage, TenantLoginPage } from '@crm/features/auth/tenant-login-page';
 import { ThemeController } from '@crm/features/shell/theme-toggle';
 import { AppShell } from '@crm/features/shell/app-shell';
 import { WorkflowEditorPage, WorkflowsPage } from './features/tools/workflows-page';
@@ -124,13 +125,14 @@ function AppRoutes() {
 
         <Route element={<RedirectIfSignedIn />}>
           {/* "/" and "/crm/login" are the same sign-in (D-104). */}
-          <Route path="/" element={<LoginPage />} />
           <Route path="/crm/login" element={<LoginPage />} />
           <Route path="/crm/signup" element={<SignupPage />} />
         </Route>
         <Route element={<OwnerLoginGate />}>
           <Route path="/crm/owner/login" element={<OwnerLoginPage />} />
         </Route>
+        <Route path="/" element={<RootLoginPage />} />
+        <Route path="/:tenant/login" element={<TenantLoginPage />} />
         <Route path="/crm/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/crm/reset-password" element={<ResetPasswordPage />} />
         <Route path="/crm/accept-invite" element={<AcceptInvitePage />} />

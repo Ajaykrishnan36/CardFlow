@@ -1,4 +1,4 @@
-import { api, API_BASE, ApiError } from './client';
+import { api, API_BASE, ApiError, ensureCsrf, IS_NATIVE, sessionToken } from './client';
 import type {
   ApiKey, ApiKeysResponse, AppNotification, BulkResult, Campaign, CampaignRecipient, Favorite, FileInfo, FilterNode, ImportResult, MailboxesResponse,
   EmailThread, InviteLinkSettings, RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
@@ -651,7 +651,93 @@ export interface BusinessSummary {
   createdAt: string;
 }
 
+/** A postal address as the onboarding and profile forms send it (D-155). */
+export interface PostalAddress {
+  addressLine: string;
+  landmark: string;
+  area: string;
+  city: string;
+  district: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export interface CreateBusinessBody {
+  name: string;
+  industry?: string;
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  website?: string;
+  gstin?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  displayName?: string;
+  dateOfBirth?: string;
+  personalEmail?: string;
+  personalAddress?: PostalAddress;
+  address?: PostalAddress;
+}
+
+export interface PersonDetails {
+  displayName: string;
+  phone: string;
+  dateOfBirth: string;
+  personalEmail: string;
+  address: PostalAddress;
+}
+
+export interface PincodeInfo {
+  postalCode: string;
+  country: string;
+  state: string;
+  district: string;
+  city: string;
+  areas: string[];
+}
+
+export interface PublicTenant {
+  code: string;
+  name: string;
+  loginPath: string;
+  customDomain: string;
+  home: string;
+}
+
+/** Address lookups and the person's own details (D-155). */
+export const onboardingApi = {
+  details: () => api<PersonDetails>('/me/details'),
+  states: () => api<{ country: string; data: Array<{ name: string; gstCode: string }> }>('/geo/states'),
+  pincode: (pin: string) => api<PincodeInfo>(`/geo/pincode/${enc(pin)}`),
+  reverse: (lat: number, lng: number) => api<Partial<PostalAddress>>(`/geo/reverse${qs({ lat: String(lat), lng: String(lng) })}`),
+  tenant: (code: string) => api<PublicTenant>(`/public/tenants/${enc(code)}`),
+  tenantByHost: (host: string) => api<PublicTenant>(`/public/tenants/by-host${qs({ host })}`)
+};
+
+/** multipart upload that works in a browser (cookie + CSRF) and in the native shell (bearer). */
+async function uploadAny<T>(path: string, file: File): Promise<T> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (IS_NATIVE) {
+    headers['X-Session-Transport'] = 'bearer';
+    headers.Authorization = `Bearer ${sessionToken()}`;
+  } else headers['X-CSRF-Token'] = await ensureCsrf();
+  const res = await fetch(API_BASE + path, { method: 'POST', body: fd, credentials: IS_NATIVE ? 'omit' : 'same-origin', headers });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, data?.code ?? `http_${res.status}`, data?.message ?? 'Upload failed.', data?.fieldErrors ?? {}, data?.requestId);
+  return data as T;
+}
+
 export interface BusinessProfile {
+  /** Which sides of the business card are uploaded. */
+  cardImages?: { front: boolean; back: boolean };
+  /** This business's own sign-in address on this site, e.g. /ajay-traders/login. */
+  loginPath?: string;
   code: string;
   name: string;
   currency: string;
@@ -743,8 +829,11 @@ export const phoneAuthApi = {
 
 export const businessApi = {
   list: () => api<{ data: BusinessSummary[]; canCreate: boolean; limit: number; created: number }>('/businesses'),
-  create: (body: { name: string; industry?: string; phone?: string; email?: string; website?: string; city?: string; state?: string; country?: string }) =>
-    api<{ business: BusinessSummary; next: string }>('/businesses', { method: 'POST', body }),
+  create: (body: CreateBusinessBody) => api<{ business: BusinessSummary; next: string }>('/businesses', { method: 'POST', body }),
+  /** Front or back of the business's card (D-155). */
+  uploadCardImage: (code: string, side: 'front' | 'back', file: File) => uploadAny<BusinessProfile>(`/w/${enc(code)}/business/card-images/${side}`, file),
+  removeCardImage: (code: string, side: 'front' | 'back') => api<BusinessProfile>(`/w/${enc(code)}/business/card-images/${side}`, { method: 'DELETE' }),
+  cardImageUrl: (code: string, side: 'front' | 'back') => `${API_BASE}/w/${enc(code)}/business/card-images/${side}`,
   profile: (code: string) => api<BusinessProfile>(`/w/${enc(code)}/business`),
   update: (code: string, body: { name?: string; currency?: string; timezone?: string; profile?: Record<string, string | null> }) =>
     api<BusinessProfile>(`/w/${enc(code)}/business`, { method: 'PATCH', body }),

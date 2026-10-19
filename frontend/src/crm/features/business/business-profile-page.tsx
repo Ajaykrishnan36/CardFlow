@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { businessApi, type BusinessProfile } from '@crm/api/endpoints';
-import { isApiError } from '@crm/api/client';
+import { businessApi, type BusinessProfile, type PostalAddress } from '@crm/api/endpoints';
+import { isApiError, IS_NATIVE, sessionToken } from '@crm/api/client';
+import { Copy, ImagePlus } from 'lucide-react';
+import { AddressFields, addressFilled, emptyAddress } from './address-fields';
 import { Button } from '@crm/components/ui/button';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
 import { Field } from '@crm/components/ui/field';
@@ -19,15 +21,26 @@ const fields: Array<{ key: string; label: string; wide?: boolean; type?: string;
   { key: 'phone', label: 'Phone', type: 'tel' },
   { key: 'email', label: 'Email', type: 'email' },
   { key: 'website', label: 'Website' },
+  { key: 'whatsapp', label: 'WhatsApp', type: 'tel' },
   { key: 'gstin', label: 'GSTIN' },
   { key: 'pan', label: 'PAN' },
-  { key: 'address', label: 'Address', wide: true },
-  { key: 'city', label: 'City' },
-  { key: 'state', label: 'State' },
-  { key: 'postalCode', label: 'Postal code' },
-  { key: 'country', label: 'Country' },
   { key: 'about', label: 'About the business', wide: true, long: true }
 ];
+
+const addressKeys = ['addressLine', 'landmark', 'area', 'city', 'district', 'state', 'postalCode', 'country'] as const;
+
+function addressOf(p: Record<string, string>): PostalAddress {
+  const a = emptyAddress();
+  for (const k of addressKeys) a[k] = p[k] ?? (k === 'country' ? 'India' : '');
+  if (!p.addressLine && p.address) a.addressLine = p.address; // older profiles kept one free-text line
+  a.latitude = p.latitude ? Number(p.latitude) : null;
+  a.longitude = p.longitude ? Number(p.longitude) : null;
+  return a;
+}
+
+function oneLine(a: PostalAddress): string {
+  return [a.addressLine, a.area, a.landmark ? `Near ${a.landmark}` : '', a.city, a.state, a.postalCode, a.country].filter(Boolean).join(', ');
+}
 
 /** /crm/w/:ws/settings/business — the business's own details (name, money, time zone, contact and tax details). */
 export function BusinessProfilePage() {
@@ -50,6 +63,12 @@ export function BusinessProfilePage() {
       const profile: Record<string, string | null> = {};
       for (const f of fields) profile[f.key] = form!.profile[f.key]?.trim() || null;
       profile.packs = form!.profile.packs?.trim() || null;
+      const a = addressOf(form!.profile);
+      for (const k of addressKeys) profile[k] = a[k]?.trim() || null;
+      profile.latitude = a.latitude != null ? String(a.latitude) : null;
+      profile.longitude = a.longitude != null ? String(a.longitude) : null;
+      profile.address = addressFilled(a) ? oneLine(a) : null;
+      profile.customDomain = form!.profile.customDomain?.trim() || null;
       return businessApi.update(code, { name: form!.name.trim(), currency: form!.currency.trim().toUpperCase(), timezone: form!.timezone.trim(), profile });
     },
     onSuccess: async (b) => {
@@ -137,6 +156,36 @@ export function BusinessProfilePage() {
             </div>
           </Card>
           <Card>
+            <CardHeader title="Address" description="Enter the pincode or use the current location; the rest fills in." />
+            <div className="p-5">
+              <AddressFields
+                value={addressOf(form.profile)}
+                disabled={!canEdit}
+                errors={errors}
+                prefix="profile."
+                onChange={(a) =>
+                  setForm({
+                    ...form,
+                    profile: {
+                      ...form.profile,
+                      ...Object.fromEntries(addressKeys.map((k) => [k, a[k] ?? ''])),
+                      latitude: a.latitude != null ? String(a.latitude) : '',
+                      longitude: a.longitude != null ? String(a.longitude) : ''
+                    }
+                  })
+                }
+              />
+            </div>
+          </Card>
+          <LoginAddressCard
+            loginPath={q.data?.loginPath ?? `/${code}/login`}
+            domain={form.profile.customDomain ?? ''}
+            onDomain={(d) => setForm({ ...form, profile: { ...form.profile, customDomain: d } })}
+            error={errors['profile.customDomain']}
+            disabled={!canEdit}
+          />
+          {q.data ? <CardImagesCard code={code} sides={q.data.cardImages ?? { front: false, back: false }} canEdit={canEdit} /> : null}
+          <Card>
             <CardHeader title="Industry packs" description="Extra menus and records for one trade. Switch on what your business needs; nothing is lost when a pack is switched off." />
             <div className="p-5">
               {[
@@ -176,5 +225,136 @@ export function BusinessProfilePage() {
         </form>
       )}
     </PageContainer>
+  );
+}
+
+/** The business's own sign-in address, and its own domain (D-155). */
+function LoginAddressCard({ loginPath, domain, onDomain, error, disabled }: { loginPath: string; domain: string; onDomain: (d: string) => void; error?: string; disabled: boolean }) {
+  const url = `${window.location.origin}${loginPath}`;
+  return (
+    <Card>
+      <CardHeader title="Login address" description="Your team signs in to this business here. Share this link, or use your own domain." />
+      <div className="space-y-4 p-5">
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-2 pl-3">
+          <code className="min-w-0 flex-1 truncate text-sm">{url}</code>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              void navigator.clipboard?.writeText(url);
+              toast.success('Login address copied');
+            }}
+          >
+            <Copy /> Copy
+          </Button>
+        </div>
+        <Field
+          label="Your own domain"
+          error={error}
+          hint="For example crm.yourbusiness.com. Point it (CNAME) at this site and ask us to connect it; then opening it shows your business's sign-in."
+        >
+          <Input value={domain} onChange={(e) => onDomain(e.target.value)} placeholder="crm.yourbusiness.com" disabled={disabled} />
+        </Field>
+      </div>
+    </Card>
+  );
+}
+
+/** The image behind an API address, fetched with the session (works in the app shell too). */
+function useApiImage(url: string, version: number, enabled: boolean): string {
+  const [src, setSrc] = useState('');
+  useEffect(() => {
+    if (!enabled) {
+      setSrc('');
+      return;
+    }
+    let live = true;
+    let made = '';
+    const headers: Record<string, string> = IS_NATIVE ? { 'X-Session-Transport': 'bearer', Authorization: `Bearer ${sessionToken()}` } : {};
+    fetch(url, { credentials: IS_NATIVE ? 'omit' : 'same-origin', headers })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => {
+        if (b && live) {
+          made = URL.createObjectURL(b);
+          setSrc(made);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+      if (made) URL.revokeObjectURL(made);
+    };
+  }, [url, version, enabled]);
+  return src;
+}
+
+function CardImagesCard({ code, sides, canEdit }: { code: string; sides: { front: boolean; back: boolean }; canEdit: boolean }) {
+  const qc = useQueryClient();
+  const [version, setVersion] = useState(0);
+  const [busy, setBusy] = useState<string | null>(null);
+  const run = async (side: 'front' | 'back', job: () => Promise<BusinessProfile>) => {
+    setBusy(side);
+    try {
+      const b = await job();
+      qc.setQueryData(['workspace', code, 'business'], b);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      toast.error(isApiError(e) ? e.fieldErrors.file ?? e.message : 'Upload failed.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Card>
+      <CardHeader title="Business card" description="Photos of the front and back of your card." />
+      <div className="grid gap-4 p-5 sm:grid-cols-2">
+        {(['front', 'back'] as const).map((side) => (
+          <CardSide
+            key={side}
+            label={side === 'front' ? 'Front' : 'Back'}
+            src={useApiImage(businessApi.cardImageUrl(code, side), version, sides[side])}
+            has={sides[side]}
+            busy={busy === side}
+            canEdit={canEdit}
+            onPick={(f) => void run(side, () => businessApi.uploadCardImage(code, side, f))}
+            onRemove={() => void run(side, () => businessApi.removeCardImage(code, side))}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function CardSide({ label, src, has, busy, canEdit, onPick, onRemove }: { label: string; src: string; has: boolean; busy: boolean; canEdit: boolean; onPick: (f: File) => void; onRemove: () => void }) {
+  return (
+    <div>
+      <p className="mb-1.5 text-[13px] font-medium">{label}</p>
+      <div className="flex h-36 items-center justify-center overflow-hidden rounded-lg border bg-muted/30">
+        {has && src ? <img src={src} alt={`Business card ${label.toLowerCase()}`} className="h-full w-full object-contain" /> : <span className="text-sm text-muted-foreground">{has ? 'Loading…' : 'No photo yet'}</span>}
+      </div>
+      {canEdit ? (
+        <div className="mt-2 flex gap-2">
+          <label className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm hover:bg-muted ${busy ? 'pointer-events-none opacity-60' : ''}`}>
+            <ImagePlus className="size-4" aria-hidden /> {has ? 'Replace' : 'Upload'}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onPick(f);
+                e.target.value = '';
+              }}
+            />
+          </label>
+          {has ? (
+            <Button type="button" size="sm" variant="ghost" onClick={onRemove} disabled={busy}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }

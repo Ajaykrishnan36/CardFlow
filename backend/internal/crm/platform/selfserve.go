@@ -215,6 +215,14 @@ type CreateBusinessInput struct {
 	Locale   string `json:"locale"`
 	// ListingID links one of the person's own directory listings as the business's public profile.
 	ListingID string `json:"listingId"`
+	// Onboarding (D-155): the person, their address, and the business's own details.
+	DisplayName   string   `json:"displayName"`
+	DateOfBirth   string   `json:"dateOfBirth"`
+	PersonalEmail string   `json:"personalEmail"`
+	Personal      *Address `json:"personalAddress"`
+	Whatsapp      string   `json:"whatsapp"`
+	GSTIN         string   `json:"gstin"`
+	Address       *Address `json:"address"`
 }
 
 var slugStrip = regexp.MustCompile(`[^a-z0-9]+`)
@@ -250,6 +258,9 @@ func businessCode(ctx context.Context, tx pgx.Tx, name string) (string, error) {
 // single path for self-serve creation (the API, and the sample-data seed).
 func CreateBusinessTx(ctx context.Context, tx pgx.Tx, creator uuid.UUID, setupID uuid.UUID, in CreateBusinessInput) (uuid.UUID, string, error) {
 	in.Name = strings.TrimSpace(in.Name)
+	if fe := in.normalizeOnboarding(); len(fe) > 0 {
+		return uuid.Nil, "", shared.Validation(fe)
+	}
 	code, err := businessCode(ctx, tx, in.Name)
 	if err != nil {
 		return uuid.Nil, "", err
@@ -265,17 +276,10 @@ func CreateBusinessTx(ctx context.Context, tx pgx.Tx, creator uuid.UUID, setupID
 	if err != nil {
 		return uuid.Nil, "", err
 	}
-	profile := map[string]string{}
-	for k, v := range map[string]string{"industry": in.Industry, "phone": in.Phone, "email": in.Email, "website": in.Website,
-		"city": in.City, "state": in.State, "country": in.Country} {
-		if v = strings.TrimSpace(v); v != "" {
-			if len(v) > 200 {
-				v = v[:200]
-			}
-			profile[k] = v
-		}
+	if err := savePersonDetails(ctx, tx, creator, in.DisplayName, in.DateOfBirth, in.PersonalEmail, in.Personal); err != nil {
+		return uuid.Nil, "", err
 	}
-	rawProfile, _ := json.Marshal(profile)
+	rawProfile, _ := json.Marshal(businessProfileFrom(in))
 	if _, err := tx.Exec(ctx, `UPDATE crm.workspaces SET created_by_identity = $2, origin = 'self_serve', profile = $3 WHERE id = $1`, wsID, creator, rawProfile); err != nil {
 		return uuid.Nil, "", err
 	}
@@ -314,6 +318,7 @@ func (h *Handler) SelfServeRoutes(r chi.Router) {
 		r.Use(identity.RequireReady)
 		r.Get("/businesses", h.handleListBusinesses)
 		r.Post("/businesses", h.handleCreateBusiness)
+		h.onboardingRoutes(r)
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(identity.RequireOwner)

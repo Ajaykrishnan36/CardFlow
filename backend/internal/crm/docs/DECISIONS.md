@@ -1400,6 +1400,41 @@ Still open (found by the same test): dealership service dues are not on the shar
 no Projects module (milestones, timesheets); no guardian link for a student or patient who is a
 minor; no medical-records module.
 
+## D-155 — Onboarding details, each business's own login address, and data separation
+
+**Create a business** asks in sections split by a line:
+1. *About you* — name, date of birth, personal email, the mobile number they signed in with
+   (shown, not typed), and the business / brand name. Only the two names are required.
+2. *Your address* and, later, *Business address* — picked rather than typed: house no. /
+   building, landmark, area; then the pincode (India Post: fills state, district, city and
+   offers the areas it covers) or **Use my current location** (the device's location,
+   reverse-geocoded by OpenStreetMap, one request a second, cached); country and state from
+   lists. The business address can be "same as my address".
+3. *Your business* — industry, website, business phone ("same as my mobile" by default),
+   WhatsApp ("same as business phone" by default), business email, GSTIN. A GSTIN is checked
+   for shape, check character and that its state code matches the business's state.
+4. *Business card* — optional front and back photos (JPEG/PNG/WebP up to 5 MB, stored in
+   `crm.business_card_images`, shown and replaceable in Business profile).
+
+The person's own details are kept once (`crm.person_details`) and filled in again for their
+next business. The business's details go in its profile (structured address keys plus a
+one-line `address` for documents and older screens).
+
+**Login address.** The business code (made from the name, unique) gives every business its
+own sign-in page: `/<code>/login` names the business and, after sign-in, goes straight into
+it. A business can add its own domain in Business profile (`crm.workspaces.custom_domain`,
+unique, planned since 0001); opening the site on that domain shows that business's sign-in.
+The domain also has to be added to the hosting (Vercel) — see HANDOVER.md.
+
+**Data separation (why not one database or collection per business).** Separation is already
+done by the server, never by the screens: every business's records carry its workspace id,
+every query is built with it from the signed-in person's membership (the URL or the page can't
+widen it), cross-business links are refused, and every main table is indexed by workspace id
+first, so a business's queries read only its own rows however many businesses there are. A
+schema or database per business would multiply migrations and connections without making this
+stricter. It stays an option for a single very large customer later (move that business to
+its own database with the same code).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.
