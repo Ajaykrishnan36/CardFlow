@@ -53,6 +53,9 @@ func TestFreshStartKeepsOnlyTheOwnerAndOneBusiness(t *testing.T) {
 			t.Fatalf("the erased %s's session still works: %d %s", who, r.Status, truncate(r.Raw, 200))
 		}
 	}
+	if n := count(`SELECT count(*) FROM crm.tenants t WHERE NOT EXISTS (SELECT 1 FROM crm.workspaces w WHERE w.tenant_id = t.id)`); n != 0 {
+		t.Fatalf("no tenant without a business is left (D-156): %d", n)
+	}
 	if n := count(`SELECT count(*) FROM crm.identities WHERE NOT is_platform_owner`); n != 1 {
 		t.Fatalf("people after a fresh start = %d, want 1", n)
 	}

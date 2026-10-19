@@ -309,7 +309,6 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 		}
 		steps = append(steps,
 			eraseStep{"workspaces", `DELETE FROM crm.workspaces WHERE id <> ALL($1)`, []any{keepSetup}},
-			eraseStep{"tenants", `DELETE FROM crm.tenants WHERE id NOT IN (SELECT tenant_id FROM crm.workspaces WHERE tenant_id IS NOT NULL)`, nil},
 			eraseStep{"connector cursor", `DELETE FROM crm.connector_state WHERE key = 'cardflow'`, nil},
 			eraseStep{"leads → unused setup", `UPDATE crm.leads SET product_id = NULL WHERE product_id IN (` + unusedSetups + `)`, setupKeys},
 			eraseStep{"unused setup versions", `DELETE FROM crm.product_versions WHERE product_id IN (` + unusedSetups + `)`, setupKeys},
@@ -390,6 +389,12 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 			}
 			pending = next
 		}
+		// Tenants last, once the businesses are really gone: only those a kept business uses stay (D-156).
+		tag, err := tx.Exec(ctx, `DELETE FROM crm.tenants WHERE id NOT IN (SELECT tenant_id FROM crm.workspaces WHERE tenant_id IS NOT NULL)`)
+		if err != nil {
+			return fmt.Errorf("tenants: %w", err)
+		}
+		counts["tenants"] += tag.RowsAffected()
 
 		// The owner's address, when the host names one and the only owner has another.
 		if email := strings.ToLower(strings.TrimSpace(m.cfg.OwnerEmail)); email != "" && len(owners) == 1 {
