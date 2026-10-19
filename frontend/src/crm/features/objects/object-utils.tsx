@@ -1,3 +1,4 @@
+import { memberTenantOf } from '@crm/lib/tenant';
 import { createContext, useContext, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -38,7 +39,7 @@ export function productObjectsScope(code: string): ObjectsScope {
   const c = encodeURIComponent(code);
   return {
     api: objectsApiFor(`/w/${c}`),
-    base: `/crm/w/${c}/settings/objects`,
+    base: `${memberTenantOf(code) ? `/${encodeURIComponent(memberTenantOf(code)!)}` : `/crm/w/${c}`}/settings/objects`,
     keys: { all: ['workspace', code, 'objects'], one: (key: string) => ['workspace', code, 'objects', key] },
     product: code
   };

@@ -5,6 +5,7 @@ import { authApi, meApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
 import type { Me, Membership } from '@crm/api/types';
 import { safeReturnTo } from '@crm/lib/utils';
+import { loginPathFor, registerMemberships, tenantOf } from '@crm/lib/tenant';
 import { FullPageLoader } from '@crm/components/states';
 import { UnavailablePage } from '@crm/features/system/pages';
 
@@ -16,7 +17,9 @@ export function useMe() {
     queryKey: meKey,
     queryFn: async () => {
       try {
-        return await meApi.me();
+        const me = await meApi.me();
+        registerMemberships(me?.memberships);
+        return me;
       } catch (e) {
         if (isApiError(e) && e.status === 401) return null;
         throw e;
@@ -48,8 +51,9 @@ export function homeWorkspace(me: Me): Membership | undefined {
   return active.find((m) => !m.isPlatformWorkspace) ?? active.find((m) => m.isPlatformWorkspace);
 }
 
+/** A business's home: its tenant's address, with the business to open (D-156). */
 export function workspaceHomePath(code: string): string {
-  return `/crm/w/${encodeURIComponent(code)}/home`;
+  return `/${tenantOf(code)}/home?b=${encodeURIComponent(code)}`;
 }
 
 /** Where a fully signed-in user belongs if they hit an auth page. */
@@ -74,8 +78,8 @@ export function RequireSession({ step = false }: { step?: boolean }) {
     return <UnavailablePage onRetry={() => void refetch()} />;
   }
   if (!me) {
-    // The owner console has its own sign-in; everything else shares one (D-104).
-    const login = location.pathname.startsWith('/crm/owner') ? '/crm/owner/login' : '/crm/login';
+    // The owner console has its own sign-in; a tenant's pages sign in at /<tenant>/login (D-156).
+    const login = loginPathFor(location.pathname);
     const returnTo = safeReturnTo(location.pathname + location.search);
     return <Navigate to={`${login}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`} replace />;
   }
@@ -133,6 +137,7 @@ export function RedirectIfSignedIn() {
 export function useSignOut() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const location = useLocation();
   return useCallback(
     async (opts: { all?: boolean; to?: string } = {}) => {
       try {
@@ -140,11 +145,13 @@ export function useSignOut() {
       } catch {
         /* the session may already be gone — sign out locally regardless */
       }
+      // Signing out keeps the tenant's address: /<tenant>/login?signedOut=1 (D-156).
+      const to = opts.to ?? `${loginPathFor(location.pathname)}?signedOut=1`;
       qc.clear();
       qc.setQueryData(meKey, null);
-      navigate(opts.to ?? '/crm/login?signedOut=1', { replace: true });
+      navigate(to, { replace: true });
     },
-    [qc, navigate]
+    [qc, navigate, location.pathname]
   );
 }
 

@@ -313,35 +313,35 @@ func (h *Handler) onboardingRoutes(r chi.Router) {
 	r.Get("/geo/reverse", h.handleReverseGeocode)
 }
 
-// PublicTenantRoutes need no sign-in: the login page of one business finds its name.
+// PublicTenantRoutes need no sign-in: a tenant's login page finds its name (D-156).
 func (h *Handler) PublicTenantRoutes(r chi.Router) {
 	r.Get("/public/tenants/by-host", func(w http.ResponseWriter, r *http.Request) {
 		host := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("host")))
 		if i := strings.IndexByte(host, ':'); i >= 0 {
 			host = host[:i]
 		}
-		h.writeTenant(w, r, `lower(w.custom_domain) = $1`, host)
+		t := &Tenant{}
+		err := h.store.Pool.QueryRow(r.Context(), `SELECT id, slug, name, COALESCE(custom_domain, '') FROM crm.tenants WHERE lower(custom_domain) = $1 AND status = 'active'`, host).
+			Scan(&t.ID, &t.Slug, &t.Name, &t.CustomDomain)
+		if errors.Is(err, pgx.ErrNoRows) || host == "" {
+			err = shared.NotFound("business_not_found")
+		}
+		h.writeTenant(w, r, t, err)
 	})
-	r.Get("/public/tenants/{code}", func(w http.ResponseWriter, r *http.Request) {
-		h.writeTenant(w, r, `w.code = $1`, strings.ToLower(chi.URLParam(r, "code")))
+	r.Get("/public/tenants/{slug}", func(w http.ResponseWriter, r *http.Request) {
+		t, err := TenantBySlug(r.Context(), h.store.Pool, chi.URLParam(r, "slug"))
+		h.writeTenant(w, r, t, err)
 	})
 }
 
-func (h *Handler) writeTenant(w http.ResponseWriter, r *http.Request, where, arg string) {
-	var code, name, domain string
-	err := h.store.Pool.QueryRow(r.Context(), `SELECT w.code, w.name, COALESCE(w.custom_domain, '') FROM crm.workspaces w
-		WHERE `+where+` AND w.status = 'active' AND NOT w.is_platform`, arg).Scan(&code, &name, &domain)
-	if errors.Is(err, pgx.ErrNoRows) || arg == "" {
-		shared.WriteError(w, r, shared.NotFound("business_not_found"))
-		return
-	}
+func (h *Handler) writeTenant(w http.ResponseWriter, r *http.Request, t *Tenant, err error) {
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=300")
-	shared.WriteJSON(w, http.StatusOK, map[string]any{"code": code, "name": name, "loginPath": "/" + code + "/login", "customDomain": domain,
-		"home": "/crm/w/" + code + "/home"})
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"slug": t.Slug, "code": t.Slug, "name": t.Name, "loginPath": "/" + t.Slug + "/login",
+		"customDomain": t.CustomDomain, "home": "/" + t.Slug + "/home"})
 }
 
 // ---------------------------------------------------------------- address lookups

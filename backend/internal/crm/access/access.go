@@ -31,6 +31,9 @@ type Membership struct {
 	RoleKey             string    `json:"roleKey,omitempty"`
 	RoleName            string    `json:"roleName,omitempty"`
 	RoleRank            int       `json:"roleRank"`
+	// TenantSlug is the permanent address of the business's tenant (brand), D-156.
+	TenantSlug string `json:"tenantSlug"`
+	TenantName string `json:"tenantName"`
 }
 
 // ListActiveMemberships returns the identity's active memberships in active workspaces,
@@ -38,9 +41,10 @@ type Membership struct {
 func ListActiveMemberships(ctx context.Context, q Querier, identityID uuid.UUID) ([]Membership, error) {
 	rows, err := q.Query(ctx, `
 		SELECT m.id, w.id, w.code, w.name, w.is_platform, m.status, m.auth_version,
-		       COALESCE(r.key, ''), COALESCE(r.name, ''), COALESCE(r.rank, 0)
+		       COALESCE(r.key, ''), COALESCE(r.name, ''), COALESCE(r.rank, 0), COALESCE(t.slug, w.code), COALESCE(t.name, w.name)
 		FROM crm.memberships m
 		JOIN crm.workspaces w ON w.id = m.workspace_id
+		LEFT JOIN crm.tenants t ON t.id = w.tenant_id
 		LEFT JOIN LATERAL (
 			SELECT ro.key, ro.name, ro.rank
 			FROM crm.role_assignments ra
@@ -59,7 +63,7 @@ func ListActiveMemberships(ctx context.Context, q Querier, identityID uuid.UUID)
 	for rows.Next() {
 		var m Membership
 		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.WorkspaceCode, &m.WorkspaceName, &m.IsPlatformWorkspace,
-			&m.Status, &m.AuthVersion, &m.RoleKey, &m.RoleName, &m.RoleRank); err != nil {
+			&m.Status, &m.AuthVersion, &m.RoleKey, &m.RoleName, &m.RoleRank, &m.TenantSlug, &m.TenantName); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

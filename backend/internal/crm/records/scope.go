@@ -190,6 +190,9 @@ type workspaceContext struct {
 		IsPlatform bool      `json:"isPlatform"`
 		Currency   string    `json:"currency"` // amounts without their own currency use this (D-76)
 		Timezone   string    `json:"timezone"` // dates and times are shown in this zone unless the person set their own
+		// The tenant (brand) and its permanent address, /<tenantSlug>/... (D-156).
+		TenantSlug string `json:"tenantSlug"`
+		TenantName string `json:"tenantName"`
 	} `json:"workspace"`
 	Role *struct {
 		Key  string `json:"key"`
@@ -308,7 +311,8 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 	var out workspaceContext
 	out.Workspace.ID, out.Workspace.Code, out.Workspace.IsPlatform = sc.WS, sc.Code, sc.IsPlatformWS
 	out.Workspace.Name = displayWorkspaceName(sc.Name, sc.IsPlatformWS)
-	_ = h.store.Pool.QueryRow(r.Context(), `SELECT COALESCE(currency, 'INR'), COALESCE(timezone, '') FROM crm.workspaces WHERE id = $1`, sc.WS).Scan(&out.Workspace.Currency, &out.Workspace.Timezone)
+	_ = h.store.Pool.QueryRow(r.Context(), `SELECT COALESCE(w.currency, 'INR'), COALESCE(w.timezone, ''), COALESCE(t.slug, w.code), COALESCE(t.name, w.name)
+		FROM crm.workspaces w LEFT JOIN crm.tenants t ON t.id = w.tenant_id WHERE w.id = $1`, sc.WS).Scan(&out.Workspace.Currency, &out.Workspace.Timezone, &out.Workspace.TenantSlug, &out.Workspace.TenantName)
 	if out.Workspace.Currency == "" {
 		out.Workspace.Currency = "INR"
 	}

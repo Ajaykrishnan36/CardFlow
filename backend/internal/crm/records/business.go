@@ -49,8 +49,10 @@ type businessProfile struct {
 	CanEdit   bool              `json:"canEdit"`
 	// CardImages: which sides of the business card are uploaded (D-155).
 	CardImages map[string]bool `json:"cardImages"`
-	// LoginPath is the business's own sign-in address on this site.
-	LoginPath string `json:"loginPath"`
+	// LoginPath is the tenant's permanent sign-in address on this site (D-156).
+	LoginPath  string `json:"loginPath"`
+	TenantSlug string `json:"tenantSlug"`
+	TenantName string `json:"tenantName"`
 }
 
 // businessProfileKeys are the profile fields a business can fill in.
@@ -68,10 +70,10 @@ func (h *Handler) loadBusiness(r *http.Request) (*businessProfile, error) {
 	b := &businessProfile{Profile: map[string]string{}, CanEdit: canEditBusiness(sc)}
 	var raw []byte
 	err := h.store.Pool.QueryRow(r.Context(), `
-		SELECT w.code, w.name, trim(w.currency), w.timezone, w.locale, w.origin, w.profile || jsonb_build_object('customDomain', COALESCE(w.custom_domain, '')), w.created_at,
-		       (SELECT count(*) FROM crm.memberships m WHERE m.workspace_id = w.id AND m.status = 'active')
-		FROM crm.workspaces w WHERE w.id = $1`, sc.WS).
-		Scan(&b.Code, &b.Name, &b.Currency, &b.Timezone, &b.Locale, &b.Origin, &raw, &b.CreatedAt, &b.Members)
+		SELECT w.code, w.name, trim(w.currency), w.timezone, w.locale, w.origin, w.profile || jsonb_build_object('customDomain', COALESCE(t.custom_domain, '')), w.created_at,
+		       (SELECT count(*) FROM crm.memberships m WHERE m.workspace_id = w.id AND m.status = 'active'), COALESCE(t.slug, w.code), COALESCE(t.name, w.name)
+		FROM crm.workspaces w LEFT JOIN crm.tenants t ON t.id = w.tenant_id WHERE w.id = $1`, sc.WS).
+		Scan(&b.Code, &b.Name, &b.Currency, &b.Timezone, &b.Locale, &b.Origin, &raw, &b.CreatedAt, &b.Members, &b.TenantSlug, &b.TenantName)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +84,7 @@ func (h *Handler) loadBusiness(r *http.Request) (*businessProfile, error) {
 			b.Profile[k] = s
 		}
 	}
-	b.LoginPath = "/" + b.Code + "/login"
+	b.LoginPath = "/" + b.TenantSlug + "/login"
 	b.CardImages = map[string]bool{"front": false, "back": false}
 	rows, err := h.store.Pool.Query(r.Context(), `SELECT side FROM crm.business_card_images WHERE workspace_id = $1`, sc.WS)
 	if err != nil {
@@ -172,8 +174,8 @@ func (h *Handler) handleUpdateBusiness(w http.ResponseWriter, r *http.Request) {
 				val = strings.TrimSpace(*v)
 			}
 			var err error
-			if k == "customDomain" { // its own unique column: no two businesses share a domain
-				_, err = tx.Exec(ctx, `UPDATE crm.workspaces SET custom_domain = NULLIF(lower($2), '') WHERE id = $1`, sc.WS, val)
+			if k == "customDomain" { // the tenant's (D-156), unique: no two tenants share a domain
+				_, err = tx.Exec(ctx, `UPDATE crm.tenants SET custom_domain = NULLIF(lower($2), ''), updated_at = now() WHERE id = (SELECT tenant_id FROM crm.workspaces WHERE id = $1)`, sc.WS, val)
 			} else if val == "" {
 				_, err = tx.Exec(ctx, `UPDATE crm.workspaces SET profile = profile - $2 WHERE id = $1`, sc.WS, k)
 			} else {
@@ -188,7 +190,7 @@ func (h *Handler) handleUpdateBusiness(w http.ResponseWriter, r *http.Request) {
 		id := sc.WS
 		return shared.WriteAudit(ctx, tx, a.audit(sc.WS, "business.updated", "workspace", &id, prev, in))
 	})
-	if err != nil && strings.Contains(err.Error(), "workspaces_custom_domain_key") {
+	if err != nil && (strings.Contains(err.Error(), "tenants_custom_domain_key") || strings.Contains(err.Error(), "workspaces_custom_domain_key")) {
 		err = shared.Validation(map[string]string{"profile.customDomain": "Another business already uses this domain."})
 	}
 	if err != nil {

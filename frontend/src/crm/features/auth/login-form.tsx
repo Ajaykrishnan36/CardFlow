@@ -1,3 +1,4 @@
+import { signInTenant } from '@crm/lib/tenant';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -56,6 +57,8 @@ export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
         : null;
   const providers = (['google', 'microsoft', 'linkedin'] as const).filter((p) => allowed.includes(p) && providersQ.data?.[p] && (audience === 'workspace' || p !== 'linkedin'));
   const sso = audience === 'workspace' && Boolean(product) && allowed.includes('sso');
+  // A tenant's own login page signs in only its people: Google/Microsoft buttons aren't offered there (D-156).
+  if (signInTenant()) providers.length = 0;
   const buttons = providers.length > 0 || sso;
   return (
     <div className="space-y-5">

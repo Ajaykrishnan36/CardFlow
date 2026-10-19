@@ -1,4 +1,5 @@
 import { listPreset } from './presets';
+import { currentBusinessFor } from '../crm/lib/tenant';
 // One set of URLs for the phone layout and the desktop CRM (D-104): the same link opens
 // the same thing on both. This file is the phone layout's side of that map.
 
@@ -8,10 +9,15 @@ const OBJECT_RE = /^[a-z][a-z0-9_]{1,40}$/;
 /** What a URL means on a phone. `null` = the phone layout has no screen for it (the desktop page is shown instead). */
 export function parseRoute(pathname, search = '') {
   const q = new URLSearchParams(search);
-  const parts = pathname.split('/').filter(Boolean);
+  let parts = pathname.split('/').filter(Boolean);
   if (parts[0] === 'share' && parts[1]) return { name: 'share', id: parts[1] };
   if (parts.length === 0) return { name: 'root' };
-  if (parts[0] !== 'crm') return null;
+  // A tenant's address (/<tenant>/home …, D-156) is its open business's /crm/w/<code>/….
+  if (parts[0] !== 'crm') {
+    const code = parts[1] && parts[1] !== 'login' ? currentBusinessFor(decodeURIComponent(parts[0]).toLowerCase()) : undefined;
+    if (!code) return null;
+    parts = ['crm', 'w', code, ...parts.slice(1)];
+  }
   if (parts.length === 1 || parts[1] === 'home' || parts[1] === 'login') return { name: 'root' };
   if (parts[1] === 'businesses' && parts.length === 2) return { name: 'businesses', create: q.has('new') };
   if (parts[1] === 'browse') return parts[2] ? { name: 'listing', id: parts[2] } : { name: 'browse' };

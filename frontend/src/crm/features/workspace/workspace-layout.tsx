@@ -19,9 +19,11 @@ import { useWorkspaceContextQuery, WorkspaceProvider } from './workspace-context
  * Route element for /crm/w/:ws/*. Loads the member's workspace context and provides
  * the record scope (API prefix, routes, permissions) to every page below it.
  */
-export function WorkspaceLayout() {
+export function WorkspaceLayout({ code }: { code?: string } = {}) {
   const { t } = useTranslation();
-  const { ws = '' } = useParams();
+  const params = useParams();
+  // Under a tenant's address the business comes from the tenant (D-156); /crm/w/:ws names it.
+  const ws = code ?? params.ws ?? '';
   const q = useWorkspaceContextQuery(ws);
   const value = useMemo(() => (q.data ? { code: ws, context: q.data } : null), [q.data, ws]);
   const scope = useMemo(() => (q.data ? scopeFromContext(q.data, ws) : null), [q.data, ws]);
@@ -85,8 +87,7 @@ function useProductAccent(hex: string | undefined) {
 
 /** /crm/w/:ws → /crm/w/:ws/home */
 export function WorkspaceIndexRedirect() {
-  const { ws = '' } = useParams();
-  return <Navigate to={workspaceHomePath(ws)} replace />;
+  return <Navigate to="home" replace />;
 }
 
 /** The product only accepts other sign-in methods (e.g. SSO) than the one this session used (D-64). */

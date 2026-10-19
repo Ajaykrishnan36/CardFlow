@@ -1435,6 +1435,45 @@ schema or database per business would multiply migrations and connections withou
 stricter. It stays an option for a single very large customer later (move that business to
 its own database with the same code).
 
+## D-156 — Tenants: one permanent address per brand, sign-in only for its people
+
+A **tenant** is the brand (`crm.tenants`): PSG, AK Finance, Ajay Bike Service. Its businesses
+(PSG School, PSG College, PSG Medical College) are workspaces with `tenant_id` set; each keeps
+its own records, team, roles and permissions exactly as before. The person who creates the
+brand is its owner and Super Admin of each business; Admins and Staff are per business.
+
+- **One address, never changing.** The tenant's slug is made from the first business /
+  brand name (unique across tenants and businesses, never one of the site's own pages) and is
+  not changed by renaming. Every page lives under it: `/psg/login`, `/psg/home`, `/psg/leads`,
+  `/psg/leads/<id>`, `/psg/settings/business`. Switching between the tenant's businesses keeps
+  the address; the open business is remembered per tenant in the browser (`?b=<code>` on a link
+  opens a specific one and is then dropped from the address). Old links `/crm/w/<code>/…` and
+  every server-made link (notifications, emails) redirect to the tenant's address; the platform
+  owner's support visits keep `/crm/w/<code>`.
+- **Sign-in on `/<tenant>/login` is only for its people.** Phone code, email code and password
+  are checked against the active members of the tenant's businesses (any role) before a code is
+  sent; anyone else gets "Account not found". No account can be created there, the Google /
+  Microsoft buttons and the owner-console link aren't shown. The server still decides what each
+  person may open in each business.
+- **Sign-out keeps the address:** `/<tenant>/login?signedOut=1`. An expired session returns there.
+- **The main page `/`** is for new and returning people: a returning person goes to their
+  tenant's address, a new one creates their brand. `/crm/login` now redirects to `/`;
+  `/crm/owner/login` is unchanged. "New business" from inside a tenant adds to that tenant (its
+  owner or a Super Admin there only).
+- **Existing data** (migration 0035, nothing removed): everything one person created themselves
+  became one tenant, addressed by their first business's code; businesses set up from the owner
+  console are a tenant each. A business's own domain moved to its tenant.
+
+**Separate storage per brand.** Each business's data is already apart from every other's:
+every row carries its business id, every query is built from the signed-in person's
+membership, every main table is indexed by business first (so a query reads only that
+business's rows however many tenants there are), and links across businesses are refused.
+Physically separate tables or databases per tenant were not made: it would multiply migrations
+and connections and turn every change into N changes, without making the separation stricter.
+If one tenant grows very large, it can be moved to its own database with the same code.
+
+The create form (D-155) no longer asks for the person's address; the business's is "Address".
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

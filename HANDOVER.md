@@ -378,10 +378,11 @@ layout.
       `DEV_MOCK_SMS=false` and `ENV=production` on Render so codes are sent, not shown.
 - [ ] Vercel: the project must serve `/api/*` from Render (it's in `frontend/vercel.json`).
 
-## A business's own domain (D-155)
+## Tenant addresses and own domains (D-155, D-156)
 
-Each business signs in at `https://<site>/<business-code>/login`. To give a business its own
-domain (for example `crm.ajaytraders.in`):
+Each tenant (brand) has one permanent address: `https://<site>/<tenant>/login`, and every page
+under `https://<site>/<tenant>/…`, for all of its businesses. To give a tenant its own domain
+(for example `crm.ajaytraders.in`):
 
 1. The business enters the domain in **Business profile → Login address → Your own domain**.
 2. The business adds a DNS record: `CNAME crm.ajaytraders.in → cname.vercel-dns.com`.

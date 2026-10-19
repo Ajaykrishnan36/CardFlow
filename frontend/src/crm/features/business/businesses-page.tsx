@@ -34,6 +34,10 @@ export function BusinessesHomePage() {
   const q = useQuery({ queryKey: businessesKey, queryFn: businessApi.list, staleTime: 30_000 });
   const [creating, setCreating] = useState(false);
   useDocumentTitle('Your businesses');
+  // ?tenant=<slug>: "New business" from inside a tenant adds to it (D-156).
+  const askedTenant = params.get('tenant');
+  const own = (me?.memberships ?? []).find((m) => m.tenantSlug === askedTenant && m.roleKey === 'SUPER_ADMIN');
+  const tenantForNew = askedTenant && own ? { slug: askedTenant, name: own.tenantName } : undefined;
 
   // First sign-in with no business: go straight to the form.
   useEffect(() => {
@@ -117,6 +121,7 @@ export function BusinessesHomePage() {
                       <span className="flex items-center gap-1">
                         <Users className="size-3.5" aria-hidden /> {b.members} {b.members === 1 ? 'person' : 'people'}
                       </span>
+                      {b.tenantSlug ? <span className="font-mono">/{b.tenantSlug}</span> : null}
                       {b.profile?.city ? <span>{b.profile.city}</span> : null}
                       <span>{b.currency}</span>
                     </p>
@@ -150,7 +155,8 @@ export function BusinessesHomePage() {
           setCreating(open);
           if (!open && params.get('new')) setParams({}, { replace: true });
         }}
-        onCreated={(code) => navigate(workspaceHomePath(code))}
+        onCreated={(code, slug) => navigate(`/${slug}/home?b=${encodeURIComponent(code)}`)}
+        tenant={tenantForNew}
       />
     </div>
   );
@@ -165,20 +171,29 @@ type Side = 'front' | 'back';
  * GSTIN) and its address, and the business card photos. Your own details are remembered
  * and filled in again for your next business. At the end: the business's own login address.
  */
-function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (code: string) => void }) {
+function CreateBusinessDialog({
+  open,
+  onOpenChange,
+  onCreated,
+  tenant
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreated: (code: string, tenantSlug: string) => void;
+  /** Add the business to this tenant (it keeps the tenant's address); none = a new brand. */
+  tenant?: { slug: string; name: string };
+}) {
   const qc = useQueryClient();
   const details = useQuery({ queryKey: ['me', 'details'], queryFn: onboardingApi.details, enabled: open, staleTime: 60_000 });
   const [you, setYou] = useState({ displayName: '', dateOfBirth: '', personalEmail: '' });
-  const [personal, setPersonal] = useState<PostalAddress>(emptyAddress());
   const [biz, setBiz] = useState({ name: '', industry: '', phone: '', whatsapp: '', email: '', website: '', gstin: '' });
   const [samePhone, setSamePhone] = useState(true);
   const [sameWhatsapp, setSameWhatsapp] = useState(true);
-  const [sameAddress, setSameAddress] = useState(false);
   const [address, setAddress] = useState<PostalAddress>(emptyAddress());
   const [cards, setCards] = useState<Record<Side, File | null>>({ front: null, back: null });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [alert, setAlert] = useState<string | null>(null);
-  const [done, setDone] = useState<{ code: string; name: string } | null>(null);
+  const [done, setDone] = useState<{ code: string; name: string; tenantSlug: string } | null>(null);
   const myPhone = details.data?.phone ?? '';
 
   // Fill in what we already know about the person, once per opening.
@@ -192,7 +207,6 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
     if (!d || filled.current) return;
     filled.current = true;
     setYou({ displayName: d.displayName, dateOfBirth: d.dateOfBirth, personalEmail: d.personalEmail });
-    if (addressFilled(d.address)) setPersonal({ ...emptyAddress(), ...d.address, country: d.address.country || 'India' });
   }, [open, details.data]);
 
   const create = useMutation({
@@ -209,8 +223,8 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
         displayName: you.displayName.trim(),
         dateOfBirth: you.dateOfBirth,
         personalEmail: you.personalEmail.trim(),
-        personalAddress: addressFilled(personal) ? personal : undefined,
-        address: sameAddress ? (addressFilled(personal) ? personal : undefined) : addressFilled(address) ? address : undefined
+        address: addressFilled(address) ? address : undefined,
+        tenant: tenant?.slug
       });
       // The card photos are optional: a failed upload never undoes the business.
       for (const side of ['front', 'back'] as Side[]) {
@@ -222,7 +236,7 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
     onSuccess: async (res) => {
       await Promise.all([qc.invalidateQueries({ queryKey: businessesKey }), qc.invalidateQueries({ queryKey: meKey }), qc.invalidateQueries({ queryKey: ['me', 'details'] })]);
       qc.removeQueries({ queryKey: ['capabilities'] });
-      setDone({ code: res.business.code, name: res.business.name });
+      setDone({ code: res.business.code, name: res.business.name, tenantSlug: res.business.tenantSlug || res.business.code });
     },
     onError: (e) => {
       if (isApiError(e)) {
@@ -234,10 +248,10 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
 
   const close = (o: boolean) => {
     if (!o && done) {
-      const code = done.code;
+      const { code, tenantSlug } = done;
       setDone(null);
       onOpenChange(false);
-      onCreated(code);
+      onCreated(code, tenantSlug);
       return;
     }
     onOpenChange(o);
@@ -255,7 +269,7 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
 
   const previews = useMemo(() => ({ front: cards.front ? URL.createObjectURL(cards.front) : '', back: cards.back ? URL.createObjectURL(cards.back) : '' }), [cards]);
   useEffect(() => () => Object.values(previews).forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
-  const loginUrl = done ? `${window.location.origin}/${done.code}/login` : '';
+  const loginUrl = done ? `${window.location.origin}/${done.tenantSlug}/login` : '';
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -267,7 +281,9 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
             </span>
             <DialogTitle className="mt-3 text-lg font-semibold">{done.name} is ready</DialogTitle>
             <DialogDescription className="mt-1 text-sm text-muted-foreground">
-              This is your business’s own login address. Share it with your team, or point your own domain at it later from Business profile.
+              {tenant
+                ? `It is part of ${tenant.name} and uses the same login address. Everyone signs in there; what they see depends on the business and their role.`
+                : 'This is your business’s permanent login address. Share it with your team — every business you add later uses the same address.'}
             </DialogDescription>
             <div className="mt-4 flex items-center gap-2 rounded-lg border bg-muted/40 p-2 pl-3">
               <code className="min-w-0 flex-1 truncate text-sm">{loginUrl}</code>
@@ -283,7 +299,7 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
                 <Copy /> Copy
               </Button>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">Business code: {done.code}</p>
+            <p className="mt-2 text-xs text-muted-foreground">Address: /{done.tenantSlug} · Business code: {done.code}</p>
             <div className="mt-6 flex justify-end">
               <Button onClick={() => close(false)}>
                 Open {done.name} <ArrowRight />
@@ -293,7 +309,7 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
         ) : (
           <>
             <div className="border-b px-5 py-4 pr-12">
-              <DialogTitle className="text-base font-semibold">Create a business</DialogTitle>
+              <DialogTitle className="text-base font-semibold">{tenant ? `Add a business to ${tenant.name}` : 'Create a business'}</DialogTitle>
               <DialogDescription className="mt-1 text-sm text-muted-foreground">
                 You get a full CRM for it: leads, contacts, accounts, deals, tasks, cases, finance and reports. Only the starred fields are needed now.
               </DialogDescription>
@@ -334,15 +350,15 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
                     <Field label="Mobile number" hint="The number you signed in with.">
                       <Input value={myPhone} readOnly disabled placeholder="—" />
                     </Field>
-                    <Field label="Business / brand name *" error={errors.name} className="sm:col-span-2">
-                      <Input value={biz.name} onChange={(e) => setBiz({ ...biz, name: e.target.value })} placeholder="Sri Lakshmi Traders" maxLength={120} />
+                    <Field
+                      label={tenant ? 'Business name *' : 'Business / brand name *'}
+                      error={errors.name}
+                      className="sm:col-span-2"
+                      hint={tenant ? `For example ${tenant.name} College. It keeps ${tenant.name}'s login address.` : 'This names your login address, which never changes: all your businesses share it.'}
+                    >
+                      <Input value={biz.name} onChange={(e) => setBiz({ ...biz, name: e.target.value })} placeholder={tenant ? `${tenant.name} College` : 'PSG'} maxLength={120} />
                     </Field>
                   </div>
-                </Section>
-
-                <hr className="border-border" />
-                <Section title="Your address" hint="Enter the pincode or use your current location; we fill in the rest.">
-                  <AddressFields value={personal} onChange={setPersonal} errors={errors} prefix="personal." />
                 </Section>
 
                 <hr className="border-border" />
@@ -382,13 +398,12 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
                   </div>
                 </Section>
 
-                <Section title="Business address">
-                  <Checkbox className="mb-3" checked={sameAddress} onCheckedChange={setSameAddress} label="Same as my address" />
-                  {sameAddress ? null : <AddressFields value={address} onChange={setAddress} errors={errors} prefix="address." />}
+                <Section title="Address" hint="Enter the pincode or use your current location; we fill in the rest.">
+                  <AddressFields value={address} onChange={setAddress} errors={errors} prefix="address." />
                 </Section>
 
                 <hr className="border-border" />
-                <Section title="Business card" hint="Optional. A photo of each side, up to 5 MB.">
+                <Section title="Business card" aside="Optional" hint="A photo of each side, up to 5 MB.">
                   <div className="grid gap-4 sm:grid-cols-2">
                     {(['front', 'back'] as Side[]).map((side) => (
                       <div key={side}>
@@ -430,10 +445,13 @@ function CreateBusinessDialog({ open, onOpenChange, onCreated }: { open: boolean
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({ title, hint, aside, children }: { title: string; hint?: string; aside?: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        {aside ? <span className="text-xs font-medium text-muted-foreground">{aside}</span> : null}
+      </div>
       {hint ? <p className="mb-3 mt-0.5 text-xs text-muted-foreground">{hint}</p> : <div className="mb-3" />}
       {children}
     </section>

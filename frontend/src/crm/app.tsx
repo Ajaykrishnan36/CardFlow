@@ -11,8 +11,10 @@ import { TooltipProvider } from '@crm/components/ui/menu';
 import { FullPageLoader } from '@crm/components/states';
 import { safeReturnTo } from '@crm/lib/utils';
 import { useUI } from '@crm/lib/ui-store';
-import { LoginPage, OwnerLoginPage } from '@crm/features/auth/login-pages';
+import { OwnerLoginPage } from '@crm/features/auth/login-pages';
 import { RootLoginPage, TenantLoginPage } from '@crm/features/auth/tenant-login-page';
+import { LegacyWorkspaceRoute, TenantWorkspace } from '@crm/features/workspace/tenant-workspace';
+import { loginPathFor } from '@crm/lib/tenant';
 import { ThemeController } from '@crm/features/shell/theme-toggle';
 import { AppShell } from '@crm/features/shell/app-shell';
 import { WorkflowEditorPage, WorkflowsPage } from './features/tools/workflows-page';
@@ -36,7 +38,6 @@ const ResetPasswordPage = lazy(() => import('@crm/features/auth/password-pages')
 const ChangePasswordPage = lazy(() => import('@crm/features/auth/password-pages').then((m) => ({ default: m.ChangePasswordPage })));
 const OwnerDashboardPage = lazy(() => import('@crm/features/owner/dashboard-page').then((m) => ({ default: m.OwnerDashboardPage })));
 const WorkspaceHomePage = lazy(() => import('@crm/features/workspace/home-page').then((m) => ({ default: m.WorkspaceHomePage })));
-const WorkspaceLayout = lazy(() => import('@crm/features/workspace/workspace-layout').then((m) => ({ default: m.WorkspaceLayout })));
 const WorkspaceIndexRedirect = lazy(() => import('@crm/features/workspace/workspace-layout').then((m) => ({ default: m.WorkspaceIndexRedirect })));
 const WorkspaceAccessPage = lazy(() => import('@crm/features/workspace/admin/access-page').then((m) => ({ default: m.WorkspaceAccessPage })));
 const TicketToCase = lazy(() => import('@crm/features/workspace/support/ticket-to-case').then((m) => ({ default: m.TicketToCase })));
@@ -102,7 +103,7 @@ function UnauthorizedBridge() {
       qc.clear();
       qc.setQueryData(meKey, null);
       const returnTo = safeReturnTo(location.pathname + location.search);
-      const login = location.pathname.startsWith('/crm/owner') ? '/crm/owner/login' : '/crm/login';
+      const login = loginPathFor(location.pathname);
       navigate(`${login}?expired=1${returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''}`, { replace: true });
     });
     return () => setUnauthorizedHandler(null);
@@ -113,7 +114,7 @@ function UnauthorizedBridge() {
 function RootRedirect() {
   const { data: me, isPending } = useMe();
   if (isPending) return <FullPageLoader />;
-  if (!me) return <Navigate to="/crm/login" replace />;
+  if (!me) return <Navigate to="/" replace />;
   return <Navigate to={me.next.startsWith('/crm/mfa') || me.next === '/crm/change-password' ? me.next : homeFor(me)} replace />;
 }
 
@@ -125,7 +126,8 @@ function AppRoutes() {
 
         <Route element={<RedirectIfSignedIn />}>
           {/* "/" and "/crm/login" are the same sign-in (D-104). */}
-          <Route path="/crm/login" element={<LoginPage />} />
+          {/* The main sign-in is "/" now; old /crm/login links still land there (D-156). */}
+          <Route path="/crm/login" element={<KeepSearch to="/" />} />
           <Route path="/crm/signup" element={<SignupPage />} />
         </Route>
         <Route element={<OwnerLoginGate />}>
@@ -154,7 +156,50 @@ function AppRoutes() {
             {/* Phone-layout addresses, opened on a desktop. */}
             <Route path="/crm/browse/*" element={<RootRedirect />} />
             <Route path="/crm/me/support/*" element={<Navigate to="/crm/me" replace />} />
-            <Route path="/crm/w/:ws" element={<WorkspaceLayout />}>
+            {/* Old and server-made links (/crm/w/<code>/…) lead to the tenant's address. */}
+            <Route path="/crm/w/:ws" element={<LegacyWorkspaceRoute />}>
+              {workspaceRoutes('legacy')}
+            </Route>
+            <Route element={<RequireOwner />}>
+              <Route path="/crm/owner" element={<Navigate to="/crm/owner/dashboard" replace />} />
+              <Route path="/crm/owner/dashboard" element={<OwnerDashboardPage />} />
+              <Route path="/crm/owner/products" element={<ProductsPage />} />
+              <Route path="/crm/owner/products/:id" element={<ProductDetailPage />} />
+              <Route path="/crm/owner/apps" element={<AppsPage />} />
+              <Route path="/crm/owner/workspaces" element={<WorkspacesPage />} />
+              <Route path="/crm/owner/workspaces/new" element={<ProvisionWorkspacePage />} />
+              <Route path="/crm/owner/workspaces/:id" element={<WorkspaceDetailPage />} />
+              <Route path="/crm/owner/users" element={<UsersPage />} />
+              <Route path="/crm/owner/users/:id" element={<UserDetailPage />} />
+              {(['leads', 'accounts', 'contacts'] as const).map((object) => [
+                <Route key={object} path={`/crm/owner/${object}`} element={<RecordListPage key={object} object={object} />} />,
+                <Route key={`${object}-detail`} path={`/crm/owner/${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
+                <Route key={`${object}-layout`} path={`/crm/owner/setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />,
+                <Route key={`${object}-rules`} path={`/crm/owner/setup/${object}/rules`} element={<RulesPage key={object} object={object} />} />
+              ])}
+              <Route path="/crm/owner/objects" element={<ObjectsPage />} />
+              <Route path="/crm/owner/objects/:key" element={<ObjectDetailPage />} />
+              <Route path="/crm/owner/audit" element={<AuditPage />} />
+              <Route path="/crm/owner/integrations" element={<IntegrationsPage />} />
+              <Route path="/crm/owner/*" element={<NotFoundPage />} />
+            </Route>
+            {/* A tenant's permanent address (D-156): /<tenant>/home, /<tenant>/leads … */}
+            <Route path="/:tenant" element={<TenantWorkspace />}>
+              {workspaceRoutes('tenant')}
+            </Route>
+          </Route>
+        </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </Suspense>
+  );
+}
+
+/** The pages of a business, under /<tenant> and under the older /crm/w/:ws. */
+function workspaceRoutes(prefix: string) {
+  return (
+    <>
               <Route index element={<WorkspaceIndexRedirect />} />
               <Route path="menu" element={<Navigate to="../home" relative="path" replace />} />
               <Route path="listing" element={<Navigate to="../settings/business" relative="path" replace />} />
@@ -191,10 +236,10 @@ function AppRoutes() {
               <Route path="settings/objects" element={<ProductObjectsPage />} />
               <Route path="settings/objects/:key" element={<ProductObjectDetailPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [
-                <Route key={`w-${object}`} path={object} element={<RecordListPage key={object} object={object} />} />,
-                <Route key={`w-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
-                <Route key={`w-${object}-layout`} path={`setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />,
-                <Route key={`w-${object}-rules`} path={`setup/${object}/rules`} element={<RulesPage key={object} object={object} />} />
+                <Route key={`${prefix}-${object}`} path={object} element={<RecordListPage key={object} object={object} />} />,
+                <Route key={`${prefix}-${object}-detail`} path={`${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
+                <Route key={`${prefix}-${object}-layout`} path={`setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />,
+                <Route key={`${prefix}-${object}-rules`} path={`setup/${object}/rules`} element={<RulesPage key={object} object={object} />} />
               ])}
               {/* Objects defined as data (opportunities, tasks, custom objects…): same pages, keyed by the URL. */}
               <Route path=":object" element={<ObjectRoute page="list" />} />
@@ -202,37 +247,13 @@ function AppRoutes() {
               <Route path="setup/:object/layout" element={<ObjectRoute page="layout" />} />
               <Route path="setup/:object/rules" element={<ObjectRoute page="rules" />} />
               <Route path="*" element={<NotFoundPage />} />
-            </Route>
-            <Route element={<RequireOwner />}>
-              <Route path="/crm/owner" element={<Navigate to="/crm/owner/dashboard" replace />} />
-              <Route path="/crm/owner/dashboard" element={<OwnerDashboardPage />} />
-              <Route path="/crm/owner/products" element={<ProductsPage />} />
-              <Route path="/crm/owner/products/:id" element={<ProductDetailPage />} />
-              <Route path="/crm/owner/apps" element={<AppsPage />} />
-              <Route path="/crm/owner/workspaces" element={<WorkspacesPage />} />
-              <Route path="/crm/owner/workspaces/new" element={<ProvisionWorkspacePage />} />
-              <Route path="/crm/owner/workspaces/:id" element={<WorkspaceDetailPage />} />
-              <Route path="/crm/owner/users" element={<UsersPage />} />
-              <Route path="/crm/owner/users/:id" element={<UserDetailPage />} />
-              {(['leads', 'accounts', 'contacts'] as const).map((object) => [
-                <Route key={object} path={`/crm/owner/${object}`} element={<RecordListPage key={object} object={object} />} />,
-                <Route key={`${object}-detail`} path={`/crm/owner/${object}/:id`} element={<RecordDetailPage key={object} object={object} />} />,
-                <Route key={`${object}-layout`} path={`/crm/owner/setup/${object}/layout`} element={<LayoutEditorPage key={object} object={object} />} />,
-                <Route key={`${object}-rules`} path={`/crm/owner/setup/${object}/rules`} element={<RulesPage key={object} object={object} />} />
-              ])}
-              <Route path="/crm/owner/objects" element={<ObjectsPage />} />
-              <Route path="/crm/owner/objects/:key" element={<ObjectDetailPage />} />
-              <Route path="/crm/owner/audit" element={<AuditPage />} />
-              <Route path="/crm/owner/integrations" element={<IntegrationsPage />} />
-              <Route path="/crm/owner/*" element={<NotFoundPage />} />
-            </Route>
-          </Route>
-        </Route>
-
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </Suspense>
+    </>
   );
+}
+
+function KeepSearch({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}`} replace />;
 }
 
 /** Record pages for an object named in the URL (keyed so switching objects resets state). */

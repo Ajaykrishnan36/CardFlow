@@ -279,6 +279,7 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 			table := pgx.Identifier{"crm", name}.Sanitize()
 			switch {
 			case keptWhole[name]:
+			case name == "tenants": // after the businesses: only tenants no kept business uses (D-156)
 			case keptConfig[name] && hasWS:
 				steps = append(steps, eraseStep{name, `DELETE FROM ` + table + ` WHERE workspace_id IS NOT NULL AND workspace_id <> ALL($1)`, []any{keepSetup}})
 			case hasWS:
@@ -308,6 +309,7 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 		}
 		steps = append(steps,
 			eraseStep{"workspaces", `DELETE FROM crm.workspaces WHERE id <> ALL($1)`, []any{keepSetup}},
+			eraseStep{"tenants", `DELETE FROM crm.tenants WHERE id NOT IN (SELECT tenant_id FROM crm.workspaces WHERE tenant_id IS NOT NULL)`, nil},
 			eraseStep{"connector cursor", `DELETE FROM crm.connector_state WHERE key = 'cardflow'`, nil},
 			eraseStep{"leads → unused setup", `UPDATE crm.leads SET product_id = NULL WHERE product_id IN (` + unusedSetups + `)`, setupKeys},
 			eraseStep{"unused setup versions", `DELETE FROM crm.product_versions WHERE product_id IN (` + unusedSetups + `)`, setupKeys},

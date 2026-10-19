@@ -22,6 +22,9 @@ export interface Membership {
   roleKey?: string;
   roleName?: string;
   roleRank: number;
+  /** The business's tenant (brand) and its permanent address, /<tenantSlug>/... (D-156). */
+  tenantSlug: string;
+  tenantName: string;
 }
 
 export interface Me {
@@ -780,7 +783,7 @@ export interface AddMembershipBody {
 
 // ---- Workspace app (what a signed-in member sees at /crm/w/:ws) ----
 export interface WorkspaceContext {
-  workspace: { id: string; code: string; name: string; isPlatform: boolean; currency?: string; timezone?: string };
+  workspace: { id: string; code: string; name: string; isPlatform: boolean; currency?: string; timezone?: string; tenantSlug?: string; tenantName?: string };
   role?: { key: RoleKey; name: string };
   effective: EffectiveAccess;
   navigation: NavItem[];

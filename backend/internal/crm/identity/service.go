@@ -79,6 +79,7 @@ type LoginInput struct {
 	Password      string `json:"password"`
 	Audience      string `json:"audience"`
 	WorkspaceCode string `json:"workspaceCode"`
+	Tenant        string `json:"tenant"`
 }
 
 type AuthStep struct {
@@ -138,6 +139,11 @@ func (s *Service) Login(ctx context.Context, in LoginInput, meta RequestMeta) (*
 		return nil, shared.Validation(map[string]string{"audience": "Unknown sign-in audience."})
 	}
 
+	if audience == "workspace" {
+		if err := s.tenantAllows(ctx, in.Tenant, in.Identifier); err != nil {
+			return nil, err
+		}
+	}
 	fields := map[string]string{}
 	if strings.TrimSpace(in.Identifier) == "" {
 		fields["identifier"] = "Enter your email or phone number."

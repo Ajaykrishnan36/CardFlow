@@ -1,3 +1,4 @@
+import { signInTenant } from '@crm/lib/tenant';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -124,7 +125,7 @@ export function PhoneCodeForm() {
       >
         {error ? <Alert tone="danger">{error}</Alert> : null}
         <div ref={phoneShakeRef}>
-          <Field label="Mobile number" error={fieldError ?? undefined} hint="We’ll text you a 6-digit code. New here? This creates your account.">
+          <Field label="Mobile number" error={fieldError ?? undefined} hint={signInTenant() ? 'We’ll text you a 6-digit code.' : 'We’ll text you a 6-digit code. New here? This creates your account.'}>
             <Input
               value={phone}
               onChange={(e) => {

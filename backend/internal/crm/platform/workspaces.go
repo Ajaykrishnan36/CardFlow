@@ -284,6 +284,9 @@ func ProvisionTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in ProvisionIn
 	if exists {
 		return uuid.Nil, shared.Validation(map[string]string{fieldPrefix + "code": "Another workspace already uses this code."})
 	}
+	if ReservedSlugs[in.Code] {
+		return uuid.Nil, shared.Validation(map[string]string{fieldPrefix + "code": "This code is reserved for the site's own pages."})
+	}
 	var wsID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO crm.workspaces (code, name, status, timezone, locale, currency)
@@ -292,6 +295,11 @@ func ProvisionTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in ProvisionIn
 		if isUniqueViolation(err, "") {
 			return uuid.Nil, shared.Validation(map[string]string{fieldPrefix + "code": "Another workspace already uses this code."})
 		}
+		return uuid.Nil, err
+	}
+	// Every business starts as its own tenant, addressed by its code (D-156); creating a
+	// business inside an existing tenant moves it there.
+	if _, err := createTenantTx(ctx, tx, wsID, in.Code, in.Name, nil); err != nil {
 		return uuid.Nil, err
 	}
 	for _, role := range access.SystemRoles() {

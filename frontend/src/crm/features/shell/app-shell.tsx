@@ -9,7 +9,8 @@ import { FullPageLoader } from '@crm/components/states';
 import { useUI } from '@crm/lib/ui-store';
 import { cn } from '@crm/lib/utils';
 import type { NavItem } from '@crm/api/types';
-import { useWorkspaceContextQuery } from '@crm/features/workspace/workspace-context';
+import { useWorkspaceContextQuery, workspaceBase } from '@crm/features/workspace/workspace-context';
+import { currentBusinessFor, tenantFromPath } from '@crm/lib/tenant';
 import { SidebarContent } from './sidebar';
 import { CommandMenu } from './command-menu';
 import { Shortcuts } from './shortcuts';
@@ -28,7 +29,10 @@ export function AppShell() {
   const { data: me } = useMe();
   // Inside the member workspace app the nav comes from the workspace context, not /capabilities.
   const wsMatch = useMatch({ path: '/crm/w/:ws', end: false });
-  const wsCode = wsMatch?.params.ws;
+  const loc = useLocation();
+  // Under a tenant's address the open business is the tenant's current one (D-156).
+  const slug = tenantFromPath(loc.pathname);
+  const wsCode = wsMatch?.params.ws ?? (me && slug && loc.pathname.split('/')[2] !== 'login' ? currentBusinessFor(slug) : undefined);
   const { data: caps } = useCapabilities(Boolean(me) && !wsCode);
   const wsQ = useWorkspaceContextQuery(me ? wsCode : undefined);
   const workspace = wsCode ? wsQ.data : undefined;
@@ -44,7 +48,7 @@ export function AppShell() {
   useEffect(() => setMobileNavOpen(false), [location.pathname, setMobileNavOpen]);
   const ownerSession = me ? isOwnerSession(me) : false;
   const apiPrefix = wsCode ? `/w/${encodeURIComponent(wsCode)}` : ownerSession ? '/platform' : null;
-  const routeBase = wsCode ? `/crm/w/${encodeURIComponent(wsCode)}` : '/crm/owner';
+  const routeBase = wsCode ? workspaceBase(wsCode) : '/crm/owner';
   useLiveUpdates(me ? apiPrefix : null);
 
   if (!me) return <FullPageLoader />;

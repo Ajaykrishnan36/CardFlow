@@ -5,6 +5,7 @@ import { ArrowRight, Boxes, Crown, ScanLine, ShieldCheck, Users } from 'lucide-r
 import { LogoMark } from '@crm/components/brand';
 import { AuthHeading, AuthLayout } from './auth-layout';
 import { LoginForm } from './login-form';
+import { setSignInTenant } from '@crm/lib/tenant';
 
 export function useDocumentTitle(title: string) {
   const { t } = useTranslation();
@@ -16,6 +17,7 @@ export function useDocumentTitle(title: string) {
 /** /crm/login — the main entry. Members and the platform owner both sign in here (D-12). */
 export function LoginPage() {
   const { t } = useTranslation();
+  setSignInTenant(''); // the main page signs anyone in
   useDocumentTitle(t('auth.login.submit'));
   return (
     <AuthLayout
@@ -63,6 +65,7 @@ export function LoginPage() {
 /** /crm/owner/login — dedicated owner console (PRD §10.3): centred card, dark by design. */
 export function OwnerLoginPage() {
   const { t } = useTranslation();
+  setSignInTenant('');
   useDocumentTitle(t('auth.owner.title'));
   return (
     <div className="dark flex min-h-full flex-col">

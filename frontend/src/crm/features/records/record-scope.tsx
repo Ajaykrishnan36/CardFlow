@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { recordsApi, recordsApiFor, type RecordsApi } from '@crm/api/endpoints';
 import type { LookupTarget, ObjectAction, ObjectKey, RowScope, WorkspaceContext } from '@crm/api/types';
+import { memberTenantOf } from '@crm/lib/tenant';
 
 // Who is looking at the metadata-driven record pages, and what they may do there.
 // The owner works the Platform CRM (/platform, everything allowed); a workspace
@@ -64,7 +65,7 @@ export function scopeFromContext(ctx: WorkspaceContext, code: string): RecordSco
   return {
     audience: 'member',
     prefix,
-    routeBase: `/crm/w/${encodeURIComponent(code)}`,
+    routeBase: memberTenantOf(code) ? `/${encodeURIComponent(memberTenantOf(code)!)}` : `/crm/w/${encodeURIComponent(code)}`,
     api: recordsApiFor(prefix),
     can: (object, action) => {
       if (full) return true;

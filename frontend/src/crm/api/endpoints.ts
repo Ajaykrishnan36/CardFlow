@@ -1,4 +1,5 @@
 import { api, API_BASE, ApiError, ensureCsrf, IS_NATIVE, sessionToken } from './client';
+import { signInTenant } from '@crm/lib/tenant';
 import type {
   ApiKey, ApiKeysResponse, AppNotification, BulkResult, Campaign, CampaignRecipient, Favorite, FileInfo, FilterNode, ImportResult, MailboxesResponse,
   EmailThread, InviteLinkSettings, RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
@@ -94,12 +95,12 @@ export interface LoginBody {
 }
 
 export const authApi = {
-  login: (body: LoginBody) => api<AuthStep>('/auth/login', { method: 'POST', body }),
+  login: (body: LoginBody) => api<AuthStep>('/auth/login', { method: 'POST', body: { ...body, tenant: signInTenant() || undefined } }),
   /** Email a 6-digit sign-in code. Always "sent" (never reveals whether the address has an account). */
   requestOtp: (body: { identifier: string; audience: 'owner' | 'workspace' }) =>
-    api<{ sent: boolean; expiresIn: number; channel: 'email'; devCode?: string }>('/auth/otp/request', { method: 'POST', body }),
+    api<{ sent: boolean; expiresIn: number; channel: 'email'; devCode?: string }>('/auth/otp/request', { method: 'POST', body: { ...body, tenant: signInTenant() || undefined } }),
   verifyOtp: (body: { identifier: string; code: string; audience: 'owner' | 'workspace' }) =>
-    api<AuthStep>('/auth/otp/verify', { method: 'POST', body }),
+    api<AuthStep>('/auth/otp/verify', { method: 'POST', body: { ...body, tenant: signInTenant() || undefined } }),
   /** Self sign-up (only products whose setup allows it): email a code, then create the account. */
   requestSignup: (body: { product: string; name: string; email: string; invite?: string }) =>
     api<{ sent: boolean; expiresIn: number; devCode?: string }>('/auth/signup/request', { method: 'POST', body }),
@@ -649,6 +650,9 @@ export interface BusinessSummary {
   profile: Record<string, string>;
   members: number;
   createdAt: string;
+  /** The tenant (brand) and its permanent address /<tenantSlug>/… (D-156). */
+  tenantSlug: string;
+  tenantName: string;
 }
 
 /** A postal address as the onboarding and profile forms send it (D-155). */
@@ -667,6 +671,8 @@ export interface PostalAddress {
 
 export interface CreateBusinessBody {
   name: string;
+  /** Add the business to this existing tenant; omitted = a new brand. */
+  tenant?: string;
   industry?: string;
   phone?: string;
   whatsapp?: string;
@@ -701,6 +707,7 @@ export interface PincodeInfo {
 }
 
 export interface PublicTenant {
+  slug: string;
   code: string;
   name: string;
   loginPath: string;
@@ -736,8 +743,10 @@ async function uploadAny<T>(path: string, file: File): Promise<T> {
 export interface BusinessProfile {
   /** Which sides of the business card are uploaded. */
   cardImages?: { front: boolean; back: boolean };
-  /** This business's own sign-in address on this site, e.g. /ajay-traders/login. */
+  /** The tenant's permanent sign-in address on this site, e.g. /psg/login. */
   loginPath?: string;
+  tenantSlug?: string;
+  tenantName?: string;
   code: string;
   name: string;
   currency: string;
@@ -823,8 +832,10 @@ export interface SaveCardBody {
 
 export const phoneAuthApi = {
   /** Text a 6-digit code. `devCode` is present only where the server runs without an SMS provider. */
-  request: (phone: string) => api<{ sent: boolean; expiresIn: number; channel: string; devCode?: string }>('/auth/phone/request', { method: 'POST', body: { phone } }),
-  verify: (body: { phone: string; code: string; name?: string }) => api<AuthStep & { hasBusiness: boolean; isNewUser?: boolean }>('/auth/phone/verify', { method: 'POST', body })
+  request: (phone: string) =>
+    api<{ sent: boolean; expiresIn: number; channel: string; devCode?: string }>('/auth/phone/request', { method: 'POST', body: { phone, tenant: signInTenant() || undefined } }),
+  verify: (body: { phone: string; code: string; name?: string }) =>
+    api<AuthStep & { hasBusiness: boolean; isNewUser?: boolean }>('/auth/phone/verify', { method: 'POST', body: { ...body, tenant: signInTenant() || undefined } })
 };
 
 export const businessApi = {

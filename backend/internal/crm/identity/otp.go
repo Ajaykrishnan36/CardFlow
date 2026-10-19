@@ -29,6 +29,7 @@ const (
 type OTPRequestInput struct {
 	Identifier string `json:"identifier"`
 	Audience   string `json:"audience"`
+	Tenant     string `json:"tenant"`
 }
 
 type OTPRequestResult struct {
@@ -53,6 +54,9 @@ func (s *Service) RequestOTP(ctx context.Context, in OTPRequestInput, meta Reque
 	email, ok := NormalizeEmail(in.Identifier)
 	if !ok {
 		return nil, shared.Validation(map[string]string{"identifier": "Enter the email address on your account."})
+	}
+	if err := s.tenantAllows(ctx, in.Tenant, email); err != nil {
+		return nil, err
 	}
 	ipKey := "otp-ip:" + meta.IP
 	if blocked, wait := s.resetIPLimiter.blocked(ipKey); blocked {
@@ -114,6 +118,7 @@ type OTPVerifyInput struct {
 	Code          string `json:"code"`
 	Audience      string `json:"audience"`
 	WorkspaceCode string `json:"workspaceCode"`
+	Tenant        string `json:"tenant"`
 }
 
 var errBadCode = shared.NewError(http.StatusUnauthorized, "invalid_code", "That code isn't right or has expired. Request a new one.")
@@ -130,6 +135,9 @@ func (s *Service) VerifyOTP(ctx context.Context, in OTPVerifyInput, meta Request
 	code := strings.TrimSpace(in.Code)
 	if !ok || len(code) != 6 {
 		return nil, shared.Validation(map[string]string{"code": "Enter the 6-digit code from the email."})
+	}
+	if err := s.tenantAllows(ctx, in.Tenant, email); err != nil {
+		return nil, err
 	}
 	identKey := "email:global:" + email
 	if blocked, wait := s.identLimiter.blocked(identKey); blocked {

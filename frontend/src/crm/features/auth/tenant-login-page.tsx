@@ -5,6 +5,7 @@ import { onboardingApi } from '@crm/api/endpoints';
 import { homeFor, isAuthStep, useMe } from '@crm/auth/session';
 import { FullPageLoader } from '@crm/components/states';
 import { safeReturnTo } from '@crm/lib/utils';
+import { setSignInTenant } from '@crm/lib/tenant';
 import { AuthHeading, AuthLayout } from './auth-layout';
 import { LoginForm } from './login-form';
 import { LoginPage, useDocumentTitle } from './login-pages';
@@ -22,6 +23,7 @@ export function TenantLoginPage({ code: fixed }: { code?: string }) {
   const location = useLocation();
   const tenant = useQuery({ queryKey: ['tenant', code], queryFn: () => onboardingApi.tenant(code), retry: false, staleTime: 300_000, enabled: Boolean(code) });
   useDocumentTitle(tenant.data ? `Sign in · ${tenant.data.name}` : 'Sign in');
+  setSignInTenant(tenant.data?.slug ?? code);
 
   if (isPending || tenant.isPending) return <FullPageLoader />;
   if (tenant.isError || !tenant.data) {
@@ -40,7 +42,13 @@ export function TenantLoginPage({ code: fixed }: { code?: string }) {
     return <Navigate to={home} replace />;
   }
   // The sign-in forms return to the address in ?returnTo — this business's home.
-  if (search.get('returnTo') !== home) return <Navigate to={`${location.pathname}?returnTo=${encodeURIComponent(home)}`} replace />;
+  // Keep ?signedOut=1 / ?expired=1 and a deeper page the person was on (/psg/leads/…).
+  const back = safeReturnTo(search.get('returnTo'));
+  if (!back || back.split('/')[1] !== tenant.data.slug) {
+    const q = new URLSearchParams(search);
+    q.set('returnTo', home);
+    return <Navigate to={`${location.pathname}?${q.toString()}`} replace />;
+  }
   return (
     <AuthLayout
       footer={
@@ -72,6 +80,7 @@ export function RootLoginPage() {
 
 function SignedInOr() {
   const { data: me, isPending } = useMe();
+  setSignInTenant('');
   const [search] = useSearchParams();
   if (isPending) return <FullPageLoader />;
   if (me) {

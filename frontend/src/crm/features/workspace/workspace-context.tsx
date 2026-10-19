@@ -4,6 +4,7 @@ import { workspaceApi } from '@crm/api/endpoints';
 import type { ObjectKey, WorkspaceContext } from '@crm/api/types';
 import { permissionObject } from '@crm/features/records/record-scope';
 import { useSelectedApp } from './selected-app';
+import { memberTenantOf, toTenantPath } from '@crm/lib/tenant';
 
 // GET /w/{code}/context, shared by the shell (navigation, switcher) and the
 // workspace routes (record scope, dashboard). One query per workspace code.
@@ -14,7 +15,11 @@ export function useWorkspaceContextQuery(code: string | undefined) {
   const app = useSelectedApp(code);
   return useQuery({
     queryKey: [...workspaceContextKey(code ?? ''), app],
-    queryFn: () => workspaceApi.context(code!, app || undefined),
+    // Menu addresses come from the server as /crm/w/<code>/…; members see their tenant's /<slug>/… (D-156).
+    queryFn: async () => {
+      const c = await workspaceApi.context(code!, app || undefined);
+      return { ...c, navigation: c.navigation.map((n) => ({ ...n, path: toTenantPath(n.path) })) };
+    },
     // Keep the old answer only while the same business reloads (switching app inside it).
     // Switching business must never show the previous one's name, menu or permissions.
     placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (code ?? '') ? prev : undefined),
@@ -42,8 +47,10 @@ export function useWorkspace(): WorkspaceValue {
   return v;
 }
 
+/** Where a business's pages live: its tenant's address for members, /crm/w/<code> for the platform owner's visits. */
 export function workspaceBase(code: string): string {
-  return `/crm/w/${encodeURIComponent(code)}`;
+  const slug = memberTenantOf(code);
+  return slug ? `/${encodeURIComponent(slug)}` : `/crm/w/${encodeURIComponent(code)}`;
 }
 
 export function isWorkspaceHome(path: string, code: string): boolean {

@@ -155,14 +155,19 @@ type Business struct {
 	Profile     map[string]any `json:"profile"`
 	Members     int            `json:"members"`
 	CreatedAt   time.Time      `json:"createdAt"`
+	// The tenant (brand) the business belongs to, and its permanent address (D-156).
+	TenantSlug string `json:"tenantSlug"`
+	TenantName string `json:"tenantName"`
 }
 
 const businessSelect = `
 	SELECT w.id, w.code, w.name, COALESCE(r.key, ''), COALESCE(r.name, ''), w.is_platform, w.currency, w.timezone,
 	       COALESCE(w.branding->>'accentColor', ''), w.origin, w.profile, w.created_at,
-	       (SELECT count(*) FROM crm.memberships mm WHERE mm.workspace_id = w.id AND mm.status = 'active')
+	       (SELECT count(*) FROM crm.memberships mm WHERE mm.workspace_id = w.id AND mm.status = 'active'),
+	       COALESCE(t.slug, w.code), COALESCE(t.name, w.name)
 	FROM crm.memberships m
 	JOIN crm.workspaces w ON w.id = m.workspace_id
+	LEFT JOIN crm.tenants t ON t.id = w.tenant_id
 	LEFT JOIN LATERAL (
 		SELECT ro.key, ro.name FROM crm.role_assignments ra JOIN crm.roles ro ON ro.id = ra.role_id
 		WHERE ra.membership_id = m.id AND (ra.expires_at IS NULL OR ra.expires_at > now())
@@ -174,7 +179,7 @@ func scanBusiness(row pgx.Row) (*Business, error) {
 	var b Business
 	var profile []byte
 	if err := row.Scan(&b.ID, &b.Code, &b.Name, &b.RoleKey, &b.RoleName, &b.IsPlatform, &b.Currency, &b.Timezone,
-		&b.AccentColor, &b.Origin, &profile, &b.CreatedAt, &b.Members); err != nil {
+		&b.AccentColor, &b.Origin, &profile, &b.CreatedAt, &b.Members, &b.TenantSlug, &b.TenantName); err != nil {
 		return nil, err
 	}
 	b.Profile = map[string]any{}
@@ -215,6 +220,9 @@ type CreateBusinessInput struct {
 	Locale   string `json:"locale"`
 	// ListingID links one of the person's own directory listings as the business's public profile.
 	ListingID string `json:"listingId"`
+	// Tenant: add the business to this existing tenant (its owner or a Super Admin there);
+	// empty makes a new tenant — a new brand with its own permanent address (D-156).
+	Tenant string `json:"tenant"`
 	// Onboarding (D-155): the person, their address, and the business's own details.
 	DisplayName   string   `json:"displayName"`
 	DateOfBirth   string   `json:"dateOfBirth"`
@@ -238,8 +246,9 @@ func businessCode(ctx context.Context, tx pgx.Tx, name string) (string, error) {
 	}
 	code := base
 	for i := 0; i < 8; i++ {
-		var taken bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.workspaces WHERE code = $1)`, code).Scan(&taken); err != nil {
+		// The code is also the tenant's address: free among tenants, businesses and the site's pages.
+		taken, err := slugTaken(ctx, tx, code)
+		if err != nil {
 			return "", err
 		}
 		if !taken {
@@ -277,6 +286,28 @@ func CreateBusinessTx(ctx context.Context, tx pgx.Tx, creator uuid.UUID, setupID
 		return uuid.Nil, "", err
 	}
 	if err := savePersonDetails(ctx, tx, creator, in.DisplayName, in.DateOfBirth, in.PersonalEmail, in.Personal); err != nil {
+		return uuid.Nil, "", err
+	}
+	if slug := strings.TrimSpace(in.Tenant); slug != "" {
+		t, err := TenantBySlug(ctx, tx, slug)
+		if err != nil {
+			return uuid.Nil, "", err
+		}
+		ok, err := canAddToTenant(ctx, tx, creator, t.ID)
+		if err != nil {
+			return uuid.Nil, "", err
+		}
+		if !ok {
+			return uuid.Nil, "", shared.Forbidden("not_tenant_admin", "Only the owner or a Super Admin of "+t.Name+" can add a business to it.")
+		}
+		// The tenant made for the new business by itself is not needed: it joins this one.
+		if _, err := tx.Exec(ctx, `UPDATE crm.workspaces SET tenant_id = $2 WHERE id = $1`, wsID, t.ID); err != nil {
+			return uuid.Nil, "", err
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM crm.tenants WHERE slug = $1 AND NOT EXISTS (SELECT 1 FROM crm.workspaces WHERE tenant_id = crm.tenants.id)`, code); err != nil {
+			return uuid.Nil, "", err
+		}
+	} else if _, err := tx.Exec(ctx, `UPDATE crm.tenants SET owner_identity = $2, name = $3 WHERE id = (SELECT tenant_id FROM crm.workspaces WHERE id = $1)`, wsID, creator, in.Name); err != nil {
 		return uuid.Nil, "", err
 	}
 	rawProfile, _ := json.Marshal(businessProfileFrom(in))
@@ -393,7 +424,7 @@ func (h *Handler) handleCreateBusiness(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
-		return http.StatusCreated, map[string]any{"business": b, "next": "/crm/w/" + b.Code + "/home"}, nil
+		return http.StatusCreated, map[string]any{"business": b, "next": "/" + b.TenantSlug + "/home?b=" + b.Code}, nil
 	})
 	if err != nil {
 		shared.WriteError(w, r, err)

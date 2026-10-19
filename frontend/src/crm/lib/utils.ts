@@ -9,7 +9,9 @@ export function cn(...inputs: ClassValue[]) {
 export function safeReturnTo(raw: string | null | undefined): string | null {
   if (!raw) return null;
   // Only this site's own pages: the CRM, and a shared card (/share/<id>).
-  if (!(raw.startsWith('/crm/') || /^\/share\/[a-zA-Z0-9-]+$/.test(raw)) || raw.startsWith('//') || raw.includes('\\')) return null;
+  // The CRM, a tenant's pages (/<tenant>/..., D-156), and a shared card (/share/<id>).
+  const tenantPage = /^\/[a-z0-9][a-z0-9-]{1,39}\/(?!login(?:[/?#]|$))[^/]/.test(raw);
+  if (!(raw.startsWith('/crm/') || tenantPage || /^\/share\/[a-zA-Z0-9-]+$/.test(raw)) || raw.startsWith('//') || raw.includes('\\')) return null;
   if (/^\/crm\/(login|owner\/login|forgot-password|reset-password)/.test(raw)) return null;
   return raw;
 }

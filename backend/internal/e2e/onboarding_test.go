@@ -60,7 +60,7 @@ func TestOnboardingDetailsTenantLoginAndCardImages(t *testing.T) {
 		pr["gstin"] != good["gstin"] || !strings.Contains(pr["address"].(string), "Near Opp. bus stand") || pr["whatsapp"] != "+91"+phone[len(phone)-10:] {
 		t.Fatalf("the business profile has the tidied details: %v", pr)
 	}
-	if b.str("loginPath") != "/"+code+"/login" {
+	if b.str("loginPath") != "/"+b.str("tenantSlug")+"/login" || b.str("tenantSlug") != code {
 		t.Fatalf("each business has its own login address: %s", b.str("loginPath"))
 	}
 	d := call(t, "GET", crmAPI+"/me/details", me, nil)
@@ -69,7 +69,7 @@ func TestOnboardingDetailsTenantLoginAndCardImages(t *testing.T) {
 	}
 	// The login page of the business finds it without signing in; others don't leak.
 	pub := call(t, "GET", crmAPI+"/public/tenants/"+code, "", nil)
-	if pub.Status != 200 || pub.str("name") != "Ajay Traders" || pub.str("home") != "/crm/w/"+code+"/home" {
+	if pub.Status != 200 || pub.str("name") != "Ajay Traders" || pub.str("home") != "/"+code+"/home" {
 		t.Fatalf("public tenant lookup: %d %s", pub.Status, pub.Raw)
 	}
 	want(t, call(t, "GET", crmAPI+"/public/tenants/no-such-business-x", "", nil), 404, "unknown business")

@@ -41,12 +41,15 @@ const (
 
 type PhoneRequestInput struct {
 	Phone string `json:"phone"`
+	// Tenant: signing in on /<tenant>/login — only its people (D-156).
+	Tenant string `json:"tenant"`
 }
 
 type PhoneVerifyInput struct {
-	Phone string `json:"phone"`
-	Code  string `json:"code"`
-	Name  string `json:"name"`
+	Phone  string `json:"phone"`
+	Code   string `json:"code"`
+	Name   string `json:"name"`
+	Tenant string `json:"tenant"`
 }
 
 var (
@@ -168,6 +171,9 @@ func (s *Service) RequestPhoneOTP(ctx context.Context, in PhoneRequestInput, met
 	if !ok {
 		return nil, errBadPhone
 	}
+	if err := s.tenantAllows(ctx, in.Tenant, phone); err != nil {
+		return nil, err
+	}
 	return s.sendPhoneCode(ctx, phone, purposePhoneLogin, nil, meta)
 }
 
@@ -265,6 +271,9 @@ func (s *Service) ProvePhone(ctx context.Context, in PhoneVerifyInput, meta Requ
 
 // VerifyPhoneOTP checks the code and signs the person in.
 func (s *Service) VerifyPhoneOTP(ctx context.Context, in PhoneVerifyInput, meta RequestMeta) (*loginOutcome, error) {
+	if err := s.tenantAllows(ctx, in.Tenant, in.Phone); err != nil {
+		return nil, err
+	}
 	proof, err := s.ProvePhone(ctx, in, meta)
 	if err != nil {
 		return nil, err
