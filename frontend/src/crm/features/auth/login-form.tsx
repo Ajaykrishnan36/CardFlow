@@ -34,7 +34,8 @@ export function LoginForm({ audience }: { audience: 'owner' | 'workspace' }) {
   const oauthError = searchParams.get('oauthError');
   const methodsQ = useQuery({ queryKey: ['auth', 'methods', product], queryFn: () => signInApi.methods(product || undefined), staleTime: 60_000, retry: false });
   const providersQ = useQuery({ queryKey: ['auth', 'providers'], queryFn: () => signInApi.providers(), staleTime: 5 * 60_000, retry: false });
-  const allowed = methodsQ.data?.methods ?? ['password', 'otp'];
+  // Until the server answers (or if it can't be reached) offer the usual methods, mobile first.
+  const allowed = methodsQ.data?.methods ?? ['phone', 'password', 'otp'];
   // Customers sign in with their mobile number first (the same one as in the app, D-93);
   // the owner console never uses phone sign-in.
   const tabs = (['phone', 'password', 'code'] as const).filter((m) =>
