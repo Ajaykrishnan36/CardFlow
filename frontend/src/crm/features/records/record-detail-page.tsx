@@ -34,6 +34,7 @@ import {
   PriceEntriesCard, RecordCampaignsCard, RecordTeamCard, TerritoryMembersCard, hasContactRoles, hasLines, hasRecordTeam
 } from './record-commerce';
 import { CaseSlaCard, InvoicePaymentsCard, PaymentAllocationsCard, RelationshipsCard, RenewContractButton } from './record-enterprise';
+import { ApplicationBanner } from '@crm/features/owner/application-banner';
 
 export function RecordDetailPage({ object }: { object: ObjectKey }) {
   const { id = '' } = useParams();
@@ -327,6 +328,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
           </div>
         ) : null}
       </div>
+      {isOwner && object === 'leads' ? <ApplicationBanner leadId={id} /> : null}
 
       {/* Header / highlights panel */}
       <Card className="mb-4 overflow-hidden">

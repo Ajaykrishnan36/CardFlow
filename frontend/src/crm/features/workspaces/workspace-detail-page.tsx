@@ -20,6 +20,7 @@ import { WorkspacePeopleTab } from './workspace-people-tab';
 import { WorkspaceSettingsTab } from './workspace-settings-tab';
 import { PermissionSetsPanel } from '@crm/features/access/permission-sets-panel';
 import { useIntegrations } from '@crm/features/integrations/use-integrations';
+import { ApproveButton } from './approve-button';
 
 type Tab = 'overview' | 'products' | 'people' | 'permissions' | 'settings';
 const TABS: Tab[] = ['overview', 'products', 'people', 'permissions', 'settings'];
@@ -124,6 +125,7 @@ function WorkspaceDetailView({ workspace }: { workspace: WorkspaceDetail }) {
         }
         actions={
           <>
+            {workspace.status === 'pending' ? <ApproveButton workspaceId={workspace.id} name={workspace.name} size="md" /> : null}
             <Button asChild variant="outline" className="border-primary/40 text-primary hover:bg-primary-soft">
               <Link to={`/crm/w/${workspace.code}/home`}>
                 <ExternalLink /> {t('workspaces.detail.openCrm')}

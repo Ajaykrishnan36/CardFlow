@@ -65,37 +65,54 @@ func envOr(k, def string) string {
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
-	admin := adminURL()
-	conn, err := pgx.Connect(ctx, admin)
-	if err != nil {
-		fmt.Println("e2e: skipped — no PostgreSQL to create a test database in:", err)
-		os.Exit(0)
-	}
-	name := fmt.Sprintf("crm_e2e_%d", time.Now().UnixNano())
-	if _, err := conn.Exec(ctx, "CREATE DATABASE "+name); err != nil {
-		fmt.Println("e2e: skipped — can't create a test database:", err)
-		os.Exit(0)
-	}
-	dropped := false
-	drop := func() {
-		if dropped {
-			return
+	// E2E_DATABASE_URL runs against an existing database instead of a throwaway one (used
+	// to fill a dev database with TestDevDataFreshStartAndDemo). Nothing is dropped then.
+	targetDB = strings.TrimSpace(os.Getenv("E2E_DATABASE_URL"))
+	var u *url.URL
+	drop := func() {}
+	if targetDB != "" {
+		u, _ = url.Parse(targetDB)
+		drop = func() {
+			if testDB != nil {
+				testDB.Close()
+			}
 		}
-		dropped = true
-		if testDB != nil {
-			testDB.Close()
+	} else {
+		admin := adminURL()
+		conn, err := pgx.Connect(ctx, admin)
+		if err != nil {
+			fmt.Println("e2e: skipped — no PostgreSQL to create a test database in:", err)
+			os.Exit(0)
 		}
-		_, _ = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
-		_ = conn.Close(ctx)
+		name := fmt.Sprintf("crm_e2e_%d", time.Now().UnixNano())
+		if _, err := conn.Exec(ctx, "CREATE DATABASE "+name); err != nil {
+			fmt.Println("e2e: skipped — can't create a test database:", err)
+			os.Exit(0)
+		}
+		dropped := false
+		drop = func() {
+			if dropped {
+				return
+			}
+			dropped = true
+			if testDB != nil {
+				testDB.Close()
+			}
+			_, _ = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+			_ = conn.Close(ctx)
+		}
+		u, _ = url.Parse(admin)
+		u.Path = "/" + name
 	}
 	defer drop()
-
-	u, _ := url.Parse(admin)
-	u.Path = "/" + name
+	seedDemo := "true"
+	if targetDB != "" {
+		seedDemo = "false"
+	}
 	// A clean, explicit environment: local CRM, codes shown instead of sent, no email.
 	for k, v := range map[string]string{
 		"DATABASE_URL": u.String(), "ENV": "development", "CRM_APP_ENV": "local", "SMS_PROVIDER": "preview",
-		"CRM_SMTP_HOST": "", "CRM_BREVO_API_KEY": "", "CRM_SEED_DEMO": "true", "REDIS_URL": "", "S3_ENDPOINT": "",
+		"CRM_SMTP_HOST": "", "CRM_BREVO_API_KEY": "", "CRM_SEED_DEMO": seedDemo, "REDIS_URL": "", "S3_ENDPOINT": "",
 		"CRM_CARDFLOW_SYNC": "true", "CRM_SYNC_INTERVAL": "24h", "CRM_OWNER_EMAIL": "", "CRM_OWNER_BOOTSTRAP_PASSWORD": "", "CRM_FRESH_START": "", "CRM_SWEEPS": "off",
 	} {
 		os.Setenv(k, v)
@@ -121,6 +138,16 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	crmMod = crmModule
+	// Most tests open businesses at once; the review flow (D-161) is tested where it is
+	// switched on (setReview).
+	if targetDB == "" {
+		if _, err := db.Pool.Exec(ctx, `INSERT INTO crm.platform_settings (key, value) VALUES ('self_serve', '{"enabled": true, "maxBusinesses": 5, "skipReview": true}')
+			ON CONFLICT (key) DO UPDATE SET value = crm.platform_settings.value || '{"skipReview": true}'`); err != nil {
+			fmt.Println("e2e: can't switch reviews off:", err)
+			drop()
+			os.Exit(1)
+		}
+	}
 	srv := httptest.NewServer(handler)
 	baseURL = srv.URL
 	code := m.Run()
@@ -207,6 +234,9 @@ func truncate(s string, n int) string {
 }
 
 var phoneSeq = 0
+
+// targetDB is set when the run uses an existing database (E2E_DATABASE_URL).
+var targetDB string
 
 // crmMod is the running CRM module (the fresh-start test calls it directly).
 var crmMod *crm.Module

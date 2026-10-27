@@ -13,9 +13,10 @@ import { PageContainer, PageHeader, SearchInput, SegmentedFilter } from '@crm/co
 import { relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { OwnerScopeBar, ownerFilterParams, useOwnerFilter } from '@crm/features/owner/owner-filter';
+import { ApproveButton } from './approve-button';
 import { WorkspaceStatusBadge, WorkspaceTile } from './workspace-ui';
 
-type StatusFilter = '' | 'active' | 'suspended';
+type StatusFilter = '' | 'pending' | 'active' | 'suspended';
 
 export function WorkspacesPage() {
   const { t } = useTranslation();
@@ -72,6 +73,7 @@ export function WorkspacesPage() {
           onChange={(v) => setParam('status', v)}
           options={[
             { value: '', label: t('workspaces.list.filterAll') },
+            { value: 'pending', label: 'To approve' },
             { value: 'active', label: t('status.active') },
             { value: 'suspended', label: t('status.suspended') }
           ]}
@@ -147,7 +149,10 @@ export function WorkspacesPage() {
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        <WorkspaceStatusBadge status={w.status} />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <WorkspaceStatusBadge status={w.status} />
+                          {w.status === 'pending' ? <ApproveButton workspaceId={w.id} name={w.name} /> : null}
+                        </div>
                       </td>
                       <td className="max-w-[220px] px-3 py-3">
                         {w.setupNames?.length ? (
@@ -179,6 +184,11 @@ export function WorkspacesPage() {
                         <WorkspaceStatusBadge status={w.status} />
                       </div>
                       <p className="truncate font-mono text-xs text-muted-foreground">{w.code}</p>
+                      {w.status === 'pending' ? (
+                        <div className="mt-1.5" onClick={(e) => e.preventDefault()}>
+                          <ApproveButton workspaceId={w.id} name={w.name} />
+                        </div>
+                      ) : null}
                       <p className="mt-1 text-xs text-muted-foreground">
                         {w.setupNames?.length ? w.setupNames.join(', ') : t('workspaces.list.noSetup')} · {t('workspaces.list.membersCount', { count: w.members })}
                         {w.pendingInvites > 0 ? ` · ${t('workspaces.list.invitesCount', { count: w.pendingInvites })}` : ''}

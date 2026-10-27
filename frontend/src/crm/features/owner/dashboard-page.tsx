@@ -20,12 +20,14 @@ import { OwnerScopeBar, ownerFilterParams, useOwnerFilter } from './owner-filter
 const kpiIcons: Record<string, LucideIcon> = {
   products: Boxes,
   apps: LayoutGrid,
+  customers: UsersRound,
+  approvals: Clock,
   leads: UserPlus,
   accounts: Briefcase,
   contacts: Contact,
   users: UsersRound,
   identities: UsersRound,
-  workspaces: Building2,
+  workspaces: LayoutGrid,
   invites: MailPlus,
   tickets: LifeBuoy
 };

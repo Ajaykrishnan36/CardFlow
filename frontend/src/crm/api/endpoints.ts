@@ -141,8 +141,50 @@ const enc = encodeURIComponent;
 export const platformApi = {
   dashboard: (params: { product?: string; app?: string } = {}) => api<OwnerDashboard>(`/platform/dashboard${qs(params)}`),
   /** Every app installed in every product (D-73). */
-  apps: (params: { product?: string; app?: string } = {}) => api<{ data: InstalledApp[] }>(`/platform/apps${qs(params)}`).then((r) => r.data)
+  apps: (params: { product?: string; app?: string } = {}) => api<{ data: InstalledApp[] }>(`/platform/apps${qs(params)}`).then((r) => r.data),
+  /** Self-serve businesses with their applicant (D-161); `leadId` finds the one a lead is for. */
+  applications: (params: { status?: string; leadId?: string } = {}) =>
+    api<{ data: Application[] }>(`/platform/applications${qs(params)}`).then((r) => r.data),
+  approve: (workspaceId: string) =>
+    api<{ approved: boolean; application?: Application; notified: Record<'email' | 'sms' | 'whatsapp', string> }>(
+      `/platform/applications/${enc(workspaceId)}/approve`,
+      { method: 'POST', body: {} }
+    ),
+  /** Products: one per person who created businesses, with how many apps they run. */
+  customers: () => api<{ data: Customer[] }>('/platform/customers').then((r) => r.data),
+  customer: (id: string) => api<{ customer: Customer; apps: Application[] }>(`/platform/customers/${enc(id)}`)
 };
+
+export interface Application {
+  workspaceId: string;
+  name: string;
+  code: string;
+  display: string;
+  status: string;
+  leadId: string | null;
+  createdAt: string;
+  approvedAt: string | null;
+  members: number;
+  industry: string;
+  teamSize: string;
+  taxId: string;
+  loginUrl: string;
+  ownerId: string | null;
+  ownerName: string;
+  ownerPhone: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  apps: number;
+  active: number;
+  pending: number;
+  members: number;
+  createdAt: string;
+}
 
 export const productsApi = {
   list: (params: { q?: string; status?: string } = {}) => api<Page<ProductSummary>>(`/platform/products${qs(params)}`),
@@ -864,18 +906,22 @@ export interface RegisterCheck {
   canCreate: boolean;
   limit: number;
   created: number;
+  /** Businesses of theirs waiting for the owner's approval (D-161). */
+  pending: Array<{ name: string; code: string; display: string; createdAt: string }>;
+  /** Set when they already have an account: where their URLs are being sent. */
+  notify: { email: string; sms: boolean; whatsapp: boolean } | null;
 }
 export const registerApi = {
   request: (phone: string) =>
     api<{ sent: boolean; expiresIn: number; channel: string; devCode?: string }>('/public/register/request', { method: 'POST', body: { phone } }),
   verify: (body: { phone: string; code: string }) => api<RegisterCheck>('/public/register/verify', { method: 'POST', body }),
   createBusiness: (registrationToken: string, body: CreateBusinessBody) =>
-    api<{ business: BusinessSummary; loginPath: string; loginUrl: string; display: string }>('/public/register/business', {
+    api<{ business: BusinessSummary; loginPath?: string; loginUrl?: string; display?: string; pending?: boolean }>('/public/register/business', {
       method: 'POST',
       body: { ...body, registrationToken }
     }),
   sendUrls: (registrationToken: string) =>
-    api<{ sent: boolean; email: string }>('/public/register/send-urls', { method: 'POST', body: { registrationToken } })
+    api<{ sent: boolean; email: string; channels: Record<'email' | 'sms' | 'whatsapp', string> }>('/public/register/send-urls', { method: 'POST', body: { registrationToken } })
 };
 
 export const phoneAuthApi = {
@@ -888,7 +934,7 @@ export const phoneAuthApi = {
 
 export const businessApi = {
   list: () => api<{ data: BusinessSummary[]; canCreate: boolean; limit: number; created: number }>('/businesses'),
-  create: (body: CreateBusinessBody) => api<{ business: BusinessSummary; next: string }>('/businesses', { method: 'POST', body }),
+  create: (body: CreateBusinessBody) => api<{ business: BusinessSummary; next?: string; pending?: boolean }>('/businesses', { method: 'POST', body }),
   /** Front or back of the business's card (D-155). */
   uploadCardImage: (code: string, side: 'front' | 'back', file: File) => uploadAny<BusinessProfile>(`/w/${enc(code)}/business/card-images/${side}`, file),
   removeCardImage: (code: string, side: 'front' | 'back') => api<BusinessProfile>(`/w/${enc(code)}/business/card-images/${side}`, { method: 'DELETE' }),

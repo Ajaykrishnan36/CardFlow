@@ -26,7 +26,8 @@ import (
 //
 // Kept:
 //   - the platform owner's login;
-//   - one person, by mobile number (default +91 98765 43211; CRM_FRESH_START_PHONE), with
+//   - one person, by mobile number (default +91 98765 43211; CRM_FRESH_START_PHONE, or
+//     "none" to keep nobody but the owner), with
 //     their app profile and their own saved cards;
 //   - one business of that person, by name (default "Ajay traders";
 //     CRM_FRESH_START_BUSINESS), with its records, its setup and its public listing;
@@ -70,7 +71,11 @@ var keptWhole = map[string]bool{
 	"deleted_workspace_archive": true,
 }
 
+// keepPhone is "" when CRM_FRESH_START_PHONE=none: only the platform owner stays (D-161).
 func keepPhone() string {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("CRM_FRESH_START_PHONE")), "none") {
+		return ""
+	}
 	if p, ok := identity.NormalizePhone(os.Getenv("CRM_FRESH_START_PHONE")); ok {
 		return p
 	}
@@ -164,7 +169,7 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		hasPerson := err == nil
+		hasPerson := err == nil && keepPhone() != ""
 		if hasPerson {
 			people = append(people, person)
 		}
@@ -423,6 +428,9 @@ func (m *Module) eraseEverything(ctx context.Context, marker string) (map[string
 // records.
 func (m *Module) ensureKeptAccount(ctx context.Context) error {
 	phone, businessName := keepPhone(), keepBusinessName()
+	if phone == "" {
+		return nil // only the owner is kept: nobody to create
+	}
 	setupID, err := platform.EnsureStandardSetup(ctx, m.store.Pool)
 	if err != nil {
 		return err

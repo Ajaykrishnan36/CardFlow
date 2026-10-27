@@ -5,12 +5,14 @@ import {
   ArrowLeft,
   ArrowRight,
   Clock,
+  Hourglass,
   LogIn,
   Mail,
   MessageSquareText,
   Phone,
   Plus,
   RotateCw,
+  Send,
   UserRound,
   Users,
 } from "lucide-react";
@@ -57,8 +59,8 @@ function explain(e: unknown): { message: string; field: boolean } {
 }
 
 /**
- * "Create your own CRM" (D-160). It registers and never signs in: the page makes two calls,
- * send the code and check it. Someone who already has an account is then shown who they are
+ * "Create your own CRM" (D-160, D-161). It registers and never signs in: the page makes two
+ * calls, send the code and check it. A first business waits for the owner's approval. Someone who already has an account is then shown who they are
  * and their business URLs, to sign in there; anyone may still create a business, linked to
  * them. Signing in happens only at a business's own URL.
  */
@@ -127,8 +129,10 @@ export function RegisterFlow() {
       });
       setCheck(res);
       setStep("done");
-      // A new number goes straight to the form; an existing account sees the alert first.
-      if (!res.hasAccount && res.canCreate) setCreating(true);
+      // A new number goes straight to the form; an existing account sees the alert first,
+      // and someone whose application is in review sees that.
+      if (!res.hasAccount && res.canCreate && res.pending.length === 0)
+        setCreating(true);
     } catch (e) {
       fail(explain(e).message, false);
       setCode("");
@@ -156,12 +160,18 @@ export function RegisterFlow() {
       />
     );
     if (!check.hasAccount) {
+      const waiting = check.pending.length > 0;
       return (
         <div className="space-y-4 animate-pop-in">
-          <Alert tone="success" title="Number confirmed">
-            Set up your business. It gets its own URL, and you sign in there.
-          </Alert>
-          {check.canCreate ? (
+          {waiting ? (
+            <PendingNotice check={check} />
+          ) : (
+            <Alert tone="success" title="Number confirmed">
+              Set up your business. After we review it, you get its own URL and
+              sign in there.
+            </Alert>
+          )}
+          {waiting ? null : check.canCreate ? (
             <Button
               size="lg"
               className="w-full"
@@ -183,6 +193,7 @@ export function RegisterFlow() {
     return (
       <div className="space-y-4 animate-pop-in">
         <AccountFound check={check} />
+        {check.pending.length > 0 ? <PendingNotice check={check} /> : null}
         {check.canCreate ? (
           <Button
             variant="outline"
@@ -350,13 +361,23 @@ function AccountFound({ check }: { check: RegisterCheck }) {
   const [sendError, setSendError] = useState<string | null>(null);
   const { person, businesses } = check;
   const first = person.name.split(" ")[0];
+  // Sent on their own when the code is checked (D-161): say where, only for real channels.
+  const notified = check.notify
+    ? sentList(check.notify.email, check.notify.sms, check.notify.whatsapp)
+    : "";
 
   const requestUrls = async () => {
     setSending(true);
     setSendError(null);
     try {
       const res = await registerApi.sendUrls(check.registrationToken);
-      setSentTo(res.email);
+      setSentTo(
+        sentList(
+          res.channels.email === "sent" ? res.email : "",
+          res.channels.sms === "sent",
+          res.channels.whatsapp === "sent",
+        ),
+      );
     } catch (e) {
       setSendError(
         isApiError(e) ? e.message : "Something went wrong. Please try again.",
@@ -418,16 +439,22 @@ function AccountFound({ check }: { check: RegisterCheck }) {
         ))}
       </ul>
       {sentTo ? (
-        <Alert tone="success">We emailed your business URLs to {sentTo}.</Alert>
+        <Alert tone="success">We sent your business URLs again {sentTo}.</Alert>
       ) : (
         <div>
+          {notified ? (
+            <p className="mb-1 flex items-start gap-1.5 text-[13px] text-muted-foreground">
+              <Send className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              We’re also sending these URLs {notified}.
+            </p>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"
             loading={sending}
             onClick={() => void requestUrls()}
           >
-            <Mail /> Email me my URLs
+            <Mail /> Send my URLs again
           </Button>
           {sendError ? (
             <p className="mt-1 text-[13px] text-danger">{sendError}</p>
@@ -435,5 +462,35 @@ function AccountFound({ check }: { check: RegisterCheck }) {
         </div>
       )}
     </>
+  );
+}
+
+/** "to a•••@x.com, by SMS and on WhatsApp" — only the channels that are set up. */
+function sentList(email: string, sms: boolean, whatsapp: boolean) {
+  const parts = [
+    email ? `to ${email}` : "",
+    sms ? "by SMS" : "",
+    whatsapp ? "on WhatsApp" : "",
+  ].filter(Boolean);
+  if (parts.length === 0) return "";
+  return parts.length === 1
+    ? parts[0]
+    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+/** Their business is waiting for the owner's approval (D-161). */
+function PendingNotice({ check }: { check: RegisterCheck }) {
+  return (
+    <Alert tone="info" title="Your application is being reviewed">
+      <span className="flex items-start gap-2">
+        <Hourglass className="mt-0.5 size-4 shrink-0" aria-hidden />
+        <span>
+          {check.pending.map((p) => p.name).join(", ")}{" "}
+          {check.pending.length === 1 ? "is" : "are"} waiting for approval. We
+          will contact you and send the business URL by SMS, WhatsApp and email
+          once it’s approved.
+        </span>
+      </span>
+    </Alert>
   );
 }

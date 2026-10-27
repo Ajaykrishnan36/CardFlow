@@ -154,12 +154,17 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 		suspendedIdentities = 0
 	}
 
+	var customers, pendingApps int
+	_ = h.store.Pool.QueryRow(ctx, `
+		SELECT count(DISTINCT created_by_identity) FILTER (WHERE origin = 'self_serve'), count(*) FILTER (WHERE status = 'pending')
+		FROM crm.workspaces WHERE NOT is_platform AND status <> 'deleted'`).Scan(&customers, &pendingApps)
+	_, _ = installedApps, appProducts
 	d := &Dashboard{
 		KPIs: []KPI{
-			// "Products" counts the same rows as the Products page (every customer product).
-			{Key: "workspaces", Label: "Products", Value: totalWorkspaces, Hint: productsHint(activeWorkspaces, totalWorkspaces-activeWorkspaces), Path: "/crm/owner/workspaces"},
-			// Apps installed across products (a product can have several, D-73).
-			{Key: "apps", Label: "Apps", Value: installedApps, Hint: plural(appProducts, "products"), Path: "/crm/owner/apps"},
+			// Products = accounts that created a CRM; Apps = every business (D-161).
+			{Key: "customers", Label: "Products", Value: customers, Hint: "accounts", Path: "/crm/owner/customers"},
+			{Key: "workspaces", Label: "Apps", Value: totalWorkspaces, Hint: productsHint(activeWorkspaces, totalWorkspaces-activeWorkspaces), Path: "/crm/owner/workspaces"},
+			{Key: "approvals", Label: "To approve", Value: pendingApps, Hint: "new businesses", Path: "/crm/owner/workspaces?status=pending"},
 			{Key: "leads", Label: "Leads", Value: totalLeads, Hint: plural(openLeads, "open"), Path: "/crm/owner/leads"},
 			{Key: "accounts", Label: "Accounts", Value: accounts, Path: "/crm/owner/accounts"},
 			{Key: "contacts", Label: "Contacts", Value: contacts, Path: "/crm/owner/contacts"},

@@ -31,6 +31,24 @@ var ErrUnavailable = errors.New("sms: no provider configured")
 // person instead of sending it. It is never selected unless configured explicitly.
 type Preview interface{ IsPreview() bool }
 
+// Texter is implemented by providers that also deliver a free-text message (business URLs,
+// approvals; D-161). MSG91 only sends DLT-approved templates, so it doesn't.
+type Texter interface {
+	SendText(ctx context.Context, phone, text string) error
+}
+
+// SendText delivers text through s when it can. ErrUnavailable: no provider that takes text.
+func SendText(ctx context.Context, s Sender, phone, text string) error {
+	if IsPreview(s) {
+		return nil
+	}
+	t, ok := s.(Texter)
+	if !ok {
+		return ErrUnavailable
+	}
+	return t.SendText(ctx, phone, text)
+}
+
 // IsPreview reports whether codes are shown on screen instead of being sent.
 func IsPreview(s Sender) bool {
 	p, ok := s.(Preview)
@@ -169,7 +187,11 @@ type twilio struct {
 func (t *twilio) Mode() string { return "twilio" }
 
 func (t *twilio) SendCode(ctx context.Context, phone, code string) error {
-	form := url.Values{"To": {phone}, "Body": {code + " is your " + t.cfg.AppName + " sign-in code. It expires in 10 minutes. Don't share it."}}
+	return t.SendText(ctx, phone, code+" is your "+t.cfg.AppName+" sign-in code. It expires in 10 minutes. Don't share it.")
+}
+
+func (t *twilio) SendText(ctx context.Context, phone, text string) error {
+	form := url.Values{"To": {phone}, "Body": {text}}
 	if strings.HasPrefix(t.cfg.TwilioFrom, "MG") {
 		form.Set("MessagingServiceSid", t.cfg.TwilioFrom)
 	} else {
@@ -208,11 +230,21 @@ type fast2sms struct {
 func (f *fast2sms) Mode() string { return "fast2sms" }
 
 func (f *fast2sms) SendCode(ctx context.Context, phone, code string) error {
+	return f.post(ctx, phone, map[string]string{"route": "otp", "variables_values": code})
+}
+
+// SendText uses the quick-SMS route, which takes free text (no DLT template).
+func (f *fast2sms) SendText(ctx context.Context, phone, text string) error {
+	return f.post(ctx, phone, map[string]string{"route": "q", "message": text, "language": "english", "flash": "0"})
+}
+
+func (f *fast2sms) post(ctx context.Context, phone string, body map[string]string) error {
 	number := strings.TrimPrefix(phone, "+")
 	if !strings.HasPrefix(number, "91") || len(number) != 12 {
 		return fmt.Errorf("sms: fast2sms delivers to Indian numbers only")
 	}
-	payload, _ := json.Marshal(map[string]string{"route": "otp", "variables_values": code, "numbers": number[2:]})
+	body["numbers"] = number[2:]
+	payload, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://www.fast2sms.com/dev/bulkV2", bytes.NewReader(payload))
 	if err != nil {
 		return err
@@ -224,12 +256,12 @@ func (f *fast2sms) SendCode(ctx context.Context, phone, code string) error {
 		return fmt.Errorf("sms: fast2sms unreachable: %w", err)
 	}
 	defer res.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
+	resBody, _ := io.ReadAll(io.LimitReader(res.Body, 4<<10))
 	var out struct {
 		Return  bool `json:"return"`
 		Message any  `json:"message"`
 	}
-	_ = json.Unmarshal(body, &out)
+	_ = json.Unmarshal(resBody, &out)
 	if res.StatusCode >= 300 || !out.Return {
 		return fmt.Errorf("sms: fast2sms refused the message (status %d: %v)", res.StatusCode, out.Message)
 	}

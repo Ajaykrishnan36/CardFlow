@@ -279,6 +279,7 @@ const en = {
   },
   status: {
     active: 'Active',
+    pending: 'Waiting for approval',
     provisioning: 'Provisioning',
     draft: 'Draft',
     failed: 'Failed',

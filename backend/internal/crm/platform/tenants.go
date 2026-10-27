@@ -59,14 +59,18 @@ func TenantBySlug(ctx context.Context, q querier, slug string) (*Tenant, error) 
 	slug = strings.ToLower(strings.TrimSpace(slug))
 	code := NormalizeCode(slug)
 	t := &Tenant{}
+	var status string
 	err := q.QueryRow(ctx, `
 		WITH f AS (SELECT t.id, t.status, t.redirect_to, 0 AS pri FROM crm.tenants t WHERE t.slug IN ($1, $2)
 		           UNION ALL SELECT t.id, t.status, t.redirect_to, 1 FROM crm.workspaces w JOIN crm.tenants t ON t.id = w.tenant_id WHERE w.code IN ($1, $2))
-		SELECT t.id, t.slug, t.name, COALESCE(t.custom_domain, '') FROM f
+		SELECT t.id, t.slug, t.name, COALESCE(t.custom_domain, ''), t.status FROM f
 		JOIN crm.tenants t ON t.id = CASE WHEN f.status = 'redirected' THEN f.redirect_to ELSE f.id END
-		WHERE t.status = 'active' ORDER BY f.pri LIMIT 1`, slug, code).Scan(&t.ID, &t.Slug, &t.Name, &t.CustomDomain)
+		WHERE t.status IN ('active', 'pending') ORDER BY f.pri LIMIT 1`, slug, code).Scan(&t.ID, &t.Slug, &t.Name, &t.CustomDomain, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, identity.BusinessNotFound()
+	}
+	if err == nil && status == "pending" {
+		return nil, identity.BusinessPending() // waiting for the owner's approval (D-161)
 	}
 	return t, err
 }

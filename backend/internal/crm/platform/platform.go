@@ -12,7 +12,9 @@ import (
 	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/crm/mail"
 	"cardflow-backend/internal/crm/shared"
+	"cardflow-backend/internal/crm/sms"
 	"cardflow-backend/internal/crm/store"
+	"cardflow-backend/internal/crm/whatsapp"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -24,6 +26,8 @@ type Handler struct {
 	cfg      shared.Config
 	mailer   mail.Mailer
 	identity *identity.Service
+	sms      sms.Sender
+	wa       *whatsapp.Sender
 }
 
 func NewHandler(st *store.Store, cfg shared.Config, mailer mail.Mailer, idSvc *identity.Service) *Handler {
@@ -36,6 +40,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Use(identity.RequireOwner)
 		r.Get("/platform/dashboard", h.handleDashboard)
 		r.Get("/platform/apps", h.handleListApps)
+		h.ApprovalRoutes(r)
 
 		r.Get("/platform/products", h.handleListProducts)
 		r.Post("/platform/products", h.handleCreateProduct)

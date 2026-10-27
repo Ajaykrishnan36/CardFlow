@@ -37,6 +37,9 @@ var StandardModules = []string{
 type SelfServeSettings struct {
 	Enabled       bool `json:"enabled"`
 	MaxBusinesses int  `json:"maxBusinesses"` // businesses one person may create
+	// SkipReview opens a person's first business at once. Off (the default, D-161), it waits
+	// for the owner's approval.
+	SkipReview bool `json:"skipReview"`
 }
 
 func defaultSelfServe() SelfServeSettings { return SelfServeSettings{Enabled: true, MaxBusinesses: 5} }
@@ -389,6 +392,7 @@ func (h *Handler) createBusiness(ctx context.Context, me uuid.UUID, idemKey stri
 			return 0, nil, err
 		}
 		var wsID uuid.UUID
+		var pending bool
 		err = h.store.WithTx(ctx, func(tx pgx.Tx) error {
 			// One creation at a time per person, so the limit can't be raced.
 			if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "business:"+me.String()); err != nil {
@@ -401,12 +405,27 @@ func (h *Handler) createBusiness(ctx context.Context, me uuid.UUID, idemKey stri
 			if created >= settings.MaxBusinesses {
 				return shared.Forbidden("business_limit", "You've reached the number of businesses one account can create. Contact support to add more.")
 			}
-			id, _, err := CreateBusinessTx(ctx, tx, me, setupID, in)
-			wsID = id
-			return err
+			review, err := needsReview(ctx, tx, me, settings)
+			if err != nil {
+				return err
+			}
+			id, code, err := CreateBusinessTx(ctx, tx, me, setupID, in)
+			wsID, pending = id, review
+			if err != nil || !review {
+				return err
+			}
+			return holdForReview(ctx, tx, id, me, code, in)
 		})
 		if err != nil {
 			return 0, nil, err
+		}
+		if pending {
+			// Nothing opens yet: the owner approves it, then its URL is sent (D-161).
+			var name, slug string
+			if err := h.store.Pool.QueryRow(ctx, `SELECT w.name, COALESCE(t.slug, w.code) FROM crm.workspaces w LEFT JOIN crm.tenants t ON t.id = w.tenant_id WHERE w.id = $1`, wsID).Scan(&name, &slug); err != nil {
+				return 0, nil, err
+			}
+			return http.StatusAccepted, map[string]any{"pending": true, "business": map[string]any{"id": wsID, "name": name, "code": slug, "tenantSlug": slug, "status": "pending"}}, nil
 		}
 		// The business's public listing (directory, digital card, QR) is made by the app
 		// side; a problem there never undoes the business itself.

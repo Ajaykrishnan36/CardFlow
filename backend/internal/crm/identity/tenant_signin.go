@@ -20,6 +20,11 @@ func BusinessNotFound() error {
 	return shared.NewError(http.StatusNotFound, "business_not_found", "This business URL is invalid or unavailable. Please check the URL or contact support.")
 }
 
+// BusinessPending: the business is waiting for the owner's approval (D-161).
+func BusinessPending() error {
+	return shared.NewError(http.StatusForbidden, "business_pending", "This business is waiting for approval. We'll send you its URL by SMS, WhatsApp and email once it's approved.")
+}
+
 // tenantAllows checks the email or phone the person typed against the tenant's members.
 func (s *Service) tenantAllows(ctx context.Context, slug, identifier string) error {
 	slug = strings.ToLower(strings.TrimSpace(slug))
@@ -37,23 +42,27 @@ func (s *Service) tenantAllows(ctx context.Context, slug, identifier string) err
 		return nil // the usual "enter a valid …" message follows
 	}
 	var member bool
+	var status string
 	err := s.store.Pool.QueryRow(ctx, `
 		WITH f AS (SELECT t.id, t.status, t.redirect_to FROM crm.tenants t WHERE t.slug IN ($1, $4)
 		           UNION ALL SELECT t.id, t.status, t.redirect_to FROM crm.workspaces w JOIN crm.tenants t ON t.id = w.tenant_id WHERE w.code IN ($1, $4)),
-		     t AS (SELECT t.id, t.name FROM f JOIN crm.tenants t ON t.id = CASE WHEN f.status = 'redirected' THEN f.redirect_to ELSE f.id END
-		           WHERE t.status = 'active' LIMIT 1)
-		SELECT EXISTS (
+		     t AS (SELECT t.id, t.name, t.status FROM f JOIN crm.tenants t ON t.id = CASE WHEN f.status = 'redirected' THEN f.redirect_to ELSE f.id END
+		           WHERE t.status IN ('active', 'pending') LIMIT 1)
+		SELECT t.status, EXISTS (
 			SELECT 1 FROM crm.verified_identifiers v
 			JOIN crm.memberships m ON m.identity_id = v.identity_id AND m.status = 'active'
 			JOIN crm.workspaces w ON w.id = m.workspace_id AND w.status = 'active' AND w.tenant_id = t.id
 			JOIN crm.identities i ON i.id = v.identity_id AND i.status = 'active'
 			WHERE v.kind = $2 AND v.value_normalized = $3)
-		FROM t`, slug, kind, value, code).Scan(&member)
+		FROM t`, slug, kind, value, code).Scan(&status, &member)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return BusinessNotFound()
 	}
 	if err != nil {
 		return err
+	}
+	if status == "pending" {
+		return BusinessPending()
 	}
 	if !member {
 		return shared.NewError(http.StatusNotFound, "account_not_found", "You don't have access to this business. Please contact your Super Admin.")

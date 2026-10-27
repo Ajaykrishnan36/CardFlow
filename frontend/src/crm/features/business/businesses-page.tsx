@@ -7,6 +7,7 @@ import {
   Building2,
   Check,
   Copy,
+  Hourglass,
   LogOut,
   Plus,
   Users,
@@ -378,9 +379,11 @@ export function CreateBusinessDialog({
     name: string;
     slug: string;
   }> | null>(null);
-  const [done, setDone] = useState<{ name: string; tenantSlug: string } | null>(
-    null,
-  );
+  const [done, setDone] = useState<{
+    name: string;
+    tenantSlug: string;
+    pending?: boolean;
+  } | null>(null);
   const myPhone = register?.person.phone ?? details.data?.phone ?? "";
   const adding = mode === "add";
 
@@ -403,7 +406,7 @@ export function CreateBusinessDialog({
   }, [open, details.data, register]);
 
   const create = useMutation({
-    mutationFn: (): Promise<{ business: BusinessSummary }> => {
+    mutationFn: (): Promise<{ business: BusinessSummary; pending?: boolean }> => {
       const body = {
         mode,
         name: biz.name.trim(),
@@ -421,10 +424,12 @@ export function CreateBusinessDialog({
         : businessApi.create(body);
     },
     onSuccess: async (res) => {
-      if (register) {
+      if (register || res.pending) {
+        // A first business waits for the owner's approval (D-161): nothing to open yet.
         setDone({
           name: res.business.name,
           tenantSlug: res.business.tenantSlug || res.business.code,
+          pending: res.pending,
         });
         return;
       }
@@ -463,10 +468,10 @@ export function CreateBusinessDialog({
 
   const close = (o: boolean) => {
     if (!o && done) {
-      const { tenantSlug } = done;
+      const { tenantSlug, pending } = done;
       setDone(null);
       onOpenChange(false);
-      onCreated(tenantSlug);
+      if (!pending) onCreated(tenantSlug);
       return;
     }
     onOpenChange(o);
@@ -477,7 +482,24 @@ export function CreateBusinessDialog({
   return (
     <Dialog open={open} onOpenChange={close}>
       <DialogContent className="top-[3vh] flex max-h-[94vh] max-w-2xl flex-col p-0 sm:top-[5vh] sm:max-h-[90vh]">
-        {done ? (
+        {done?.pending ? (
+          <div className="p-6">
+            <span className="grid size-11 place-items-center rounded-full bg-primary-soft text-primary">
+              <Hourglass className="size-5" aria-hidden />
+            </span>
+            <DialogTitle className="mt-3 text-lg font-semibold">
+              Thank you — application received
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm text-muted-foreground">
+              We will review your application for {done.name} and contact you.
+              Once it’s approved we send your business URL by SMS, WhatsApp and
+              email, and you sign in there with your mobile number.
+            </DialogDescription>
+            <div className="mt-6 flex justify-end">
+              <Button onClick={() => close(false)}>Close</Button>
+            </div>
+          </div>
+        ) : done ? (
           <div className="p-6">
             <span className="grid size-11 place-items-center rounded-full bg-success/15 text-success">
               <Check className="size-5" aria-hidden />

@@ -21,6 +21,7 @@ import (
 	"cardflow-backend/internal/crm/shared"
 	"cardflow-backend/internal/crm/sms"
 	"cardflow-backend/internal/crm/store"
+	"cardflow-backend/internal/crm/whatsapp"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -100,6 +101,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	m.identity.SetAppProfile(m.profile)
 	go backfillAppIdentities(context.Background(), st)
 	m.platform = platform.NewHandler(st, cfg, mailer, m.identity)
+	// Business URLs and approvals also go by SMS and WhatsApp where a provider is set (D-161).
+	wa := whatsapp.New(whatsapp.LoadConfig())
+	m.platform.SetMessaging(smsSender, wa)
+	if !wa.Ready() {
+		slog.Info("CRM WhatsApp notices are off: set WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_TEMPLATE")
+	}
 	m.plans = plans.NewHandler(st)
 	m.records = records.NewHandler(st, cfg, m.platform, recordMailer{mailer})
 	identity.SetAPIKeyResolver(m.records.ResolveAPIKey)

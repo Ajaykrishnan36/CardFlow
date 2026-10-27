@@ -237,7 +237,7 @@ export interface ProductUpdateBody {
 }
 
 // ---- Workspaces & invitations ----
-export type WorkspaceStatus = 'draft' | 'provisioning' | 'active' | 'failed' | 'suspended';
+export type WorkspaceStatus = 'draft' | 'provisioning' | 'active' | 'failed' | 'suspended' | 'pending';
 
 export interface WorkspaceSummary {
   id: string;

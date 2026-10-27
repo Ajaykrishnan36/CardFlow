@@ -47,7 +47,8 @@ export const workspaceStatusTone: Record<WorkspaceStatus, Tone> = {
   provisioning: 'primary',
   draft: 'neutral',
   failed: 'danger',
-  suspended: 'warning'
+  suspended: 'warning',
+  pending: 'warning'
 };
 
 const memberTone: Record<WorkspaceMember['status'], Tone> = { active: 'success', invited: 'primary', suspended: 'warning', revoked: 'neutral' };

@@ -64,3 +64,10 @@ func (l *limiter) clear(key string) {
 	defer l.mu.Unlock()
 	delete(l.buckets, key)
 }
+
+// ForgetCodeLimits clears the per-number code limits for one number (E.164), as if the
+// window had passed. Tests and support tooling only; nothing in the API calls it.
+func (s *Service) ForgetCodeLimits(phone string) {
+	s.phoneLimiter.clear("phone:" + phone)
+	s.phoneDayLimiter.clear("phone:" + phone)
+}

@@ -6,8 +6,9 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import { Building2, ShieldCheck } from "lucide-react";
+import { Building2, Hourglass, ShieldCheck } from "lucide-react";
 import { onboardingApi } from "@crm/api/endpoints";
+import { isApiError } from "@crm/api/client";
 import { isAuthStep, useMe } from "@crm/auth/session";
 import { FullPageLoader } from "@crm/components/states";
 import { safeReturnTo } from "@crm/lib/utils";
@@ -39,18 +40,31 @@ export function TenantLoginPage({ code: fixed }: { code?: string }) {
 
   if (isPending || tenant.isPending) return <FullPageLoader />;
   if (tenant.isError || !tenant.data) {
+    // A new business waits for approval (D-161) before anyone can sign in at its URL.
+    const pending =
+      isApiError(tenant.error) && tenant.error.code === "business_pending";
     return (
       <AuthLayout>
         <AuthHeading
-          title="Business not found"
-          subtitle="This business URL is invalid or unavailable. Please check the URL or contact support."
-          icon={<Building2 className="size-5" />}
+          title={pending ? "Waiting for approval" : "Business not found"}
+          subtitle={
+            pending
+              ? "This business is being reviewed. We'll send you its URL by SMS, WhatsApp and email once it's approved."
+              : "This business URL is invalid or unavailable. Please check the URL or contact support."
+          }
+          icon={
+            pending ? (
+              <Hourglass className="size-5" />
+            ) : (
+              <Building2 className="size-5" />
+            )
+          }
         />
         <Link
           to="/"
           className="text-sm font-medium text-primary hover:underline"
         >
-          Go to the main sign-in
+          Go to Create your own CRM
         </Link>
       </AuthLayout>
     );

@@ -27,6 +27,7 @@ import { SsoPage } from './features/tools/sso-page';
 import { DeveloperPage } from './features/tools/developer-page';
 import { SignupPage } from './features/auth/signup-page';
 import { AppsPage } from './features/owner/apps-page';
+import { CustomerDetailPage, CustomersPage } from './features/owner/customers-page';
 import { ProductObjectDetailPage, ProductObjectsPage } from './features/objects/product-objects';
 import { NotFoundPage } from '@crm/features/system/pages';
 
@@ -166,6 +167,8 @@ function AppRoutes() {
               <Route path="/crm/owner/products" element={<ProductsPage />} />
               <Route path="/crm/owner/products/:id" element={<ProductDetailPage />} />
               <Route path="/crm/owner/apps" element={<AppsPage />} />
+              <Route path="/crm/owner/customers" element={<CustomersPage />} />
+              <Route path="/crm/owner/customers/:id" element={<CustomerDetailPage />} />
               <Route path="/crm/owner/workspaces" element={<WorkspacesPage />} />
               <Route path="/crm/owner/workspaces/new" element={<ProvisionWorkspacePage />} />
               <Route path="/crm/owner/workspaces/:id" element={<WorkspaceDetailPage />} />

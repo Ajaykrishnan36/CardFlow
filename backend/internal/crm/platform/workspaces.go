@@ -406,7 +406,7 @@ func (h *Handler) handleProvisionWorkspace(w http.ResponseWriter, r *http.Reques
 func (h *Handler) handleListWorkspaces(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	switch status {
-	case "active", "suspended", "draft", "provisioning", "failed":
+	case "active", "suspended", "draft", "provisioning", "failed", "pending":
 	default:
 		status = ""
 	}

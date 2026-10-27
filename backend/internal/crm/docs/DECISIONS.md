@@ -1532,6 +1532,26 @@ to them as Super Admin, and the next step is signing in at its URL. Sign-in exis
 `/<code>/login` (and the owner console). The email sign-in link and the owner-console link
 left `/`.
 
+## D-161 — New businesses wait for the owner's approval (Frame 6)
+
+Someone's first business from "Create your own CRM" (or from Add business, if they own no
+approved business yet) is created `pending`: its code and URL are reserved
+(DDMMYY + ISO week + last 4 of the GSTIN/PAN/TAN + 6-digit number), the form closes with
+"we will review your application and contact you", and nobody can sign in there yet
+(`business_pending`). The application is a lead (source Website) in the platform CRM; the
+owner approves it from the lead, the Apps list or the business (`POST
+/platform/applications/{id}/approve`), which opens the URL, makes the public listing and
+sends the URL by email, SMS and WhatsApp. More businesses of a person who owns an approved
+one open at once (step 6). Someone who already has an account and enters their number on
+`/` is sent their URLs on every channel ("you already have an account, use your URL").
+Each channel reports `sent`, `failed`, `not_set_up` or `no_address`: SMS text needs Twilio
+or Fast2SMS (MSG91 sends only DLT templates); WhatsApp needs `WHATSAPP_TOKEN`,
+`WHATSAPP_PHONE_NUMBER_ID` and an approved `WHATSAPP_TEMPLATE` with two body parameters
+(name, text). The owner can switch reviews off (`skipReview` in the self-serve settings).
+Owner console: **Products** are accounts (one mobile number each) with how many apps they
+run (`/crm/owner/customers`); **Apps** are all businesses (`/crm/owner/workspaces`, with a
+"To approve" filter). Fresh start takes `CRM_FRESH_START_PHONE=none` to keep only the owner.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.
