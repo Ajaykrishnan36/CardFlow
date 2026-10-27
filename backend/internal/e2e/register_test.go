@@ -204,4 +204,53 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	if x := signInAt(t, ajay, own.str("business", "tenantSlug")); x.str("code") != "account_not_found" {
 		t.Fatalf("Ajay is not in Ram's business: %d", x.Status)
 	}
+
+	// Another customer (Group 25): Krishnan registers Krish insurance — him, 1 admin, 2 sales
+	// staff. It is fully separate from Ajay's businesses ("Ak world").
+	krishnan := freshPhone()
+	kr := register(t, krishnan)
+	if kr.Body["hasAccount"] != false {
+		t.Fatalf("Krishnan is new: %s", truncate(kr.Raw, 200))
+	}
+	krish := registerBusiness(t, kr.str("registrationToken"), map[string]any{"mode": "first", "name": "Krish insurance", "displayName": "Krishnan", "industry": "Insurance"}).str("business", "tenantSlug")
+	ks := signInAt(t, krishnan, krish)
+	want(t, ks, 200, "Krishnan at Krish insurance")
+	// The Free plan allows 3 people; Krish insurance needs 4, so the owner moves it to a bigger plan.
+	var krishID string
+	if err := testDB.Pool.QueryRow(context.Background(), `SELECT id::text FROM crm.workspaces WHERE code = $1`, krish).Scan(&krishID); err != nil {
+		t.Fatal(err)
+	}
+	want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+krishID, owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for Krish insurance")
+	krishTeam := []string{}
+	for i, role := range []string{"ADMIN", "SALES_STAFF", "SALES_STAFF"} {
+		p := freshPhone()
+		want(t, call(t, "POST", crmAPI+"/w/"+krish+"/admin/members", ks.str("token"), map[string]any{"displayName": fmt.Sprintf("Krish %d", i), "phone": p, "roleKey": role}), 201, "add to Krish insurance")
+		krishTeam = append(krishTeam, p)
+	}
+	var krishPeople int
+	if err := testDB.Pool.QueryRow(context.Background(), `SELECT count(*) FROM crm.memberships m JOIN crm.workspaces w ON w.id = m.workspace_id WHERE w.code = $1 AND m.status = 'active'`, krish).Scan(&krishPeople); err != nil {
+		t.Fatal(err)
+	}
+	if krishPeople != 4 {
+		t.Fatalf("Krish insurance has %d people, want 4", krishPeople)
+	}
+	want(t, signInAt(t, krishTeam[1], krish), 200, "Krish sales staff at Krish insurance")
+	for _, other := range []string{slugs["traders"], slugs["tech"], slugs["bikes"]} {
+		if x := signInAt(t, krishTeam[0], other); x.str("code") != "account_not_found" {
+			t.Fatalf("Krish insurance's admin got into one of Ajay's businesses: %d", x.Status)
+		}
+		if x := signInAt(t, krishnan, other); x.str("code") != "account_not_found" {
+			t.Fatalf("Krishnan got into one of Ajay's businesses: %d", x.Status)
+		}
+	}
+	if x := signInAt(t, ram, krish); x.str("code") != "account_not_found" {
+		t.Fatalf("Ram got into Krish insurance: %d", x.Status)
+	}
+	if x := signInAt(t, team["bikes"][0], krish); x.str("code") != "account_not_found" {
+		t.Fatalf("Ajay Bikes' admin got into Krish insurance: %d", x.Status)
+	}
+	// Krishnan's own data: the record lists of Ajay's businesses refuse his session.
+	if x := call(t, "GET", crmAPI+"/w/"+slugs["traders"]+"/crm/leads", ks.str("token"), nil); x.Status == 200 {
+		t.Fatalf("Krishnan's session read Ajay Traders' leads: %d", x.Status)
+	}
 }
