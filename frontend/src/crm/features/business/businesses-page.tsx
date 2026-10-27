@@ -126,10 +126,11 @@ export function BusinessesHomePage() {
         </div>
       </div>
 
-      {superAdmin && list.length > 0 ? (
+      {list.length > 0 ? (
         <Alert tone="info" title="You already have an account" className="mb-4">
-          Your team signs in at each business’s own URL below — save them. If
-          something is wrong, contact support.
+          {superAdmin
+            ? "Your team signs in at each business’s own URL below — save them. If something is wrong, contact support."
+            : "Next time, sign in at your business’s own URL below — save it. If something is wrong, contact your Super Admin."}
         </Alert>
       ) : null}
 

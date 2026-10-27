@@ -1,15 +1,26 @@
-import { useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { authApi, meApi } from '@crm/api/endpoints';
-import { isApiError } from '@crm/api/client';
-import type { Me, Membership } from '@crm/api/types';
-import { safeReturnTo } from '@crm/lib/utils';
-import { loginPathFor, registerMemberships, tenantOf } from '@crm/lib/tenant';
-import { FullPageLoader } from '@crm/components/states';
-import { UnavailablePage } from '@crm/features/system/pages';
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
+import { authApi, meApi } from "@crm/api/endpoints";
+import { isApiError } from "@crm/api/client";
+import type { Me, Membership } from "@crm/api/types";
+import { safeReturnTo } from "@crm/lib/utils";
+import {
+  loginPathFor,
+  registerMemberships,
+  signInTenant,
+  tenantOf,
+} from "@crm/lib/tenant";
+import { FullPageLoader } from "@crm/components/states";
+import { UnavailablePage } from "@crm/features/system/pages";
 
-export const meKey = ['me'] as const;
+export const meKey = ["me"] as const;
 
 /** GET /me — null when signed out (401). Never retried: a 401 is an answer, not a failure. */
 export function useMe() {
@@ -26,20 +37,29 @@ export function useMe() {
       }
     },
     retry: false,
-    staleTime: 30_000
+    staleTime: 30_000,
   });
 }
 
 export function useCapabilities(enabled: boolean) {
-  return useQuery({ queryKey: ['capabilities'], queryFn: meApi.capabilities, enabled, staleTime: 60_000 });
+  return useQuery({
+    queryKey: ["capabilities"],
+    queryFn: meApi.capabilities,
+    enabled,
+    staleTime: 60_000,
+  });
 }
 
 export function isAuthStep(path: string) {
-  return path === '/crm/mfa/setup' || path === '/crm/mfa/verify' || path === '/crm/change-password';
+  return (
+    path === "/crm/mfa/setup" ||
+    path === "/crm/mfa/verify" ||
+    path === "/crm/change-password"
+  );
 }
 
 export function isOwnerSession(me: Me): boolean {
-  return me.identity.isPlatformOwner && me.session.audience === 'owner';
+  return me.identity.isPlatformOwner && me.session.audience === "owner";
 }
 
 /**
@@ -47,8 +67,11 @@ export function isOwnerSession(me: Me): boolean {
  * platform workspace (the owner's own staff), else none.
  */
 export function homeWorkspace(me: Me): Membership | undefined {
-  const active = me.memberships.filter((m) => m.status === 'active');
-  return active.find((m) => !m.isPlatformWorkspace) ?? active.find((m) => m.isPlatformWorkspace);
+  const active = me.memberships.filter((m) => m.status === "active");
+  return (
+    active.find((m) => !m.isPlatformWorkspace) ??
+    active.find((m) => m.isPlatformWorkspace)
+  );
 }
 
 /** A business's home: its tenant's address, with the business to open (D-156). */
@@ -58,9 +81,9 @@ export function workspaceHomePath(code: string): string {
 
 /** Where a fully signed-in user belongs if they hit an auth page. */
 export function homeFor(me: Me): string {
-  if (isOwnerSession(me)) return '/crm/owner/dashboard';
+  if (isOwnerSession(me)) return "/crm/owner/dashboard";
   const ws = homeWorkspace(me);
-  return ws ? workspaceHomePath(ws.workspaceCode) : '/crm/businesses';
+  return ws ? workspaceHomePath(ws.workspaceCode) : "/crm/businesses";
 }
 
 /**
@@ -81,17 +104,34 @@ export function RequireSession({ step = false }: { step?: boolean }) {
     // The owner console has its own sign-in; a tenant's pages sign in at /<tenant>/login (D-156).
     const login = loginPathFor(location.pathname);
     const returnTo = safeReturnTo(location.pathname + location.search);
-    return <Navigate to={`${login}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`} replace />;
+    return (
+      <Navigate
+        to={`${login}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`}
+        replace
+      />
+    );
   }
   const pendingStep = isAuthStep(me.next);
   if (!step && pendingStep) {
     const returnTo = safeReturnTo(location.pathname + location.search);
-    return <Navigate to={returnTo ? `${me.next}?returnTo=${encodeURIComponent(returnTo)}` : me.next} replace />;
+    return (
+      <Navigate
+        to={
+          returnTo
+            ? `${me.next}?returnTo=${encodeURIComponent(returnTo)}`
+            : me.next
+        }
+        replace
+      />
+    );
   }
-  if (step && pendingStep && location.pathname !== me.next) return <Navigate to={me.next + location.search} replace />;
+  if (step && pendingStep && location.pathname !== me.next)
+    return <Navigate to={me.next + location.search} replace />;
   // MFA setup and password change can also be opened voluntarily from the profile.
-  if (step && !pendingStep && location.pathname === '/crm/mfa/verify') {
-    const returnTo = safeReturnTo(new URLSearchParams(location.search).get('returnTo'));
+  if (step && !pendingStep && location.pathname === "/crm/mfa/verify") {
+    const returnTo = safeReturnTo(
+      new URLSearchParams(location.search).get("returnTo"),
+    );
     return <Navigate to={returnTo ?? homeFor(me)} replace />;
   }
   return <Outlet />;
@@ -101,9 +141,14 @@ export function RequireOwner() {
   const { data: me } = useMe();
   const location = useLocation();
   // Anyone who isn't signed in to the owner console is asked to (it has its own sign-in).
-  if (!me?.identity.isPlatformOwner || me.session.audience !== 'owner') {
+  if (!me?.identity.isPlatformOwner || me.session.audience !== "owner") {
     const returnTo = safeReturnTo(location.pathname + location.search);
-    return <Navigate to={`/crm/owner/login${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`} replace />;
+    return (
+      <Navigate
+        to={`/crm/owner/login${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`}
+        replace
+      />
+    );
   }
   return <Outlet />;
 }
@@ -114,7 +159,12 @@ export function OwnerLoginGate() {
   const [params] = useSearchParams();
   if (isPending) return <FullPageLoader />;
   if (me && isOwnerSession(me) && !isAuthStep(me.next)) {
-    return <Navigate to={safeReturnTo(params.get('returnTo')) ?? '/crm/owner/dashboard'} replace />;
+    return (
+      <Navigate
+        to={safeReturnTo(params.get("returnTo")) ?? "/crm/owner/dashboard"}
+        replace
+      />
+    );
   }
   return <Outlet />;
 }
@@ -125,9 +175,20 @@ export function RedirectIfSignedIn() {
   const location = useLocation();
   if (isPending) return <FullPageLoader />;
   if (me) {
-    const returnTo = safeReturnTo(new URLSearchParams(location.search).get('returnTo'));
+    const returnTo = safeReturnTo(
+      new URLSearchParams(location.search).get("returnTo"),
+    );
     if (isAuthStep(me.next)) {
-      return <Navigate to={returnTo ? `${me.next}?returnTo=${encodeURIComponent(returnTo)}` : me.next} replace />;
+      return (
+        <Navigate
+          to={
+            returnTo
+              ? `${me.next}?returnTo=${encodeURIComponent(returnTo)}`
+              : me.next
+          }
+          replace
+        />
+      );
     }
     return <Navigate to={returnTo ?? homeFor(me)} replace />;
   }
@@ -151,7 +212,7 @@ export function useSignOut() {
       qc.setQueryData(meKey, null);
       navigate(to, { replace: true });
     },
-    [qc, navigate, location.pathname]
+    [qc, navigate, location.pathname],
   );
 }
 
@@ -161,15 +222,22 @@ export function useAfterAuth() {
   const navigate = useNavigate();
   return useCallback(
     async (next: string, returnTo?: string | null) => {
-      qc.removeQueries({ queryKey: ['capabilities'] });
+      qc.removeQueries({ queryKey: ["capabilities"] });
       await qc.fetchQuery({ queryKey: meKey, queryFn: meApi.me, staleTime: 0 });
       if (isAuthStep(next)) {
         // Carry the original destination through MFA / password-change steps.
-        navigate(returnTo ? `${next}?returnTo=${encodeURIComponent(returnTo)}` : next, { replace: true });
+        navigate(
+          returnTo ? `${next}?returnTo=${encodeURIComponent(returnTo)}` : next,
+          { replace: true },
+        );
         return;
       }
+      // Signed in on the site's own page (not a business URL): show the person their
+      // business URLs, or the form to create one (D-158).
+      if (!returnTo && !signInTenant() && !next.startsWith("/crm/owner"))
+        next = "/crm/businesses";
       navigate(returnTo ?? next, { replace: true });
     },
-    [qc, navigate]
+    [qc, navigate],
   );
 }

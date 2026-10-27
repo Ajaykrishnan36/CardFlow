@@ -125,7 +125,7 @@ export function PhoneCodeForm() {
       >
         {error ? <Alert tone="danger">{error}</Alert> : null}
         <div ref={phoneShakeRef}>
-          <Field label="Mobile number" error={fieldError ?? undefined} hint={signInTenant() ? 'We’ll text you a 6-digit code.' : 'We’ll text you a 6-digit code. New here? This creates your account.'}>
+          <Field label="Mobile number" error={fieldError ?? undefined} hint={signInTenant() ? 'We’ll text you a 6-digit code.' : 'We’ll text you a 6-digit code. Then you set up your business and get its own URL.'}>
             <Input
               value={phone}
               onChange={(e) => {

@@ -35,7 +35,7 @@ const en = {
     brand: {
       eyebrow: 'CRM for your business',
       headline: 'Leads, customers and business cards in one CRM.',
-      sub: 'Sign in with your mobile number, create your business in a minute, and run it from your phone or your computer.',
+      sub: 'Create your business with your mobile number in a minute. It gets its own private URL, and you run it from your phone or your computer.',
       f1Title: 'A CRM for each business',
       f1Body: 'Leads, contacts, accounts, deals, tasks and cases. Every business you run keeps its own records.',
       f2Title: 'Scan a card, get a lead',

@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import { Building2, ShieldCheck } from "lucide-react";
 import { onboardingApi } from "@crm/api/endpoints";
-import { homeFor, isAuthStep, useMe } from "@crm/auth/session";
+import { homeFor, isAuthStep, isOwnerSession, useMe } from "@crm/auth/session";
 import { FullPageLoader } from "@crm/components/states";
 import { safeReturnTo } from "@crm/lib/utils";
 import { setSignInTenant } from "@crm/lib/tenant";
@@ -140,7 +140,12 @@ function SignedInOr() {
           replace
         />
       );
-    return <Navigate to={back ?? homeFor(me)} replace />;
+    return (
+      <Navigate
+        to={back ?? (isOwnerSession(me) ? homeFor(me) : "/crm/businesses")}
+        replace
+      />
+    );
   }
   return <LoginPage />;
 }
