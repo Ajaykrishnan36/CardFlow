@@ -1505,6 +1505,17 @@ waits for a provider template. Existing businesses got codes at start-up
 (`MigrateBusinessAddresses`, safe to re-run); the old brand tenant is kept as `redirected`
 with `redirect_to` the oldest business and its own domain moved there. Nothing is deleted.
 
+## D-159 — Local runs use the live database
+
+There is one setup, not a local one and a live one. `backend/.env` (git-ignored, never
+committed) holds the same values as the live host, including `DATABASE_URL` for the live Neon
+database, so running the backend and the web app on a computer shows and changes live data.
+It also sets `CRM_APP_ENV=production` and `CRM_SEED_DEMO=false`, which the live host gets from
+`RENDER`, so a local run never seeds demo data or the local-only fallback key into live. Start-up
+steps may take up to 5 minutes (`startupTimeout`) because each statement crosses to US East;
+on the host they take seconds. The automated tests are unaffected: e2e makes its own
+throwaway database from the `DB_*` settings and sets its own `DATABASE_URL`.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

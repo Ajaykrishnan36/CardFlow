@@ -39,6 +39,10 @@ type Module struct {
 	profile        *appProfile
 }
 
+// startupTimeout bounds each start-up step. It is generous because a local run uses the
+// live database (D-159): from here every statement is a round trip to another continent.
+const startupTimeout = 5 * time.Minute
+
 // New prepares the CRM: config, migrations, safety checks and seed. It never returns
 // an error that could stop CardFlow — on any problem it returns a module that answers
 // 503 crm_disabled and logs why (DECISIONS D-06).
@@ -54,7 +58,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	}
 
 	st := store.New(pool)
-	migrateCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	migrateCtx, cancel := context.WithTimeout(ctx, startupTimeout)
 	defer cancel()
 	if err := st.Migrate(migrateCtx); err != nil {
 		return m.disable("migrations failed: " + err.Error())
@@ -155,28 +159,28 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	// A business's plan limits how many members it may have (D-101).
 	platform.SeatCheck = func(ctx context.Context, tx pgx.Tx, ws uuid.UUID) error { return plans.CheckSeats(ctx, tx, ws) }
 	// Standard and custom objects (D-45): seed, create their views, load the catalog.
-	objCtx, cancelObj := context.WithTimeout(context.Background(), 60*time.Second)
+	objCtx, cancelObj := context.WithTimeout(context.Background(), startupTimeout)
 	err := m.records.LoadObjects(objCtx)
 	cancelObj()
 	if err != nil {
 		return m.disable("objects failed to load: " + err.Error())
 	}
 	// Roles form a hierarchy; move what roles used to grant into permission sets (D-48, once).
-	roleCtx, cancelRoles := context.WithTimeout(context.Background(), 120*time.Second)
+	roleCtx, cancelRoles := context.WithTimeout(context.Background(), startupTimeout)
 	err = platform.MigrateRoles(roleCtx, st.Pool)
 	cancelRoles()
 	if err != nil {
 		return m.disable("role hierarchy migration failed: " + err.Error())
 	}
 	// Every business its own generated address (D-158); a problem here never stops the CRM.
-	addrCtx, cancelAddr := context.WithTimeout(context.Background(), 120*time.Second)
+	addrCtx, cancelAddr := context.WithTimeout(context.Background(), startupTimeout)
 	if err := platform.MigrateBusinessAddresses(addrCtx, st.Pool); err != nil {
 		slog.Error("giving businesses their own addresses failed", "err", err)
 	}
 	cancelAddr()
 	// Connected app: Business Card Snap (CardFlow) users, sign-ins and support tickets (D-36).
 	// The owner's one-time clean-up of test businesses (D-129) comes first: it also retires the connector.
-	cleanCtx, cancelClean := context.WithTimeout(context.Background(), 120*time.Second)
+	cleanCtx, cancelClean := context.WithTimeout(context.Background(), startupTimeout)
 	m.RetireTestWorkspaces(cleanCtx)
 	cancelClean()
 	if m.connectorEnabled(context.Background()) {
