@@ -22,10 +22,14 @@ import { UnavailablePage } from "@crm/features/system/pages";
 
 export const meKey = ["me"] as const;
 
-/** GET /me — null when signed out (401). Never retried: a 401 is an answer, not a failure. */
-export function useMe() {
+/**
+ * GET /me — null when signed out (401). Never retried: a 401 is an answer, not a failure.
+ * `enabled: false` skips the call (the "Create your own CRM" page makes none, D-160).
+ */
+export function useMe(enabled = true) {
   return useQuery<Me | null>({
     queryKey: meKey,
+    enabled,
     queryFn: async () => {
       try {
         const me = await meApi.me();

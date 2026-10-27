@@ -14,6 +14,7 @@ import {
 import {
   businessApi,
   onboardingApi,
+  registerApi,
   type BusinessSummary,
 } from "@crm/api/endpoints";
 import { isApiError } from "@crm/api/client";
@@ -333,23 +334,30 @@ type TaxKind = (typeof taxIdKinds)[number]["value"];
  * ID: GSTIN, PAN or TAN. The business gets its own generated URL, shown at the end; address,
  * website, WhatsApp and card photos are filled in later in Business profile. "add" (Add
  * business, for someone who already has one) skips the part about you.
+ * With `register` it runs on "Create your own CRM" (D-160): no session, the registration
+ * token creates the business, and the next step is signing in at its URL.
  */
-function CreateBusinessDialog({
+export function CreateBusinessDialog({
   open,
   mode,
   onOpenChange,
   onCreated,
+  register,
 }: {
   open: boolean;
   mode: "first" | "add";
   onOpenChange: (open: boolean) => void;
   onCreated: (tenantSlug: string) => void;
+  register?: {
+    token: string;
+    person: { name: string; email: string; phone: string };
+  };
 }) {
   const qc = useQueryClient();
   const details = useQuery({
     queryKey: ["me", "details"],
     queryFn: onboardingApi.details,
-    enabled: open,
+    enabled: open && !register,
     staleTime: 60_000,
   });
   const [you, setYou] = useState({ displayName: "", personalEmail: "" });
@@ -373,7 +381,7 @@ function CreateBusinessDialog({
   const [done, setDone] = useState<{ name: string; tenantSlug: string } | null>(
     null,
   );
-  const myPhone = details.data?.phone ?? "";
+  const myPhone = register?.person.phone ?? details.data?.phone ?? "";
   const adding = mode === "add";
 
   // Fill in what we already know about the person, once per opening.
@@ -383,15 +391,20 @@ function CreateBusinessDialog({
       filled.current = false;
       return;
     }
-    const d = details.data;
+    const d = register
+      ? {
+          displayName: register.person.name,
+          personalEmail: register.person.email,
+        }
+      : details.data;
     if (!d || filled.current) return;
     filled.current = true;
     setYou({ displayName: d.displayName, personalEmail: d.personalEmail });
-  }, [open, details.data]);
+  }, [open, details.data, register]);
 
   const create = useMutation({
-    mutationFn: () =>
-      businessApi.create({
+    mutationFn: (): Promise<{ business: BusinessSummary }> => {
+      const body = {
         mode,
         name: biz.name.trim(),
         teamSize: biz.teamSize,
@@ -402,8 +415,19 @@ function CreateBusinessDialog({
         taxId: biz.taxId.trim(),
         displayName: adding ? undefined : you.displayName.trim(),
         personalEmail: adding ? undefined : you.personalEmail.trim(),
-      }),
+      };
+      return register
+        ? registerApi.createBusiness(register.token, body)
+        : businessApi.create(body);
+    },
     onSuccess: async (res) => {
+      if (register) {
+        setDone({
+          name: res.business.name,
+          tenantSlug: res.business.tenantSlug || res.business.code,
+        });
+        return;
+      }
       await Promise.all([
         qc.invalidateQueries({ queryKey: businessesKey }),
         qc.invalidateQueries({ queryKey: meKey }),
@@ -463,15 +487,17 @@ function CreateBusinessDialog({
             </DialogTitle>
             <DialogDescription className="mt-1 text-sm text-muted-foreground">
               This is your business’s own URL. Save it and share it with your
-              team: only people you add can sign in there. You can always find
-              it in My Profile.
+              team: only people you add can sign in there.{" "}
+              {register
+                ? "Sign in there with your mobile number to open it."
+                : "You can always find it in My Profile."}
             </DialogDescription>
             <div className="mt-4 rounded-lg border bg-muted/40 p-3">
               <BusinessUrl slug={done.tenantSlug} />
             </div>
             <div className="mt-6 flex justify-end">
               <Button onClick={() => close(false)}>
-                Open {done.name} <ArrowRight />
+                {register ? "Sign in to" : "Open"} {done.name} <ArrowRight />
               </Button>
             </div>
           </div>

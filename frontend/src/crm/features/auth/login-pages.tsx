@@ -12,6 +12,7 @@ import {
 import { LogoMark } from "@crm/components/brand";
 import { AuthHeading, AuthLayout } from "./auth-layout";
 import { LoginForm } from "./login-form";
+import { RegisterFlow } from "./register-flow";
 import { normalizeCode, setSignInTenant } from "@crm/lib/tenant";
 import { Button } from "@crm/components/ui/button";
 import { Input } from "@crm/components/ui/input";
@@ -24,15 +25,15 @@ export function useDocumentTitle(title: string) {
 }
 
 /**
- * "/" — the site's own page (D-158): start a CRM with your mobile number. Each business
- * signs its people in at its own URL; this page also opens that URL from a code, and
- * someone who already has an account is shown their business URLs after the code.
+ * "/" — the site's own page (D-158, D-160): "Create your own CRM". It only registers: no
+ * one signs in here, not staff, a Super Admin or the platform owner. It makes no call until
+ * the person sends their number (send code, check code). Each business signs its people in
+ * at its own URL; this page also opens that URL from a code.
  */
-export function LoginPage() {
+export function CreateYourCrmPage() {
   const { t } = useTranslation();
-  setSignInTenant(""); // the main page signs anyone in
+  setSignInTenant("");
   useDocumentTitle("Create your CRM");
-  const [emailWay, setEmailWay] = useState(false);
   return (
     <AuthLayout
       footer={
@@ -44,23 +45,10 @@ export function LoginPage() {
       }
     >
       <AuthHeading
-        title={emailWay ? "Sign in with email" : "Create your own CRM"}
-        subtitle={
-          emailWay
-            ? "For people added by email. Next time, use your business URL."
-            : "Enter your mobile number. After the code you set up your business and get its own URL."
-        }
+        title="Create your own CRM"
+        subtitle="Enter your mobile number. After the code you set up your business and get its own URL."
       />
-      <LoginForm audience="workspace" phoneOnly={!emailWay} />
-      <button
-        type="button"
-        className="mt-3 text-[13px] font-medium text-primary hover:underline"
-        onClick={() => setEmailWay(!emailWay)}
-      >
-        {emailWay
-          ? "Create a CRM with your mobile number instead"
-          : "Added to a business by email? Sign in with email"}
-      </button>
+      <RegisterFlow />
       <OpenBusinessUrl />
       {/* On a phone the brand panel is hidden: say what this is under the form. */}
       <ul className="mt-8 space-y-3.5 lg:hidden">
@@ -96,22 +84,6 @@ export function LoginPage() {
           </li>
         ))}
       </ul>
-      <div className="mt-8 flex flex-col items-start gap-1.5 rounded-lg border border-dashed bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-        <div className="flex items-center gap-2.5 text-[13px] text-muted-foreground">
-          <Crown className="size-4 text-primary" aria-hidden />
-          {t("auth.login.ownerPrompt")}
-        </div>
-        <Link
-          to="/crm/owner/login"
-          className="group inline-flex items-center gap-1 text-[13px] font-medium text-primary hover:underline"
-        >
-          {t("auth.login.ownerLink")}
-          <ArrowRight
-            className="size-3.5 transition-transform group-hover:translate-x-0.5"
-            aria-hidden
-          />
-        </Link>
-      </div>
     </AuthLayout>
   );
 }
@@ -164,7 +136,7 @@ function OpenBusinessUrl() {
       {error ? <p className="mt-1.5 text-[13px] text-danger">{error}</p> : null}
       <p className="mt-2 text-xs text-muted-foreground">
         Don’t have it? Enter your mobile number above — after the code we show
-        your business URLs.
+        your business URLs, or ask your Super Admin.
       </p>
     </form>
   );

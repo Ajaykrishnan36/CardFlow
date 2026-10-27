@@ -27,6 +27,24 @@
         "cd backend && CRM_SMTP_HOST= CRM_BREVO_API_KEY= go run ./cmd/api/"
       ],
       "port": 8080
+    },
+    {
+      "name": "browser-test-backend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd backend && PORT=8090 DATABASE_URL='postgres://ajay@localhost:5432/crm_browser_test?sslmode=disable' CRM_APP_ENV=local CRM_SEED_DEMO=true CRM_ENCRYPTION_KEY_BASE64= CRM_SMTP_HOST= CRM_BREVO_API_KEY= SMS_PROVIDER=preview CRM_BASE_URL=http://localhost:3002 CRM_OWNER_EMAIL= CRM_OWNER_BOOTSTRAP_PASSWORD= CRM_CARDFLOW_SYNC=false CRM_FRESH_START= go run ./cmd/api/"
+      ],
+      "port": 8090
+    },
+    {
+      "name": "browser-test-frontend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd frontend && API_PROXY_TARGET=http://127.0.0.1:8090 npm run web -- --port 3002"
+      ],
+      "port": 3002
     }
   ]
 }

@@ -102,7 +102,8 @@ export async function api<T>(path: string, opts: RequestOptions = {}, retried = 
     headers['X-Session-Transport'] = 'bearer';
     const token = sessionToken();
     if (token) headers.Authorization = `Bearer ${token}`;
-  } else if (method !== 'GET') {
+  } else if (method !== 'GET' && !path.startsWith('/public/')) {
+    // /public/ calls carry no cookie session, so they need no CSRF token (and no extra call for one).
     headers['X-CSRF-Token'] = await ensureCsrf();
   }
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';

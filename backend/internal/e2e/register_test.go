@@ -1,0 +1,207 @@
+package e2e
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+)
+
+// register goes through "Create your own CRM" (D-160): send a code, check it. It returns the
+// verify answer, which carries the registration token and never a session.
+func register(t *testing.T, phone string) resp {
+	t.Helper()
+	phoneSeq++
+	clientIP = fmt.Sprintf("10.8.%d.%d", phoneSeq/250, phoneSeq%250+1)
+	defer func() { clientIP = "" }()
+	r := call(t, "POST", crmAPI+"/public/register/request", "", map[string]any{"phone": phone})
+	want(t, r, 200, "register: send code to "+phone)
+	v := call(t, "POST", crmAPI+"/public/register/verify", "", map[string]any{"phone": phone, "code": r.str("devCode")})
+	want(t, v, 200, "register: check code for "+phone)
+	if v.str("token") != "" || strings.Contains(strings.Join(v.Header.Values("Set-Cookie"), ";"), "crm_sid=") {
+		t.Fatalf("registering must not sign in: %s / %v", truncate(v.Raw, 200), v.Header.Get("Set-Cookie"))
+	}
+	if !strings.HasPrefix(v.str("registrationToken"), "reg_") {
+		t.Fatalf("no registration token: %s", truncate(v.Raw, 300))
+	}
+	return v
+}
+
+// signInAt signs a phone in at one business's own URL and returns the bearer token.
+func signInAt(t *testing.T, phone, tenant string) resp {
+	t.Helper()
+	phoneSeq++
+	clientIP = fmt.Sprintf("10.7.%d.%d", phoneSeq/250, phoneSeq%250+1)
+	defer func() { clientIP = "" }()
+	r := call(t, "POST", crmAPI+"/auth/phone/request", "", map[string]any{"phone": phone, "tenant": tenant})
+	if r.Status != 200 {
+		return r
+	}
+	return call(t, "POST", crmAPI+"/auth/phone/verify", "", map[string]any{"phone": phone, "code": r.str("devCode"), "tenant": tenant})
+}
+
+func registerBusiness(t *testing.T, token string, body map[string]any) resp {
+	t.Helper()
+	body["registrationToken"] = token
+	if _, ok := body["taxId"]; !ok {
+		body["taxIdType"], body["taxId"] = "pan", testPAN()
+	}
+	r := call(t, "POST", crmAPI+"/public/register/business", "", body)
+	want(t, r, 201, "register business "+fmt.Sprint(body["name"]))
+	if r.str("token") != "" || !strings.HasSuffix(r.str("loginPath"), "/login") {
+		t.Fatalf("a new business answers with its sign-in URL, not a session: %s", truncate(r.Raw, 300))
+	}
+	return r
+}
+
+// Ajay's plan: three businesses from "Create your own CRM", each with its own URL; a partner
+// who is Super Admin of two signs in at those two only; staff only at their own business.
+func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
+	ajay := freshPhone()
+
+	// 1. A new number: no account yet, nothing about anyone else.
+	first := register(t, ajay)
+	if first.Body["hasAccount"] != false || len(first.list("businesses")) != 0 {
+		t.Fatalf("a new number has no account: %s", truncate(first.Raw, 300))
+	}
+	// A "Create your own CRM" code never signs in, and a sign-in code never registers.
+	// (Another number: each number may ask for 3 codes in 10 minutes, as in real use.)
+	other := freshPhone()
+	reg := call(t, "POST", crmAPI+"/public/register/request", "", map[string]any{"phone": other})
+	want(t, reg, 200, "register code")
+	if x := call(t, "POST", crmAPI+"/auth/phone/verify", "", map[string]any{"phone": other, "code": reg.str("devCode")}); x.Status == 200 {
+		t.Fatalf("a register code signed in: %s", truncate(x.Raw, 200))
+	}
+	// A made-up or altered token is refused.
+	for _, bad := range []string{"", "reg_abc.def", first.str("registrationToken") + "x"} {
+		x := call(t, "POST", crmAPI+"/public/register/business", "", map[string]any{"registrationToken": bad, "name": "Fake", "taxIdType": "pan", "taxId": testPAN()})
+		want(t, x, 401, "register with token "+truncate(bad, 12))
+	}
+
+	traders := registerBusiness(t, first.str("registrationToken"), map[string]any{
+		"mode": "first", "name": "Ajay Traders", "displayName": "Ajay Krishnan", "personalEmail": "ajay-" + ajay + "@example.com", "teamSize": "2-10", "industry": "Retail",
+	})
+
+	// 2. Coming back to the page: the code shows who they are and their URLs first.
+	again := register(t, ajay)
+	if again.Body["hasAccount"] != true || again.str("person", "name") != "Ajay Krishnan" || again.str("person", "email") != "ajay-"+ajay+"@example.com" {
+		t.Fatalf("a returning Super Admin is told they have an account: %s", truncate(again.Raw, 400))
+	}
+	bs := again.list("businesses")
+	b0, _ := bs[0].(map[string]any)
+	if len(bs) != 1 || b0["name"] != "Ajay Traders" || b0["roleKey"] != "SUPER_ADMIN" || b0["loginPath"] != traders.str("loginPath") {
+		t.Fatalf("their business and its URL: %v", bs)
+	}
+	// "Request my URL" emails them (console mail in tests).
+	sent := call(t, "POST", crmAPI+"/public/register/send-urls", "", map[string]any{"registrationToken": again.str("registrationToken")})
+	want(t, sent, 200, "request my URL")
+
+	// 3. They can still create more businesses; each is linked to them.
+	tech := registerBusiness(t, again.str("registrationToken"), map[string]any{"mode": "add", "name": "Ajay Tech"})
+	bikes := registerBusiness(t, again.str("registrationToken"), map[string]any{"mode": "add", "name": "Ajay Bikes"})
+	slugs := map[string]string{}
+	for k, r := range map[string]resp{"traders": traders, "tech": tech, "bikes": bikes} {
+		slugs[k] = r.str("business", "tenantSlug")
+	}
+	if slugs["traders"] == slugs["tech"] || slugs["tech"] == slugs["bikes"] {
+		t.Fatalf("each business has its own URL: %v", slugs)
+	}
+	var mine int
+	if err := testDB.Pool.QueryRow(context.Background(), `SELECT count(*) FROM crm.workspaces w JOIN crm.tenants t ON t.id = w.tenant_id
+		WHERE t.slug = ANY($1) AND w.created_by_identity = t.owner_identity
+		  AND w.created_by_identity = (SELECT identity_id FROM crm.verified_identifiers WHERE kind = 'phone' AND value_normalized = '+91' || $2)`,
+		[]string{slugs["traders"], slugs["tech"], slugs["bikes"]}, ajay).Scan(&mine); err != nil {
+		t.Fatal(err)
+	}
+	if mine != 3 {
+		t.Fatalf("all three businesses are Ajay's: %d", mine)
+	}
+
+	// Ajay signs in at each business's own URL, then adds the team.
+	session := signInAt(t, ajay, slugs["traders"])
+	want(t, session, 200, "Ajay signs in at Ajay Traders' URL")
+	boss := session.str("token")
+	owner := ownerSignIn(t)
+	want(t, call(t, "PUT", crmAPI+"/platform/plans/team20", owner, map[string]any{"name": "Team 20", "isActive": true, "position": 8, "limits": map[string]any{"members": 20}}), 200, "a plan with room")
+	for _, k := range []string{"traders", "tech", "bikes"} {
+		var wsID string
+		if err := testDB.Pool.QueryRow(context.Background(), `SELECT id::text FROM crm.workspaces WHERE code = $1`, slugs[k]).Scan(&wsID); err != nil {
+			t.Fatal(err)
+		}
+		want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+wsID, owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for "+k)
+	}
+	add := func(biz, name, phone, role string) {
+		t.Helper()
+		want(t, call(t, "POST", crmAPI+"/w/"+slugs[biz]+"/admin/members", boss, map[string]any{"displayName": name, "phone": phone, "roleKey": role}), 201, "add "+name+" to "+biz)
+	}
+	ram := freshPhone()
+	team := map[string][]string{}
+	for _, biz := range []string{"traders", "tech"} {
+		add(biz, "Ram", ram, "SUPER_ADMIN")
+		admin := freshPhone()
+		add(biz, "Admin of "+biz, admin, "ADMIN")
+		team[biz] = append(team[biz], admin)
+		staff := 2
+		if biz == "tech" {
+			staff = 5
+		}
+		for i := 0; i < staff; i++ {
+			p := freshPhone()
+			add(biz, fmt.Sprintf("Staff %d", i), p, "STAFF")
+			team[biz] = append(team[biz], p)
+		}
+	}
+	for i, role := range []string{"ADMIN", "SALES_STAFF", "SALES_STAFF", "SERVICE_STAFF", "SERVICE_STAFF", "STAFF", "STAFF", "STAFF", "STAFF"} {
+		p := freshPhone()
+		add("bikes", fmt.Sprintf("Bikes %d", i), p, role)
+		team["bikes"] = append(team["bikes"], p)
+	}
+	counts := map[string]int{"traders": 5, "tech": 8, "bikes": 10}
+	for biz, n := range counts {
+		var got int
+		if err := testDB.Pool.QueryRow(context.Background(), `SELECT count(*) FROM crm.memberships m JOIN crm.workspaces w ON w.id = m.workspace_id WHERE w.code = $1 AND m.status = 'active'`, slugs[biz]).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != n {
+			t.Fatalf("%s has %d people, want %d", biz, got, n)
+		}
+	}
+
+	// Ram, Super Admin of two: those two URLs only.
+	want(t, signInAt(t, ram, slugs["traders"]), 200, "Ram at Ajay Traders")
+	want(t, signInAt(t, ram, slugs["tech"]), 200, "Ram at Ajay Tech")
+	if x := signInAt(t, ram, slugs["bikes"]); x.str("code") != "account_not_found" {
+		t.Fatalf("Ram is not in Ajay Bikes: %d %s", x.Status, truncate(x.Raw, 200))
+	}
+	// Each person only at their own business.
+	want(t, signInAt(t, team["bikes"][1], slugs["bikes"]), 200, "sales staff at Ajay Bikes")
+	for _, other := range []string{"traders", "tech"} {
+		if x := signInAt(t, team["bikes"][1], slugs[other]); x.str("code") != "account_not_found" {
+			t.Fatalf("bikes staff signed in at %s: %d", other, x.Status)
+		}
+	}
+	if x := signInAt(t, team["traders"][0], slugs["tech"]); x.str("code") != "account_not_found" {
+		t.Fatalf("Ajay Traders' admin signed in at Ajay Tech: %d", x.Status)
+	}
+
+	// Ram on "Create your own CRM": told he has an account with his two businesses, and he
+	// may create his own, which is linked to him.
+	ramReg := register(t, ram)
+	if ramReg.Body["hasAccount"] != true || len(ramReg.list("businesses")) != 2 {
+		t.Fatalf("Ram sees his two businesses: %s", truncate(ramReg.Raw, 400))
+	}
+	own := registerBusiness(t, ramReg.str("registrationToken"), map[string]any{"mode": "add", "name": "Ram Motors"})
+	var ramIsSuperAdmin bool
+	if err := testDB.Pool.QueryRow(context.Background(), `SELECT EXISTS (SELECT 1 FROM crm.memberships m JOIN crm.workspaces w ON w.id = m.workspace_id
+		JOIN crm.role_assignments ra ON ra.membership_id = m.id JOIN crm.roles r ON r.id = ra.role_id AND r.key = 'SUPER_ADMIN'
+		JOIN crm.verified_identifiers v ON v.identity_id = m.identity_id AND v.kind = 'phone' AND v.value_normalized = '+91' || $2
+		WHERE w.code = $1)`, own.str("business", "tenantSlug"), ram).Scan(&ramIsSuperAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if !ramIsSuperAdmin {
+		t.Fatal("Ram's own business is linked to him as Super Admin")
+	}
+	if x := signInAt(t, ajay, own.str("business", "tenantSlug")); x.str("code") != "account_not_found" {
+		t.Fatalf("Ajay is not in Ram's business: %d", x.Status)
+	}
+}

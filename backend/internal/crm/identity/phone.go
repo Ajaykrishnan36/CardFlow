@@ -36,7 +36,10 @@ func (s *Service) SetAppProfile(p AppProfile) { s.appProfile = p }
 const (
 	purposePhoneLogin  = "login"
 	purposePhoneChange = "change_phone"
-	newUserName        = "New user"
+	// purposeRegister: a code from "Create your own CRM" (D-160). It proves the number and
+	// never signs anyone in; a sign-in code can't be used there, nor this one to sign in.
+	purposeRegister = "register"
+	newUserName     = "New user"
 )
 
 type PhoneRequestInput struct {
@@ -177,6 +180,22 @@ func (s *Service) RequestPhoneOTP(ctx context.Context, in PhoneRequestInput, met
 	return s.sendPhoneCode(ctx, phone, purposePhoneLogin, nil, meta)
 }
 
+// RequestRegisterCode sends a code for "Create your own CRM" (D-160). Anyone may ask: it
+// only proves the number.
+func (s *Service) RequestRegisterCode(ctx context.Context, rawPhone string, meta RequestMeta) (*OTPRequestResult, error) {
+	phone, ok := normalizePhone(strings.TrimSpace(rawPhone))
+	if !ok {
+		return nil, errBadPhone
+	}
+	return s.sendPhoneCode(ctx, phone, purposeRegister, nil, meta)
+}
+
+// ProveRegisterPhone checks a "Create your own CRM" code (creating the identity for a new
+// number, like ProvePhone). It never starts a session.
+func (s *Service) ProveRegisterPhone(ctx context.Context, in PhoneVerifyInput, meta RequestMeta) (*PhoneProof, error) {
+	return s.provePhone(ctx, in, purposeRegister, meta)
+}
+
 // PhoneProof is the result of a correct code: who the person is, before any session exists.
 type PhoneProof struct {
 	IdentityID uuid.UUID
@@ -190,6 +209,10 @@ type PhoneProof struct {
 // ProvePhone checks a sign-in code and returns the identity it belongs to, creating the
 // identity when the number is new. It does not start a session.
 func (s *Service) ProvePhone(ctx context.Context, in PhoneVerifyInput, meta RequestMeta) (*PhoneProof, error) {
+	return s.provePhone(ctx, in, purposePhoneLogin, meta)
+}
+
+func (s *Service) provePhone(ctx context.Context, in PhoneVerifyInput, purpose string, meta RequestMeta) (*PhoneProof, error) {
 	phone, ok := normalizePhone(strings.TrimSpace(in.Phone))
 	code := strings.TrimSpace(in.Code)
 	if !ok {
@@ -202,7 +225,7 @@ func (s *Service) ProvePhone(ctx context.Context, in PhoneVerifyInput, meta Requ
 	if len(name) > 120 {
 		name = name[:120]
 	}
-	challengeID, err := s.checkPhoneCode(ctx, phone, purposePhoneLogin, code)
+	challengeID, err := s.checkPhoneCode(ctx, phone, purpose, code)
 	if err != nil {
 		return nil, err
 	}

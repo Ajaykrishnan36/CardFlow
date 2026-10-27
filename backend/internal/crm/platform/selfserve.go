@@ -367,7 +367,19 @@ func (h *Handler) handleCreateBusiness(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	status, resp, err := shared.Idempotent(ctx, h.store.Pool, me, r.Header.Get("Idempotency-Key"), in, func() (int, any, error) {
+	status, resp, err := h.createBusiness(ctx, me, r.Header.Get("Idempotency-Key"), in)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	shared.WriteJSON(w, status, resp)
+}
+
+// createBusiness is the one path that creates a self-serve business for a person: the
+// owner's switch and limit, the business, its listing. Signed in (Add business) and
+// "Create your own CRM" (D-160) both use it.
+func (h *Handler) createBusiness(ctx context.Context, me uuid.UUID, idemKey string, in CreateBusinessInput) (int, any, error) {
+	return shared.Idempotent(ctx, h.store.Pool, me, idemKey, in, func() (int, any, error) {
 		settings := SelfServe(ctx, h.store.Pool)
 		if !settings.Enabled {
 			return 0, nil, shared.Forbidden("self_serve_off", "Creating a business isn't open right now. Ask for an invitation instead.")
@@ -407,11 +419,6 @@ func (h *Handler) handleCreateBusiness(w http.ResponseWriter, r *http.Request) {
 		}
 		return http.StatusCreated, map[string]any{"business": b, "next": "/" + b.TenantSlug + "/home"}, nil
 	})
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
-	}
-	shared.WriteJSON(w, status, resp)
 }
 
 // refuseExistingOwner: someone who is already a Super Admin adds businesses from inside;

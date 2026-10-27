@@ -843,6 +843,41 @@ export interface SaveCardBody {
   note?: string;
 }
 
+/** "Create your own CRM" (D-160): registers only, never signs in. */
+export interface RegisteredBusiness {
+  name: string;
+  slug: string;
+  display: string;
+  role: string;
+  roleKey: string;
+  city: string;
+  members: number;
+  loginPath: string;
+  loginUrl: string;
+}
+export interface RegisterCheck {
+  registrationToken: string;
+  expiresIn: number;
+  hasAccount: boolean;
+  person: { name: string; email: string; phone: string };
+  businesses: RegisteredBusiness[];
+  canCreate: boolean;
+  limit: number;
+  created: number;
+}
+export const registerApi = {
+  request: (phone: string) =>
+    api<{ sent: boolean; expiresIn: number; channel: string; devCode?: string }>('/public/register/request', { method: 'POST', body: { phone } }),
+  verify: (body: { phone: string; code: string }) => api<RegisterCheck>('/public/register/verify', { method: 'POST', body }),
+  createBusiness: (registrationToken: string, body: CreateBusinessBody) =>
+    api<{ business: BusinessSummary; loginPath: string; loginUrl: string; display: string }>('/public/register/business', {
+      method: 'POST',
+      body: { ...body, registrationToken }
+    }),
+  sendUrls: (registrationToken: string) =>
+    api<{ sent: boolean; email: string }>('/public/register/send-urls', { method: 'POST', body: { registrationToken } })
+};
+
 export const phoneAuthApi = {
   /** Text a 6-digit code. `devCode` is present only where the server runs without an SMS provider. */
   request: (phone: string) =>

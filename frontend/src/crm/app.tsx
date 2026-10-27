@@ -276,8 +276,9 @@ const SHARED_PAGES = /^\/crm\/(login|signup|forgot-password|reset-password|accep
  * layout doesn't have — is the desktop CRM, which is responsive.
  */
 function Shell() {
-  const { data: me } = useMe();
   const location = useLocation();
+  // The site's own page only registers and asks the server nothing until a number is sent (D-160).
+  const { data: me } = useMe(location.pathname !== '/');
   const phone = usePhoneLayout();
   const [noAppProfile, setNoAppProfile] = useState(false);
   // Signing in as someone else gets a fresh chance at the phone layout.

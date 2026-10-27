@@ -1516,6 +1516,22 @@ steps may take up to 5 minutes (`startupTimeout`) because each statement crosses
 on the host they take seconds. The automated tests are unaffected: e2e makes its own
 throwaway database from the `DB_*` settings and sets its own `DATABASE_URL`.
 
+## D-160 — "Create your own CRM" only registers
+
+The site's own page (`/`) never signs anyone in: not staff, a Super Admin or the platform
+owner. It loads with no API call (not even `/me`) and then makes two: `POST
+/public/register/request` (send a code) and `POST /public/register/verify` (check it). Codes
+there have their own purpose `register`, so a register code can't sign in and a sign-in code
+can't register. A correct code returns a registration token (HMAC of identity + expiry with
+the encryption key, 30 minutes, nothing stored, no cookie, no session) and, for a number
+that already belongs to a business, the person (name, email, phone) and each business with
+its role and URL: "You already have a CRM account — sign in at your business URL", with
+"Email me my URLs" (`/public/register/send-urls`). Anyone may still create a business with
+the token (`/public/register/business`, same rules and limits as Add business); it is linked
+to them as Super Admin, and the next step is signing in at its URL. Sign-in exists only at
+`/<code>/login` (and the owner console). The email sign-in link and the owner-console link
+left `/`.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

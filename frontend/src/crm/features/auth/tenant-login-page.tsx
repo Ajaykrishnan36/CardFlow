@@ -8,13 +8,13 @@ import {
 } from "react-router-dom";
 import { Building2, ShieldCheck } from "lucide-react";
 import { onboardingApi } from "@crm/api/endpoints";
-import { homeFor, isAuthStep, isOwnerSession, useMe } from "@crm/auth/session";
+import { isAuthStep, useMe } from "@crm/auth/session";
 import { FullPageLoader } from "@crm/components/states";
 import { safeReturnTo } from "@crm/lib/utils";
 import { setSignInTenant } from "@crm/lib/tenant";
 import { AuthHeading, AuthLayout } from "./auth-layout";
 import { LoginForm } from "./login-form";
-import { LoginPage, useDocumentTitle } from "./login-pages";
+import { CreateYourCrmPage, useDocumentTitle } from "./login-pages";
 
 /**
  * One business's own sign-in page (D-155, D-158): /<business-code>/login, or the root of the
@@ -121,31 +121,6 @@ export function RootLoginPage() {
   });
   if (own && byHost.isPending) return <FullPageLoader />;
   if (own && byHost.data) return <TenantLoginPage code={byHost.data.code} />;
-  return <SignedInOr />;
-}
-
-function SignedInOr() {
-  const { data: me, isPending } = useMe();
-  setSignInTenant("");
-  const [search] = useSearchParams();
-  if (isPending) return <FullPageLoader />;
-  if (me) {
-    const back = safeReturnTo(search.get("returnTo"));
-    if (isAuthStep(me.next))
-      return (
-        <Navigate
-          to={
-            back ? `${me.next}?returnTo=${encodeURIComponent(back)}` : me.next
-          }
-          replace
-        />
-      );
-    return (
-      <Navigate
-        to={back ?? (isOwnerSession(me) ? homeFor(me) : "/crm/businesses")}
-        replace
-      />
-    );
-  }
-  return <LoginPage />;
+  // The main site only registers (D-160): no session check, no sign-in.
+  return <CreateYourCrmPage />;
 }
