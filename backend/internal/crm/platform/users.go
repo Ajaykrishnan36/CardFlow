@@ -101,8 +101,16 @@ func (h *Handler) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	// the same set the Overview's Users and Invitations cards count.
 	f := ownerFilterFrom(r)
 	on := f.on()
+	// scope=team (D-162): only the owner's own team — the platform owner and people in the
+	// platform workspace (admins, sales and marketing staff). Customers' people are seen
+	// under Products and Apps.
+	team := ""
+	if r.URL.Query().Get("scope") == "team" {
+		team = ` AND (i.is_platform_owner OR EXISTS (SELECT 1 FROM crm.memberships tm JOIN crm.workspaces tw ON tw.id = tm.workspace_id AND tw.is_platform
+			WHERE tm.identity_id = i.id AND tm.status <> 'revoked'))`
+	}
 	where := `
-		WHERE i.status <> 'deleted' AND ($1 = '' OR i.display_name ILIKE $1 OR e.value_normalized ILIKE $1 OR p.value_normalized ILIKE $1)
+		WHERE i.status <> 'deleted'` + team + ` AND ($1 = '' OR i.display_name ILIKE $1 OR e.value_normalized ILIKE $1 OR p.value_normalized ILIKE $1)
 		  AND ($2 = '' OR $2 = 'invited' OR i.status = $2)
 		  AND (NOT $5 OR EXISTS (SELECT 1 FROM crm.memberships fm WHERE fm.identity_id = i.id AND fm.status <> 'revoked' AND fm.workspace_id IN (` + filteredWorkspacesAt(3, 4) + `)))
 		  AND ($2 <> 'invited' OR EXISTS (SELECT 1 FROM crm.invitations iv JOIN crm.memberships im ON im.id = iv.membership_id

@@ -152,7 +152,14 @@ export const platformApi = {
     ),
   /** Products: one per person who created businesses, with how many apps they run. */
   customers: () => api<{ data: Customer[] }>('/platform/customers').then((r) => r.data),
-  customer: (id: string) => api<{ customer: Customer; apps: Application[] }>(`/platform/customers/${enc(id)}`)
+  customer: (id: string) => api<{ customer: Customer; apps: Application[] }>(`/platform/customers/${enc(id)}`),
+  /** The person behind a platform-CRM lead, contact or account and their businesses (D-162). */
+  recordBusinesses: (object: string, id: string) =>
+    api<{
+      person: { id: string; name: string; phone: string; email: string } | null;
+      apps: Application[];
+      memberOf: Array<{ name: string; slug: string; display: string; role: string; members: number; loginUrl: string }>;
+    }>(`/platform/records/${enc(object)}/${enc(id)}/businesses`)
 };
 
 export interface Application {
@@ -221,7 +228,7 @@ export const invitationsApi = {
 };
 
 export const usersApi = {
-  list: (params: { q?: string; status?: string; limit?: number; offset?: number; product?: string; app?: string } = {}) => api<Page<UserSummary>>(`/platform/users${qs(params)}`),
+  list: (params: { q?: string; status?: string; limit?: number; offset?: number; product?: string; app?: string; scope?: 'team' | 'all' } = {}) => api<Page<UserSummary>>(`/platform/users${qs(params)}`),
   get: (id: string) => api<UserDetail>(`/platform/users/${enc(id)}`),
   update: (id: string, body: UserUpdateBody) => api<UserDetail>(`/platform/users/${enc(id)}`, { method: 'PATCH', body }),
   sendPasswordReset: (id: string) =>

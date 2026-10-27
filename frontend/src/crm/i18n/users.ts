@@ -2,7 +2,7 @@
 const strings = {
   list: {
     title: 'Users',
-    description: 'Everyone who can sign in to the CRM or a product',
+    description: 'Your own team: admins, sales and marketing staff who run the platform. Customers’ people are in Products and Apps.',
     search: 'Search name, email or phone',
     filterAll: 'All',
     filterActive: 'Active',

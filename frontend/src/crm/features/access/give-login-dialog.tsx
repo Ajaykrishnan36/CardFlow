@@ -79,6 +79,8 @@ export interface GiveLoginFieldsProps {
   defaultWorkspaceName?: string;
   errors?: Record<string, string>;
   disabled?: boolean;
+  /** Owner console Users (D-162): only your own team; no customer business to pick. */
+  teamOnly?: boolean;
 }
 
 function FieldError({ children }: { children?: string }) {
@@ -101,7 +103,7 @@ function GroupLabel({ children, aside }: { children: ReactNode; aside?: ReactNod
 }
 
 /** Workspace → role → products → permission sets → invitation or temporary password. */
-export function GiveLoginFields({ value, onChange, personName, email, defaultWorkspaceName, errors: rawErrors, disabled: disabledProp }: GiveLoginFieldsProps) {
+export function GiveLoginFields({ value, onChange, personName, email, defaultWorkspaceName, errors: rawErrors, disabled: disabledProp, teamOnly }: GiveLoginFieldsProps) {
   const { t } = useTranslation();
   const uid = useId();
   const errors = normalizeErrors(rawErrors);
@@ -185,7 +187,7 @@ export function GiveLoginFields({ value, onChange, personName, email, defaultWor
     onChange(m === 'password' ? { ...rest, method: 'password', password: '' } : { ...rest, method: 'invite' });
   };
 
-  const modeOptions: Array<{ value: WorkspaceMode; title: string; hint: string; unavailable?: string }> = [
+  const allModes: Array<{ value: WorkspaceMode; title: string; hint: string; unavailable?: string }> = [
     { value: 'platform', title: t('access.login.wsPlatform'), hint: t('access.login.wsPlatformHint') },
     {
       value: 'existing',
@@ -195,6 +197,7 @@ export function GiveLoginFields({ value, onChange, personName, email, defaultWor
     },
     { value: 'new', title: t('access.login.wsNew'), hint: t('access.login.wsNewHint') }
   ];
+  const modeOptions = teamOnly ? allModes.filter((o) => o.value === 'platform') : allModes;
 
   const wsSets = selectedWs
     ? [...selectedWs.permissionSets, ...extraSets.filter((x) => x.workspaceId === selectedWs.id && !selectedWs.permissionSets.some((s) => s.id === x.id))]
@@ -211,7 +214,7 @@ export function GiveLoginFields({ value, onChange, personName, email, defaultWor
       {/* Workspace */}
       <fieldset disabled={disabled}>
         <GroupLabel>{t('access.login.workspace')}</GroupLabel>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className={cn('grid gap-2', !teamOnly && 'sm:grid-cols-3')}>
           {modeOptions.map((o) => {
             const checked = mode === o.value;
             const off = disabled || Boolean(o.unavailable);

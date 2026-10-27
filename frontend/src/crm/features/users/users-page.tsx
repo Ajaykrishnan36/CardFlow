@@ -20,7 +20,6 @@ import { PermissionSetsPanel } from '@crm/features/access/permission-sets-panel'
 import { useAccessWorkspaces } from '@crm/features/access/use-access';
 import { shortDate, userStatusTone } from './user-format';
 import { NewUserDialog } from './new-user-dialog';
-import { OwnerScopeBar, ownerFilterParams, useChangeOwnerFilter, useOwnerFilter } from '@crm/features/owner/owner-filter';
 
 const PAGE_SIZE = 50;
 type StatusFilter = 'all' | 'active' | 'invited' | 'suspended';
@@ -107,9 +106,7 @@ function UsersList() {
   const q = params.get('q') ?? '';
   const rawStatus = params.get('status');
   const status: StatusFilter = rawStatus === 'active' || rawStatus === 'suspended' || rawStatus === 'invited' ? rawStatus : 'all';
-  // The owner's Product filter (D-86): the same people the Overview's Users card counts.
-  const ownerFilter = useOwnerFilter();
-  const changeOwnerFilter = useChangeOwnerFilter();
+  // Only the owner's own team (D-162); customers' people are under Products and Apps.
   const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
@@ -132,14 +129,14 @@ function UsersList() {
   const onSearch = useCallback((v: string) => update({ q: v, page: null }), [update]);
 
   const query = useQuery({
-    queryKey: ['platform', 'users', { q, status, offset, product: ownerFilter.product, app: ownerFilter.app }],
-    queryFn: () => usersApi.list({ q: q || undefined, status: status === 'all' ? undefined : status, limit: PAGE_SIZE, offset, ...ownerFilterParams(ownerFilter) }),
+    queryKey: ['platform', 'users', { q, status, offset, scope: 'team' }],
+    queryFn: () => usersApi.list({ q: q || undefined, status: status === 'all' ? undefined : status, limit: PAGE_SIZE, offset, scope: 'team' }),
     placeholderData: keepPreviousData
   });
 
   const rows = query.data?.data;
   const total = query.data?.total ?? 0;
-  const filtered = q !== '' || status !== 'all' || Boolean(ownerFilter.product);
+  const filtered = q !== '' || status !== 'all';
   // A page past the end (e.g. after rows were filtered away) snaps back to page 1.
   useEffect(() => {
     if (rows && rows.length === 0 && page > 1 && !query.isPlaceholderData) update({ page: null });
@@ -151,7 +148,6 @@ function UsersList() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex w-full max-w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
           <SearchInput value={q} onChange={onSearch} placeholder={t('users.list.search')} className="sm:w-64" />
-          <OwnerScopeBar showApp={false} />
         </div>
         <SegmentedFilter<StatusFilter>
           value={status}
@@ -182,7 +178,7 @@ function UsersList() {
               title={t('users.list.noMatchTitle')}
               body={t('users.list.noMatchBody')}
               action={
-                <Button variant="outline" size="sm" onClick={() => { update({ q: null, status: null, page: null }); changeOwnerFilter({ product: '', productCode: '', app: '' }); }}>
+                <Button variant="outline" size="sm" onClick={() => update({ q: null, status: null, page: null })}>
                   {t('users.list.clearFilters')}
                 </Button>
               }

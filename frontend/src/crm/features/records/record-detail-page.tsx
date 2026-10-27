@@ -328,7 +328,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
           </div>
         ) : null}
       </div>
-      {isOwner && object === 'leads' ? <ApplicationBanner leadId={id} /> : null}
+      {isOwner && (object === 'leads' || object === 'contacts' || object === 'accounts') ? <ApplicationBanner object={object as 'leads' | 'contacts' | 'accounts'} id={id} /> : null}
 
       {/* Header / highlights panel */}
       <Card className="mb-4 overflow-hidden">

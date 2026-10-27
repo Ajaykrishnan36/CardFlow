@@ -168,6 +168,124 @@ func (h *Handler) ApprovalRoutes(r chi.Router) {
 	r.Post("/platform/applications/{id}/approve", h.handleApprove)
 	r.Get("/platform/customers", h.handleCustomers)
 	r.Get("/platform/customers/{id}", h.handleCustomer)
+	r.Get("/platform/records/{object}/{id}/businesses", h.handleRecordBusinesses)
+}
+
+// GET /platform/records/{object}/{id}/businesses — on a platform-CRM lead, contact or account
+// (D-162): the person behind it (by the application it came from, else by mobile number or
+// email) and their businesses — the ones they created (any status) and the ones they belong to.
+func (h *Handler) handleRecordBusinesses(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		shared.WriteError(w, r, shared.NotFound("record_not_found"))
+		return
+	}
+	// Contact details of the record (for an account: its contacts and converted leads).
+	var detailSQL string
+	switch chi.URLParam(r, "object") {
+	case "leads":
+		detailSQL = `SELECT l.email, l.mobile, l.phone, (SELECT w.created_by_identity FROM crm.workspaces w WHERE w.application_lead_id = l.id LIMIT 1)
+			FROM crm.leads l WHERE l.id = $1`
+	case "contacts":
+		detailSQL = `SELECT c.email, c.mobile, c.phone, (SELECT w.created_by_identity FROM crm.workspaces w JOIN crm.leads l ON l.id = w.application_lead_id
+			WHERE l.converted_contact_id = c.id LIMIT 1) FROM crm.contacts c WHERE c.id = $1`
+	case "accounts":
+		detailSQL = `SELECT c.email, c.mobile, c.phone, (SELECT w.created_by_identity FROM crm.workspaces w JOIN crm.leads l ON l.id = w.application_lead_id
+			WHERE l.converted_account_id = $1 LIMIT 1) FROM crm.contacts c WHERE c.account_id = $1
+			UNION ALL SELECT a.email, NULL, a.phone, NULL FROM crm.accounts a WHERE a.id = $1`
+	default:
+		shared.WriteError(w, r, shared.NotFound("record_not_found"))
+		return
+	}
+	ctx := r.Context()
+	rows, err := h.store.Pool.Query(ctx, detailSQL, id)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	var emails, phones []string
+	var person *uuid.UUID
+	for rows.Next() {
+		var email, mobile, phone *string
+		var applicant *uuid.UUID
+		if err := rows.Scan(&email, &mobile, &phone, &applicant); err != nil {
+			rows.Close()
+			shared.WriteError(w, r, err)
+			return
+		}
+		if applicant != nil && person == nil {
+			person = applicant
+		}
+		if email != nil && strings.TrimSpace(*email) != "" {
+			emails = append(emails, strings.ToLower(strings.TrimSpace(*email)))
+		}
+		for _, p := range []*string{mobile, phone} {
+			if p != nil {
+				if d := lastDigits(*p); len(d) == 10 {
+					phones = append(phones, d)
+				}
+			}
+		}
+	}
+	rows.Close()
+	if person == nil && (len(emails) > 0 || len(phones) > 0) {
+		var found uuid.UUID
+		err := h.store.Pool.QueryRow(ctx, `
+			SELECT v.identity_id FROM crm.verified_identifiers v JOIN crm.identities i ON i.id = v.identity_id AND i.status <> 'deleted' AND NOT i.is_platform_owner
+			WHERE (v.kind = 'phone' AND right(regexp_replace(v.value_normalized, '\D', '', 'g'), 10) = ANY($1))
+			   OR (v.kind = 'email' AND v.value_normalized = ANY($2))
+			ORDER BY (v.kind = 'phone') DESC LIMIT 1`, phones, emails).Scan(&found)
+		if err == nil {
+			person = &found
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			shared.WriteError(w, r, err)
+			return
+		}
+	}
+	if person == nil {
+		shared.WriteJSON(w, http.StatusOK, map[string]any{"person": nil, "apps": []Application{}, "memberOf": []RegisteredBusiness{}})
+		return
+	}
+	p, err := h.registeredPerson(ctx, *person)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	apps, err := h.queryApplications(ctx, " AND w.created_by_identity = $1", *person)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	member, err := h.registeredBusinesses(ctx, *person)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	own := map[string]bool{}
+	for _, a := range apps {
+		own[a.Code] = true
+	}
+	others := []RegisteredBusiness{}
+	for _, b := range member {
+		if !own[b.Slug] {
+			others = append(others, b)
+		}
+	}
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"person": map[string]any{"id": *person, "name": p.Name, "phone": p.Phone, "email": p.Email},
+		"apps": apps, "memberOf": others})
+}
+
+func lastDigits(s string) string {
+	d := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, s)
+	if len(d) > 10 {
+		d = d[len(d)-10:]
+	}
+	return d
 }
 
 // POST /platform/applications/{id}/approve — open a pending business and send its URL.

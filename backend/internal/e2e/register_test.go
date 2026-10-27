@@ -143,7 +143,8 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	approve(t, owner, tradersSlug)
 	want(t, call(t, "POST", crmAPI+"/platform/applications/"+workspaceID(t, tradersSlug)+"/approve", owner, map[string]any{}), 409, "approve twice")
 	// The owner converts the lead into a contact (and account).
-	want(t, call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{"account": map[string]any{"mode": "new", "name": "Ajay Traders", "kind": "business"}, "createContact": true}), 200, "owner converts the application lead")
+	converted := call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{"account": map[string]any{"mode": "new", "name": "Ajay Traders", "kind": "business"}, "createContact": true})
+	want(t, converted, 200, "owner converts the application lead")
 
 	// 2. Step 4a: Ajay, who already has a CRM, fills the form again. The page says the
 	// same; nothing is created; his URLs go to him by SMS, WhatsApp and email.
@@ -269,6 +270,20 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	}
 	if appsOf["+91"+ajay] != 3 || appsOf["+91"+ram] != 1 {
 		t.Fatalf("Ajay runs 3 apps and Ram 1: %v", appsOf)
+	}
+	// Lead, contact and account show the person's businesses (D-162).
+	for object, id := range map[string]string{"leads": leadID, "contacts": converted.str("contactId"), "accounts": converted.str("accountId")} {
+		x := call(t, "GET", crmAPI+"/platform/records/"+object+"/"+id+"/businesses", owner, nil)
+		want(t, x, 200, "businesses on the "+object+" record")
+		if x.str("person", "phone") != "+91"+ajay || len(x.list("apps")) != 3 {
+			t.Fatalf("the %s record shows Ajay and his 3 businesses: %s", object, truncate(x.Raw, 400))
+		}
+	}
+	// Owner console Users: only the owner's own team, never customers' people (D-162).
+	teamList := call(t, "GET", crmAPI+"/platform/users?scope=team&limit=200", owner, nil)
+	want(t, teamList, 200, "owner's team")
+	if strings.Contains(teamList.Raw, ajay) || strings.Contains(teamList.Raw, ram) || len(teamList.list("data")) == 0 {
+		t.Fatalf("the team list holds the owner's team only: %s", truncate(teamList.Raw, 400))
 	}
 	var ramIsSuperAdmin bool
 	if err := testDB.Pool.QueryRow(context.Background(), `SELECT EXISTS (SELECT 1 FROM crm.memberships m JOIN crm.workspaces w ON w.id = m.workspace_id

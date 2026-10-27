@@ -1558,6 +1558,18 @@ Owner console: **Products** are accounts (one mobile number each) with how many 
 run (`/crm/owner/customers`); **Apps** are all businesses (`/crm/owner/workspaces`, with a
 "To approve" filter). Fresh start takes `CRM_FRESH_START_PHONE=none` to keep only the owner.
 
+## D-162 — Owner console: your team, and each person's businesses
+
+Users in the owner console lists only the owner's own team: the platform owner and the
+people in the platform workspace (admins, sales and marketing staff), via
+`/platform/users?scope=team`; new users there join that team only. Customers' people are seen
+under Products (one per mobile number, with their apps) and Apps. A platform-CRM lead,
+contact or account shows the person behind it — by the application it came from, else by
+mobile number or email — with every business they created (Approve while one waits) and the
+ones they belong to (`GET /platform/records/{object}/{id}/businesses`). Approving and
+setting up businesses stays with the owner for now; letting team staff do it needs its own
+permission.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

@@ -137,6 +137,7 @@ function NewUserForm({ onClose, onAnother }: { onClose: () => void; onAnother: (
             email={email.trim() || '…'}
             errors={loginErrors}
             disabled={create.isPending}
+            teamOnly
           />
         </div>
       </div>
