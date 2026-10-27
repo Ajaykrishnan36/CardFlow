@@ -63,3 +63,29 @@ func (h *Handler) notifyPerson(ctx context.Context, who uuid.UUID, n notice) map
 	}
 	return out
 }
+
+// notifyOwner emails the platform owner(s) about something they should know (D-161).
+func (h *Handler) notifyOwner(ctx context.Context, subject string, lines []string) {
+	rows, err := h.store.Pool.Query(ctx, `
+		SELECT v.value_normalized FROM crm.identities i
+		JOIN crm.verified_identifiers v ON v.identity_id = i.id AND v.kind = 'email'
+		WHERE i.is_platform_owner AND i.status = 'active'`)
+	if err != nil {
+		return
+	}
+	var to []string
+	for rows.Next() {
+		var e string
+		if rows.Scan(&e) == nil {
+			to = append(to, e)
+		}
+	}
+	rows.Close()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+	defer cancel()
+	for _, e := range to {
+		if err := h.mailer.Send(ctx, mail.Message{To: e, Subject: subject, Heading: subject, Lines: lines}); err != nil {
+			slog.Warn("crm: owner notice not sent", "error", err)
+		}
+	}
+}

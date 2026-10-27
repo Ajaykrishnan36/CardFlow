@@ -886,30 +886,11 @@ export interface SaveCardBody {
 }
 
 /** "Create your own CRM" (D-160): registers only, never signs in. */
-export interface RegisteredBusiness {
-  name: string;
-  slug: string;
-  display: string;
-  role: string;
-  roleKey: string;
-  city: string;
-  members: number;
-  loginPath: string;
-  loginUrl: string;
-}
+/** After the code: a registration token only. Nothing about the person is shown (D-161). */
 export interface RegisterCheck {
   registrationToken: string;
   expiresIn: number;
-  hasAccount: boolean;
-  person: { name: string; email: string; phone: string };
-  businesses: RegisteredBusiness[];
   canCreate: boolean;
-  limit: number;
-  created: number;
-  /** Businesses of theirs waiting for the owner's approval (D-161). */
-  pending: Array<{ name: string; code: string; display: string; createdAt: string }>;
-  /** Set when they already have an account: where their URLs are being sent. */
-  notify: { email: string; sms: boolean; whatsapp: boolean } | null;
 }
 export const registerApi = {
   request: (phone: string) =>
@@ -920,8 +901,8 @@ export const registerApi = {
       method: 'POST',
       body: { ...body, registrationToken }
     }),
-  sendUrls: (registrationToken: string) =>
-    api<{ sent: boolean; email: string; channels: Record<'email' | 'sms' | 'whatsapp', string> }>('/public/register/send-urls', { method: 'POST', body: { registrationToken } })
+  /** "Forgot my CRM URL": sends the number's URLs by SMS, WhatsApp and email (same answer for anyone). */
+  requestUrl: (registrationToken: string) => api<{ sent: boolean }>('/public/register/request-url', { method: 'POST', body: { registrationToken } })
 };
 
 export const phoneAuthApi = {

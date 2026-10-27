@@ -113,6 +113,7 @@ type Application struct {
 	OwnerPhone  string     `json:"ownerPhone"`
 }
 
+// The card app's own workspace (business-card-snap) holds synced data, not a customer.
 const applicationSelect = `
 	SELECT w.id::text, w.name, COALESCE(t.slug, w.code), w.status, w.application_lead_id::text, w.created_at, w.approved_at,
 	       (SELECT count(*) FROM crm.memberships m WHERE m.workspace_id = w.id AND m.status = 'active'),
@@ -122,7 +123,7 @@ const applicationSelect = `
 	FROM crm.workspaces w
 	LEFT JOIN crm.tenants t ON t.id = w.tenant_id
 	LEFT JOIN crm.identities i ON i.id = w.created_by_identity
-	WHERE NOT w.is_platform AND w.status <> 'deleted'`
+	WHERE NOT w.is_platform AND w.origin <> 'system' AND w.code <> 'business-card-snap' AND w.status <> 'deleted'`
 
 func (h *Handler) queryApplications(ctx context.Context, where string, args ...any) ([]Application, error) {
 	rows, err := h.store.Pool.Query(ctx, applicationSelect+where+` ORDER BY (w.status = 'pending') DESC, w.created_at DESC LIMIT 500`, args...)

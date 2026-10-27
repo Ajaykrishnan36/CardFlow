@@ -73,10 +73,12 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	ajay := freshPhone()
 	owner := ownerToken(t)
 
-	// 1. A new number: no account yet, nothing about anyone else.
+	// 1. After the code the page learns nothing about anyone (D-161): just a token.
 	first := register(t, ajay)
-	if first.Body["hasAccount"] != false || len(first.list("businesses")) != 0 {
-		t.Fatalf("a new number has no account: %s", truncate(first.Raw, 300))
+	for _, k := range []string{"hasAccount", "person", "businesses", "pending"} {
+		if _, ok := first.Body[k]; ok {
+			t.Fatalf("the code check must not say anything about the person (%s): %s", k, truncate(first.Raw, 300))
+		}
 	}
 	// A "Create your own CRM" code never signs in, and a sign-in code never registers.
 	// (Another number: each number may ask for 3 codes in 10 minutes, as in real use.)
@@ -95,23 +97,29 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	traders := registerBusiness(t, first.str("registrationToken"), map[string]any{
 		"mode": "first", "name": "Ajay Traders", "displayName": "Ajay Krishnan", "personalEmail": "ajay-" + ajay + "@example.com", "teamSize": "2-10", "industry": "Retail",
 	})
-	// Step 3–5 (D-161): "we will review your application"; nobody can sign in at its URL
-	// yet; the application is a lead in the owner console, which the owner approves.
-	if traders.Status != 202 {
-		t.Fatalf("a first business waits for approval: %d %s", traders.Status, truncate(traders.Raw, 300))
+	// Step 3–5: "we will review your application"; the URL isn't shown and nobody can sign
+	// in there yet; the application is a lead in the owner console, which the owner approves.
+	if traders.Status != 202 || traders.str("business", "tenantSlug") != "" {
+		t.Fatalf("a first business waits for approval, its URL unseen: %d %s", traders.Status, truncate(traders.Raw, 300))
 	}
-	tradersSlug := traders.str("business", "tenantSlug")
+	tradersSlug := slugOf(t, ajay, "Ajay Traders")
 	if x := signInAt(t, ajay, tradersSlug); x.str("code") != "business_pending" {
 		t.Fatalf("sign-in at a business in review: %d %s", x.Status, truncate(x.Raw, 200))
 	}
 	if x := call(t, "GET", crmAPI+"/public/tenants/"+tradersSlug, "", nil); x.str("code") != "business_pending" {
 		t.Fatalf("its URL says it waits for approval: %d %s", x.Status, truncate(x.Raw, 200))
 	}
+	// Sending the form again while in review: the same answer, nothing new is made, and
+	// they are told it is being reviewed.
 	waiting := register(t, ajay)
 	crmMod.Identity().ForgetCodeLimits("+91" + ajay) // ten minutes later
-	if waiting.Body["hasAccount"] != false || len(waiting.list("pending")) != 1 {
-		t.Fatalf("coming back while in review shows the application: %s", truncate(waiting.Raw, 300))
+	if r := registerBusiness(t, waiting.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Traders Again"}); r.Status != 202 {
+		t.Fatalf("a second application answers the same: %d", r.Status)
 	}
+	if n := ownedBy(t, ajay); n != 1 {
+		t.Fatalf("a repeat application creates nothing: %d businesses", n)
+	}
+	waitAudit(t, "register.repeat_application", ajay)
 	apps := call(t, "GET", crmAPI+"/platform/applications?status=pending", owner, nil)
 	want(t, apps, 200, "owner lists applications")
 	var leadID string
@@ -136,55 +144,39 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	want(t, call(t, "POST", crmAPI+"/platform/applications/"+workspaceID(t, tradersSlug)+"/approve", owner, map[string]any{}), 409, "approve twice")
 	// The owner converts the lead into a contact (and account).
 	want(t, call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{"account": map[string]any{"mode": "new", "name": "Ajay Traders", "kind": "business"}, "createContact": true}), 200, "owner converts the application lead")
-	traders.Body["loginPath"] = "/" + tradersSlug + "/login"
 
-	// 2. Coming back to the page: the code shows who they are and their URLs first.
+	// 2. Step 4a: Ajay, who already has a CRM, fills the form again. The page says the
+	// same; nothing is created; his URLs go to him by SMS, WhatsApp and email.
 	again := register(t, ajay)
-	if again.Body["hasAccount"] != true || again.str("person", "name") != "Ajay Krishnan" || again.str("person", "email") != "ajay-"+ajay+"@example.com" {
-		t.Fatalf("a returning Super Admin is told they have an account: %s", truncate(again.Raw, 400))
+	if r := registerBusiness(t, again.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Something"}); r.Status != 202 {
+		t.Fatalf("an existing account sees the same answer: %d", r.Status)
 	}
-	bs := again.list("businesses")
-	b0, _ := bs[0].(map[string]any)
-	if len(bs) != 1 || b0["name"] != "Ajay Traders" || b0["roleKey"] != "SUPER_ADMIN" || b0["loginPath"] != traders.str("loginPath") {
-		t.Fatalf("their business and its URL: %v", bs)
+	waitAudit(t, "register.urls_sent", ajay)
+	if n := ownedBy(t, ajay); n != 1 {
+		t.Fatalf("an existing account's form creates nothing: %d businesses", n)
 	}
-	// Step 4a: they are told on every channel; the page says where.
-	if again.str("notify", "email") == "" {
-		t.Fatalf("an existing account is told where its URLs are sent: %s", truncate(again.Raw, 400))
-	}
-	// "Request my URL" emails them (console mail in tests).
-	sent := call(t, "POST", crmAPI+"/public/register/send-urls", "", map[string]any{"registrationToken": again.str("registrationToken")})
-	want(t, sent, 200, "request my URL")
+	// "Forgot my CRM URL": after the code, the URLs are sent; the answer is the same for anyone.
+	want(t, call(t, "POST", crmAPI+"/public/register/request-url", "", map[string]any{"registrationToken": again.str("registrationToken")}), 200, "request my URL")
+	stranger := register(t, freshPhone())
+	want(t, call(t, "POST", crmAPI+"/public/register/request-url", "", map[string]any{"registrationToken": stranger.str("registrationToken")}), 200, "request a URL for a number with no CRM")
 
-	// 3. They can still create more businesses; each is linked to them, and (step 6) opens
-	// at once because Ajay already owns an approved one.
-	tech := registerBusiness(t, again.str("registrationToken"), map[string]any{"mode": "add", "name": "Ajay Tech"})
-	bikes := registerBusiness(t, again.str("registrationToken"), map[string]any{"mode": "add", "name": "Ajay Bikes"})
-	if tech.Status != 201 || bikes.Status != 201 {
-		t.Fatalf("more businesses of an approved owner open at once: %d %d", tech.Status, bikes.Status)
-	}
-	slugs := map[string]string{}
-	for k, r := range map[string]resp{"traders": traders, "tech": tech, "bikes": bikes} {
+	// 3. Step 6: more businesses are added from inside and open at once.
+	crmMod.Identity().ForgetCodeLimits("+91" + ajay)
+	session := signInAt(t, ajay, tradersSlug)
+	want(t, session, 200, "Ajay signs in at Ajay Traders' URL")
+	boss := session.str("token")
+	slugs := map[string]string{"traders": tradersSlug}
+	for k, name := range map[string]string{"tech": "Ajay Tech", "bikes": "Ajay Bikes"} {
+		r := call(t, "POST", crmAPI+"/businesses", boss, map[string]any{"mode": "add", "name": name})
+		want(t, r, 201, "Ajay adds "+name)
 		slugs[k] = r.str("business", "tenantSlug")
 	}
 	if slugs["traders"] == slugs["tech"] || slugs["tech"] == slugs["bikes"] {
 		t.Fatalf("each business has its own URL: %v", slugs)
 	}
-	var mine int
-	if err := testDB.Pool.QueryRow(context.Background(), `SELECT count(*) FROM crm.workspaces w JOIN crm.tenants t ON t.id = w.tenant_id
-		WHERE t.slug = ANY($1) AND w.created_by_identity = t.owner_identity
-		  AND w.created_by_identity = (SELECT identity_id FROM crm.verified_identifiers WHERE kind = 'phone' AND value_normalized = '+91' || $2)`,
-		[]string{slugs["traders"], slugs["tech"], slugs["bikes"]}, ajay).Scan(&mine); err != nil {
-		t.Fatal(err)
+	if n := ownedBy(t, ajay); n != 3 {
+		t.Fatalf("all three businesses are Ajay's: %d", n)
 	}
-	if mine != 3 {
-		t.Fatalf("all three businesses are Ajay's: %d", mine)
-	}
-
-	// Ajay signs in at each business's own URL, then adds the team.
-	session := signInAt(t, ajay, slugs["traders"])
-	want(t, session, 200, "Ajay signs in at Ajay Traders' URL")
-	boss := session.str("token")
 	want(t, call(t, "PUT", crmAPI+"/platform/plans/team20", owner, map[string]any{"name": "Team 20", "isActive": true, "position": 8, "limits": map[string]any{"members": 20}}), 200, "a plan with room")
 	for _, k := range []string{"traders", "tech", "bikes"} {
 		var wsID string
@@ -247,21 +239,19 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 		t.Fatalf("Ajay Traders' admin signed in at Ajay Tech: %d", x.Status)
 	}
 
-	// Ram on "Create your own CRM": told he has an account with his two businesses, and he
-	// may create his own, which is linked to him.
+	// Ram on "Create your own CRM": he is in Ajay's businesses but hasn't created a CRM
+	// himself, so he goes through the same new-business flow; it is linked to him.
 	ramReg := register(t, ram)
-	if ramReg.Body["hasAccount"] != true || len(ramReg.list("businesses")) != 2 {
-		t.Fatalf("Ram sees his two businesses: %s", truncate(ramReg.Raw, 400))
-	}
-	own := registerBusiness(t, ramReg.str("registrationToken"), map[string]any{"mode": "add", "name": "Ram Motors"})
+	own := registerBusiness(t, ramReg.str("registrationToken"), map[string]any{"mode": "first", "name": "Ram Motors"})
+	ramMotors := slugOf(t, ram, "Ram Motors")
 	// Ram owns no business himself: his first one waits for approval like any new one.
 	if own.Status != 202 {
 		t.Fatalf("Ram's first own business waits for approval: %d", own.Status)
 	}
-	approve(t, owner, own.str("business", "tenantSlug"))
+	approve(t, owner, ramMotors)
 	// Ram signs in once and switches between his businesses with the same session.
 	crmMod.Identity().ForgetCodeLimits("+91" + ram) // ten minutes later
-	ramSession := signInAt(t, ram, own.str("business", "tenantSlug"))
+	ramSession := signInAt(t, ram, ramMotors)
 	want(t, ramSession, 200, "Ram at Ram Motors")
 	for _, k := range []string{"traders", "tech"} {
 		want(t, call(t, "GET", crmAPI+"/w/"+slugs[k]+"/crm/leads", ramSession.str("token"), nil), 200, "Ram switches to "+k)
@@ -284,13 +274,13 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	if err := testDB.Pool.QueryRow(context.Background(), `SELECT EXISTS (SELECT 1 FROM crm.memberships m JOIN crm.workspaces w ON w.id = m.workspace_id
 		JOIN crm.role_assignments ra ON ra.membership_id = m.id JOIN crm.roles r ON r.id = ra.role_id AND r.key = 'SUPER_ADMIN'
 		JOIN crm.verified_identifiers v ON v.identity_id = m.identity_id AND v.kind = 'phone' AND v.value_normalized = '+91' || $2
-		WHERE w.code = $1)`, own.str("business", "tenantSlug"), ram).Scan(&ramIsSuperAdmin); err != nil {
+		WHERE w.code = $1)`, ramMotors, ram).Scan(&ramIsSuperAdmin); err != nil {
 		t.Fatal(err)
 	}
 	if !ramIsSuperAdmin {
 		t.Fatal("Ram's own business is linked to him as Super Admin")
 	}
-	if x := signInAt(t, ajay, own.str("business", "tenantSlug")); x.str("code") != "account_not_found" {
+	if x := signInAt(t, ajay, ramMotors); x.str("code") != "account_not_found" {
 		t.Fatalf("Ajay is not in Ram's business: %d", x.Status)
 	}
 
@@ -298,10 +288,8 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	// staff. It is fully separate from Ajay's businesses ("Ak world").
 	krishnan := freshPhone()
 	kr := register(t, krishnan)
-	if kr.Body["hasAccount"] != false {
-		t.Fatalf("Krishnan is new: %s", truncate(kr.Raw, 200))
-	}
-	krish := registerBusiness(t, kr.str("registrationToken"), map[string]any{"mode": "first", "name": "Krish insurance", "displayName": "Krishnan", "industry": "Insurance"}).str("business", "tenantSlug")
+	registerBusiness(t, kr.str("registrationToken"), map[string]any{"mode": "first", "name": "Krish insurance", "displayName": "Krishnan", "industry": "Insurance"})
+	krish := slugOf(t, krishnan, "Krish insurance")
 	approve(t, owner, krish)
 	ks := signInAt(t, krishnan, krish)
 	want(t, ks, 200, "Krishnan at Krish insurance")

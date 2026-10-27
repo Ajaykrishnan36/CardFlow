@@ -343,12 +343,15 @@ export function CreateBusinessDialog({
   mode,
   onOpenChange,
   onCreated,
+  onReviewed,
   register,
 }: {
   open: boolean;
   mode: "first" | "add";
   onOpenChange: (open: boolean) => void;
   onCreated: (tenantSlug: string) => void;
+  /** The form was sent and is under review (closed after "we will review"). */
+  onReviewed?: () => void;
   register?: {
     token: string;
     person: { name: string; email: string; phone: string };
@@ -406,7 +409,10 @@ export function CreateBusinessDialog({
   }, [open, details.data, register]);
 
   const create = useMutation({
-    mutationFn: (): Promise<{ business: BusinessSummary; pending?: boolean }> => {
+    mutationFn: (): Promise<{
+      business: BusinessSummary;
+      pending?: boolean;
+    }> => {
       const body = {
         mode,
         name: biz.name.trim(),
@@ -471,7 +477,8 @@ export function CreateBusinessDialog({
       const { tenantSlug, pending } = done;
       setDone(null);
       onOpenChange(false);
-      if (!pending) onCreated(tenantSlug);
+      if (pending) onReviewed?.();
+      else onCreated(tenantSlug);
       return;
     }
     onOpenChange(o);
@@ -753,7 +760,11 @@ export function CreateBusinessDialog({
                   Cancel
                 </Button>
                 <Button type="submit" loading={create.isPending}>
-                  {adding ? "Add business" : "Create business"}
+                  {adding
+                    ? "Add business"
+                    : register
+                      ? "Send for review"
+                      : "Create business"}
                 </Button>
               </div>
             </form>

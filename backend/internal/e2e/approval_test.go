@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"testing"
+	"time"
 
 	"cardflow-backend/internal/crm/shared"
 )
@@ -57,4 +58,48 @@ func approve(t *testing.T, owner, slug string) resp {
 		t.Fatalf("an approved business is active and its URL is sent: %s", truncate(r.Raw, 400))
 	}
 	return r
+}
+
+// slugOf: the URL code of the newest business of that name created by that number (the page
+// never shows it before approval).
+func slugOf(t *testing.T, phone, name string) string {
+	t.Helper()
+	var slug string
+	if err := testDB.Pool.QueryRow(context.Background(), `
+		SELECT COALESCE(tn.slug, w.code) FROM crm.workspaces w
+		JOIN crm.verified_identifiers v ON v.identity_id = w.created_by_identity AND v.kind = 'phone' AND v.value_normalized = '+91' || $1
+		LEFT JOIN crm.tenants tn ON tn.id = w.tenant_id
+		WHERE w.name = $2 ORDER BY w.created_at DESC LIMIT 1`, phone, name).Scan(&slug); err != nil {
+		t.Fatalf("business %s of %s: %v", name, phone, err)
+	}
+	return slug
+}
+
+// ownedBy counts the businesses a number created.
+func ownedBy(t *testing.T, phone string) int {
+	t.Helper()
+	var n int
+	if err := testDB.Pool.QueryRow(context.Background(), `
+		SELECT count(*) FROM crm.workspaces w
+		JOIN crm.verified_identifiers v ON v.identity_id = w.created_by_identity AND v.kind = 'phone' AND v.value_normalized = '+91' || $1
+		WHERE w.status <> 'deleted'`, phone).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// waitAudit waits for a background notice to be recorded for that number.
+func waitAudit(t *testing.T, action, phone string) {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		var n int
+		_ = testDB.Pool.QueryRow(context.Background(), `
+			SELECT count(*) FROM crm.audit_events a JOIN crm.verified_identifiers v ON v.identity_id = a.actor_id AND v.kind = 'phone' AND v.value_normalized = '+91' || $2
+			WHERE a.action = $1`, action, phone).Scan(&n)
+		if n > 0 {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("no %s recorded for %s", action, phone)
 }

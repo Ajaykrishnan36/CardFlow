@@ -1,32 +1,24 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
   ArrowLeft,
   ArrowRight,
   Clock,
   Hourglass,
-  LogIn,
-  Mail,
   MessageSquareText,
   Phone,
   Plus,
   RotateCw,
-  Send,
-  UserRound,
-  Users,
 } from "lucide-react";
 import { registerApi, type RegisterCheck } from "@crm/api/endpoints";
 import { isApiError } from "@crm/api/client";
 import { Button } from "@crm/components/ui/button";
 import { Input } from "@crm/components/ui/input";
 import { Field } from "@crm/components/ui/field";
-import { Alert, Badge } from "@crm/components/ui/card";
+import { Alert } from "@crm/components/ui/card";
 import { OtpInput } from "@crm/components/ui/otp-input";
-import {
-  BusinessUrl,
-  CreateBusinessDialog,
-} from "@crm/features/business/businesses-page";
+import { CreateBusinessDialog } from "@crm/features/business/businesses-page";
 import { cn } from "@crm/lib/utils";
 import { useShake } from "./use-shake";
 
@@ -59,10 +51,10 @@ function explain(e: unknown): { message: string; field: boolean } {
 }
 
 /**
- * "Create your own CRM" (D-160, D-161). It registers and never signs in: the page makes two
- * calls, send the code and check it. A first business waits for the owner's approval. Someone who already has an account is then shown who they are
- * and their business URLs, to sign in there; anyone may still create a business, linked to
- * them. Signing in happens only at a business's own URL.
+ * "Create your own CRM" (D-160, D-161). It registers and never signs in: send the code, check
+ * it, send the business form. Everyone then sees "we will review"; the owner approves new
+ * businesses, and someone who already has a CRM is messaged their URLs instead. Signing in
+ * happens only at a business's own URL.
  */
 export function RegisterFlow() {
   const navigate = useNavigate();
@@ -82,6 +74,7 @@ export function RegisterFlow() {
   const expired = expiresAt !== null && expiresIn === 0;
   const [check, setCheck] = useState<RegisterCheck | null>(null);
   const [creating, setCreating] = useState(false);
+  const [reviewed, setReviewed] = useState(false);
 
   const fail = (message: string, onField: boolean) => {
     setFieldError(onField ? message : null);
@@ -129,10 +122,7 @@ export function RegisterFlow() {
       });
       setCheck(res);
       setStep("done");
-      // A new number goes straight to the form; an existing account sees the alert first,
-      // and someone whose application is in review sees that.
-      if (!res.hasAccount && res.canCreate && res.pending.length === 0)
-        setCreating(true);
+      if (res.canCreate) setCreating(true);
     } catch (e) {
       fail(explain(e).message, false);
       setCode("");
@@ -145,71 +135,61 @@ export function RegisterFlow() {
     setStep("phone");
     setCheck(null);
     setCreating(false);
+    setReviewed(false);
     setError(null);
     setExpiresAt(null);
   };
 
   if (step === "done" && check) {
-    const dialog = (
-      <CreateBusinessDialog
-        open={creating}
-        mode={check.hasAccount ? "add" : "first"}
-        onOpenChange={setCreating}
-        onCreated={(slug) => navigate(`/${slug}/login`)}
-        register={{ token: check.registrationToken, person: check.person }}
-      />
-    );
-    if (!check.hasAccount) {
-      const waiting = check.pending.length > 0;
+    // Everyone gets the same steps after the code, new or not (D-161): the business form,
+    // then "we will review". Whether the number already has a CRM is checked on the
+    // server, which then messages them instead; nothing about anyone is shown here.
+    if (reviewed) {
       return (
         <div className="space-y-4 animate-pop-in">
-          {waiting ? (
-            <PendingNotice check={check} />
-          ) : (
-            <Alert tone="success" title="Number confirmed">
-              Set up your business. After we review it, you get its own URL and
-              sign in there.
-            </Alert>
-          )}
-          {waiting ? null : check.canCreate ? (
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={() => setCreating(true)}
-            >
-              <Plus /> Set up your business
-            </Button>
-          ) : (
-            <Alert tone="warning">
-              Creating a business isn’t open right now. Ask your administrator
-              for an invitation.
-            </Alert>
-          )}
+          <Alert tone="success" title="Thank you — we’ve received your details">
+            <span className="flex items-start gap-2">
+              <Hourglass className="mt-0.5 size-4 shrink-0" aria-hidden />
+              <span>
+                We will review your application and contact you. Your business
+                URL comes by SMS, WhatsApp and email once it’s approved.
+              </span>
+            </span>
+          </Alert>
           <BackLink onClick={startOver} />
-          {dialog}
         </div>
       );
     }
     return (
       <div className="space-y-4 animate-pop-in">
-        <AccountFound check={check} />
-        {check.pending.length > 0 ? <PendingNotice check={check} /> : null}
+        <Alert tone="success" title="Number confirmed">
+          Tell us about your business. We review it and send you its own URL.
+        </Alert>
         {check.canCreate ? (
           <Button
-            variant="outline"
+            size="lg"
             className="w-full"
             onClick={() => setCreating(true)}
           >
-            <Plus /> Create another business
+            <Plus /> Set up your business
           </Button>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            You’ve created {check.created} of {check.limit} businesses this
-            account can create.
-          </p>
+          <Alert tone="warning">
+            Creating a business isn’t open right now. Please try again later.
+          </Alert>
         )}
         <BackLink onClick={startOver} />
-        {dialog}
+        <CreateBusinessDialog
+          open={creating}
+          mode="first"
+          onOpenChange={setCreating}
+          onCreated={(slug) => navigate(`/${slug}/login`)}
+          onReviewed={() => setReviewed(true)}
+          register={{
+            token: check.registrationToken,
+            person: { name: "", email: "", phone: phone.trim() },
+          }}
+        />
       </div>
     );
   }
@@ -351,146 +331,5 @@ function BackLink({ onClick }: { onClick: () => void }) {
     >
       <ArrowLeft className="size-3.5" aria-hidden /> Use a different number
     </button>
-  );
-}
-
-/** "You already have a CRM account": who they are, and each business's own URL to sign in at. */
-function AccountFound({ check }: { check: RegisterCheck }) {
-  const [sending, setSending] = useState(false);
-  const [sentTo, setSentTo] = useState<string | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const { person, businesses } = check;
-  const first = person.name.split(" ")[0];
-  // Sent on their own when the code is checked (D-161): say where, only for real channels.
-  const notified = check.notify
-    ? sentList(check.notify.email, check.notify.sms, check.notify.whatsapp)
-    : "";
-
-  const requestUrls = async () => {
-    setSending(true);
-    setSendError(null);
-    try {
-      const res = await registerApi.sendUrls(check.registrationToken);
-      setSentTo(
-        sentList(
-          res.channels.email === "sent" ? res.email : "",
-          res.channels.sms === "sent",
-          res.channels.whatsapp === "sent",
-        ),
-      );
-    } catch (e) {
-      setSendError(
-        isApiError(e) ? e.message : "Something went wrong. Please try again.",
-      );
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <>
-      <Alert
-        tone="info"
-        title={`${first ? `Hi ${first}, you` : "You"} already have a CRM account`}
-      >
-        Please sign in at your business URL below. Each business signs its
-        people in at its own URL only.
-      </Alert>
-      <div className="rounded-lg border p-3 text-[13px]">
-        <p className="flex items-center gap-2 font-medium text-foreground">
-          <UserRound className="size-4 text-muted-foreground" aria-hidden />{" "}
-          {person.name || "Your account"}
-        </p>
-        <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 pl-6 text-muted-foreground">
-          {person.email ? <span>{person.email}</span> : null}
-          {person.phone ? <span>{person.phone}</span> : null}
-        </p>
-      </div>
-      <ul className="space-y-3">
-        {businesses.map((b) => (
-          <li key={b.slug} className="rounded-lg border bg-card">
-            <div className="flex items-center gap-3 p-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-xs font-semibold text-primary">
-                {b.name.slice(0, 2).toUpperCase()}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-foreground">
-                  {b.name}
-                </p>
-                <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <Badge tone="primary">{b.role || "Member"}</Badge>
-                  <span className="flex items-center gap-1">
-                    <Users className="size-3.5" aria-hidden /> {b.members}{" "}
-                    {b.members === 1 ? "person" : "people"}
-                  </span>
-                  {b.city ? <span>{b.city}</span> : null}
-                </p>
-              </div>
-              <Button asChild size="sm">
-                <Link to={b.loginPath}>
-                  <LogIn /> Sign in
-                </Link>
-              </Button>
-            </div>
-            <div className="border-t px-3 py-2">
-              <BusinessUrl slug={b.slug} />
-            </div>
-          </li>
-        ))}
-      </ul>
-      {sentTo ? (
-        <Alert tone="success">We sent your business URLs again {sentTo}.</Alert>
-      ) : (
-        <div>
-          {notified ? (
-            <p className="mb-1 flex items-start gap-1.5 text-[13px] text-muted-foreground">
-              <Send className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-              We’re also sending these URLs {notified}.
-            </p>
-          ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            loading={sending}
-            onClick={() => void requestUrls()}
-          >
-            <Mail /> Send my URLs again
-          </Button>
-          {sendError ? (
-            <p className="mt-1 text-[13px] text-danger">{sendError}</p>
-          ) : null}
-        </div>
-      )}
-    </>
-  );
-}
-
-/** "to a•••@x.com, by SMS and on WhatsApp" — only the channels that are set up. */
-function sentList(email: string, sms: boolean, whatsapp: boolean) {
-  const parts = [
-    email ? `to ${email}` : "",
-    sms ? "by SMS" : "",
-    whatsapp ? "on WhatsApp" : "",
-  ].filter(Boolean);
-  if (parts.length === 0) return "";
-  return parts.length === 1
-    ? parts[0]
-    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-}
-
-/** Their business is waiting for the owner's approval (D-161). */
-function PendingNotice({ check }: { check: RegisterCheck }) {
-  return (
-    <Alert tone="info" title="Your application is being reviewed">
-      <span className="flex items-start gap-2">
-        <Hourglass className="mt-0.5 size-4 shrink-0" aria-hidden />
-        <span>
-          {check.pending.map((p) => p.name).join(", ")}{" "}
-          {check.pending.length === 1 ? "is" : "are"} waiting for approval. We
-          will contact you and send the business URL by SMS, WhatsApp and email
-          once it’s approved.
-        </span>
-      </span>
-    </Alert>
   );
 }

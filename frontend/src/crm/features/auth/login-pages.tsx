@@ -13,6 +13,7 @@ import { LogoMark } from "@crm/components/brand";
 import { AuthHeading, AuthLayout } from "./auth-layout";
 import { LoginForm } from "./login-form";
 import { RegisterFlow } from "./register-flow";
+import { RequestUrlDialog } from "./request-url-dialog";
 import { normalizeCode, setSignInTenant } from "@crm/lib/tenant";
 import { Button } from "@crm/components/ui/button";
 import { Input } from "@crm/components/ui/input";
@@ -46,7 +47,7 @@ export function CreateYourCrmPage() {
     >
       <AuthHeading
         title="Create your own CRM"
-        subtitle="Enter your mobile number. After the code you set up your business and get its own URL."
+        subtitle="Enter your mobile number and tell us about your business. We review it and send you its own URL."
       />
       <RegisterFlow />
       <OpenBusinessUrl />
@@ -93,6 +94,7 @@ function OpenBusinessUrl() {
   const navigate = useNavigate();
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
+  const [requesting, setRequesting] = useState(false);
   const go = (e: FormEvent) => {
     e.preventDefault();
     let raw = value.trim();
@@ -109,36 +111,49 @@ function OpenBusinessUrl() {
     navigate(`/${code}/login`);
   };
   return (
-    <form onSubmit={go} noValidate className="mt-6 rounded-lg border p-4">
-      <p className="text-sm font-semibold text-foreground">
-        Already have a business?
-      </p>
-      <p className="mt-0.5 text-[13px] text-muted-foreground">
-        Sign in at its own URL. Paste it, or type the business code.
-      </p>
-      <div className="mt-3 flex gap-2">
-        <Input
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setError("");
-          }}
-          placeholder="271026-44-234F-000501"
-          aria-label="Business URL or code"
-          className="font-mono"
-          autoCapitalize="characters"
-          spellCheck={false}
-        />
-        <Button type="submit" variant="outline">
-          Go <ArrowRight />
-        </Button>
-      </div>
-      {error ? <p className="mt-1.5 text-[13px] text-danger">{error}</p> : null}
-      <p className="mt-2 text-xs text-muted-foreground">
-        Don’t have it? Enter your mobile number above — after the code we show
-        your business URLs, or ask your Super Admin.
-      </p>
-    </form>
+    <>
+      <form onSubmit={go} noValidate className="mt-6 rounded-lg border p-4">
+        <p className="text-sm font-semibold text-foreground">
+          Already have a business?
+        </p>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
+          Sign in at its own URL. Paste it, or type the business code.
+        </p>
+        <div className="mt-3 flex gap-2">
+          <Input
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+              setError("");
+            }}
+            placeholder="271026-44-234F-000501"
+            aria-label="Business URL or code"
+            className="font-mono"
+            autoCapitalize="characters"
+            spellCheck={false}
+          />
+          <Button type="submit" variant="outline">
+            Go <ArrowRight />
+          </Button>
+        </div>
+        {error ? (
+          <p className="mt-1.5 text-[13px] text-danger">{error}</p>
+        ) : null}
+        <p className="mt-2 text-xs text-muted-foreground">
+          Forgot your CRM URL?{" "}
+          <button
+            type="button"
+            className="font-medium text-primary hover:underline"
+            onClick={() => setRequesting(true)}
+          >
+            Click here to request it
+          </button>
+          , or ask your Super Admin.
+        </p>
+      </form>
+      {/* Outside the form: its own form's submit must not reach this one. */}
+      <RequestUrlDialog open={requesting} onOpenChange={setRequesting} />
+    </>
   );
 }
 

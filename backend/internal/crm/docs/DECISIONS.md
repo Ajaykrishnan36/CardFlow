@@ -1541,9 +1541,15 @@ approved business yet) is created `pending`: its code and URL are reserved
 (`business_pending`). The application is a lead (source Website) in the platform CRM; the
 owner approves it from the lead, the Apps list or the business (`POST
 /platform/applications/{id}/approve`), which opens the URL, makes the public listing and
-sends the URL by email, SMS and WhatsApp. More businesses of a person who owns an approved
-one open at once (step 6). Someone who already has an account and enters their number on
-`/` is sent their URLs on every channel ("you already have an account, use your URL").
+sends the URL by email, SMS and WhatsApp. More businesses are added from inside (Add
+business) and open at once (step 6). `/` never shows anything about a person: after the code
+everyone gets the same form and the same "we will review" answer. On the server, someone who
+already created a CRM gets nothing new; their URLs go to them by SMS, WhatsApp and email
+("you already have an account, please use it"); someone whose application waits is told it
+is being reviewed. "Forgot my CRM URL" (a popup: number, code, `POST
+/public/register/request-url`) sends the URLs the same way, emails the owner, and answers the
+same whether or not the number has a CRM. A member who never created a CRM (a partner) goes
+through the new-business flow.
 Each channel reports `sent`, `failed`, `not_set_up` or `no_address`: SMS text needs Twilio
 or Fast2SMS (MSG91 sends only DLT templates); WhatsApp needs `WHATSAPP_TOKEN`,
 `WHATSAPP_PHONE_NUMBER_ID` and an approved `WHATSAPP_TEMPLATE` with two body parameters

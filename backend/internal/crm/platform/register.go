@@ -13,7 +13,6 @@ import (
 
 	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/crm/shared"
-	"cardflow-backend/internal/crm/sms"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -21,9 +20,10 @@ import (
 // "Create your own CRM" (D-160). The site's own page registers; it never signs anyone in,
 // not a member, not a Super Admin, not the platform owner. Two calls load it: send a code
 // and check the code. A correct code returns a short-lived registration token (no session,
-// no cookie) and, for someone who already has an account, who they are and the URLs of
-// their businesses. With the token they may create a business (it is linked to them) or
-// have their URLs emailed. Signing in happens only at a business's own URL.
+// no cookie) and nothing about the person (D-161). With the token they send the business
+// form; everyone sees "we will review". A new person's business waits for the owner; someone
+// who already has a CRM gets their URLs by SMS, WhatsApp and email instead. Signing in
+// happens only at a business's own URL.
 
 const registerTTL = 30 * time.Minute
 
@@ -117,7 +117,7 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Post("/public/register/request", h.handleRegisterRequest)
 	r.Post("/public/register/verify", h.handleRegisterVerify)
 	r.Post("/public/register/business", h.handleRegisterBusiness)
-	r.Post("/public/register/send-urls", h.handleRegisterSendURLs)
+	r.Post("/public/register/request-url", h.handleRequestURL)
 }
 
 func (h *Handler) handleRegisterRequest(w http.ResponseWriter, r *http.Request) {
@@ -149,43 +149,20 @@ func (h *Handler) handleRegisterVerify(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
-	person, err := h.registeredPerson(ctx, proof.IdentityID)
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
-	}
-	list, err := h.registeredBusinesses(ctx, proof.IdentityID)
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
-	}
-	s := SelfServe(ctx, h.store.Pool)
-	var created int
-	_ = h.store.Pool.QueryRow(ctx, `SELECT count(*) FROM crm.workspaces WHERE created_by_identity = $1 AND origin = 'self_serve'`, proof.IdentityID).Scan(&created)
-	pending, err := h.pendingApplications(ctx, proof.IdentityID)
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
-	}
-	// Someone who already has an account is told on every channel too (D-161), in the
-	// background so the page answers at once.
-	var notify map[string]any
-	if len(list) > 0 {
-		notify = h.channels(person)
-		go h.sendURLs(context.WithoutCancel(ctx), proof.IdentityID, person, list, identity.Meta(r))
-	}
+	// Nothing about the person is shown on this page (D-161): new or not, the answer is the
+	// same and the form comes next. Whether they already have a CRM is decided on the server
+	// when the form is sent.
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
-		"pending":           pending,
-		"notify":            notify,
 		"registrationToken": h.registerToken(proof.IdentityID, time.Now().Add(registerTTL)),
 		"expiresIn":         int(registerTTL.Seconds()),
-		"hasAccount":        len(list) > 0,
-		"person":            person,
-		"businesses":        list,
-		"canCreate":         s.Enabled && created < s.MaxBusinesses,
-		"limit":             s.MaxBusinesses,
-		"created":           created,
+		"canCreate":         SelfServe(ctx, h.store.Pool).Enabled,
 	})
+}
+
+// underReview is the one answer "Create your own CRM" gives after the form, whatever happened
+// on the server, so the page never tells anyone whether a number already has an account.
+func underReview(name string) map[string]any {
+	return map[string]any{"pending": true, "business": map[string]any{"name": name, "status": "pending"}}
 }
 
 func (h *Handler) handleRegisterBusiness(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +184,34 @@ func (h *Handler) handleRegisterBusiness(w http.ResponseWriter, r *http.Request)
 		shared.WriteError(w, r, shared.Validation(map[string]string{"taxId": "Enter your GSTIN, PAN or TAN."}))
 		return
 	}
+	fe := in.normalizeOnboarding()
+	if len(strings.TrimSpace(in.Name)) < 2 {
+		fe["name"] = "Enter your business or brand name."
+	}
+	if len(fe) > 0 {
+		shared.WriteError(w, r, shared.Validation(fe))
+		return
+	}
+	// Step 4 (D-161): someone who already created a CRM for themselves gets nothing new; they
+	// are told by SMS, WhatsApp and email to use their URL (sent again in the message). Someone
+	// whose application waits is told it is in review. The page shows the same "we will
+	// review" either way. More businesses are added from inside (Add business).
+	var owns bool
+	if err := h.store.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.workspaces WHERE created_by_identity = $1 AND origin = 'self_serve' AND status = 'active')`, me).Scan(&owns); err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	pending, err := h.pendingApplications(ctx, me)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	if owns || len(pending) > 0 {
+		meta := identity.Meta(r)
+		go h.tellExisting(context.WithoutCancel(ctx), me, owns, pending, in.Name, meta)
+		shared.WriteJSON(w, http.StatusAccepted, underReview(in.Name))
+		return
+	}
 	// The business is linked to the person who proved the number, whoever else they are.
 	status, resp, err := h.createBusiness(ctx, me, r.Header.Get("Idempotency-Key"), in.CreateBusinessInput)
 	if err != nil {
@@ -214,7 +219,9 @@ func (h *Handler) handleRegisterBusiness(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if m, ok := resp.(map[string]any); ok {
-		if b, ok := m["business"].(*Business); ok {
+		if m["pending"] == true {
+			resp = underReview(in.Name) // the code stays internal until the owner approves it
+		} else if b, ok := m["business"].(*Business); ok {
 			m["loginPath"] = "/" + b.TenantSlug + "/login"
 			m["loginUrl"] = strings.TrimRight(h.cfg.BaseURL, "/") + "/" + b.TenantSlug + "/login"
 			m["display"] = DisplayCode(b.TenantSlug)
@@ -224,9 +231,10 @@ func (h *Handler) handleRegisterBusiness(w http.ResponseWriter, r *http.Request)
 	shared.WriteJSON(w, status, resp)
 }
 
-// POST /public/register/send-urls — "Request my URL": emails the person every business URL
-// they have. SMS waits for a provider template (see SendBusinessURL).
-func (h *Handler) handleRegisterSendURLs(w http.ResponseWriter, r *http.Request) {
+// POST /public/register/request-url — "Forgot my CRM URL" (D-161): after the code, the
+// person's business URLs go to them by SMS, WhatsApp and email, and the owner is told. The
+// answer is the same whether or not the number has a CRM.
+func (h *Handler) handleRequestURL(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		RegistrationToken string `json:"registrationToken"`
 	}
@@ -240,39 +248,71 @@ func (h *Handler) handleRegisterSendURLs(w http.ResponseWriter, r *http.Request)
 		shared.WriteError(w, r, err)
 		return
 	}
-	person, err := h.registeredPerson(ctx, me)
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
-	}
-	list, err := h.registeredBusinesses(ctx, me)
-	if err != nil {
-		shared.WriteError(w, r, err)
-		return
-	}
-	if len(list) == 0 {
-		shared.WriteError(w, r, shared.NewError(http.StatusNotFound, "no_business", "You don't belong to a business yet. Create one below."))
-		return
-	}
-	sent := h.sendURLs(ctx, me, person, list, identity.Meta(r))
-	if sent["email"] != "sent" && sent["sms"] != "sent" && sent["whatsapp"] != "sent" {
-		if person.Email == "" && sent["sms"] != "failed" && sent["whatsapp"] != "failed" {
-			shared.WriteError(w, r, shared.NewError(http.StatusUnprocessableEntity, "no_email", "There's no email on your account and text messages aren't set up yet. Ask your Super Admin for your business URL."))
+	meta := identity.Meta(r)
+	go func(ctx context.Context) {
+		person, err := h.registeredPerson(ctx, me)
+		if err != nil {
 			return
 		}
-		shared.WriteError(w, r, shared.NewError(http.StatusBadGateway, "email_failed", "We couldn't send your URLs right now. Please try again in a minute."))
+		list, err := h.registeredBusinesses(ctx, me)
+		if err != nil || len(list) == 0 {
+			_ = shared.WriteAudit(ctx, h.store.Pool, shared.AuditEvent{ActorID: &me, Action: "register.url_requested", EntityType: "identity", EntityID: &me,
+				IP: meta.IP, RequestID: meta.RequestID, After: map[string]any{"businesses": 0}})
+			return
+		}
+		sent := h.sendURLs(ctx, me, person, list, meta)
+		names := []string{}
+		for _, b := range list {
+			names = append(names, b.Name)
+		}
+		h.notifyOwner(ctx, "CRM URL requested: "+firstNonEmpty(person.Name, person.Phone), []string{
+			fmt.Sprintf("%s (%s) used Forgot my CRM URL.", firstNonEmpty(person.Name, "Someone"), person.Phone),
+			"Their URLs were sent for: " + strings.Join(names, ", ") + ".",
+			fmt.Sprintf("Email: %s, SMS: %s, WhatsApp: %s.", sent["email"], sent["sms"], sent["whatsapp"]),
+		})
+	}(context.WithoutCancel(ctx))
+	shared.WriteJSON(w, http.StatusOK, map[string]any{"sent": true})
+}
+
+// tellExisting: "You already have a CRM account — please use it" with their URLs, or "your
+// application is being reviewed", by SMS, WhatsApp and email.
+func (h *Handler) tellExisting(ctx context.Context, me uuid.UUID, owns bool, pending []PendingApplication, asked string, meta identity.RequestMeta) {
+	person, err := h.registeredPerson(ctx, me)
+	if err != nil {
 		return
 	}
-	shared.WriteJSON(w, http.StatusOK, map[string]any{"sent": true, "email": maskEmail(person.Email), "channels": sent})
+	if owns {
+		list, err := h.registeredBusinesses(ctx, me)
+		if err != nil {
+			return
+		}
+		h.sendURLs(ctx, me, person, list, meta)
+		return
+	}
+	names := []string{}
+	for _, p := range pending {
+		names = append(names, p.Name)
+	}
+	sent := h.notifyPerson(ctx, me, notice{
+		Subject: "Your CRM application is being reviewed",
+		Heading: "We're reviewing your application",
+		Lines: []string{
+			fmt.Sprintf("Hi %s, your application for %s is already with us and being reviewed.", firstNonEmpty(person.Name, "there"), strings.Join(names, ", ")),
+			"We'll send your business URL by SMS, WhatsApp and email once it's approved.",
+		},
+	})
+	_ = shared.WriteAudit(ctx, h.store.Pool, shared.AuditEvent{ActorID: &me, Action: "register.repeat_application", EntityType: "identity", EntityID: &me,
+		IP: meta.IP, RequestID: meta.RequestID, After: map[string]any{"asked": asked, "channels": sent}})
 }
 
 // sendURLs: "You already have a CRM account — use your URL to sign in", with every URL, by
 // email, SMS and WhatsApp.
 func (h *Handler) sendURLs(ctx context.Context, me uuid.UUID, person registeredPerson, list []RegisteredBusiness, meta identity.RequestMeta) map[string]string {
-	lines := []string{fmt.Sprintf("Hi %s, you already have a %s account. Please sign in at your business URL:", firstNonEmpty(person.Name, "there"), h.cfg.AppName)}
+	lines := []string{fmt.Sprintf("Hi %s, you already have a %s account, so please use it. In case you missed your URL, here it is again:", firstNonEmpty(person.Name, "there"), h.cfg.AppName)}
 	for _, b := range list {
 		lines = append(lines, fmt.Sprintf("%s (%s): %s", b.Name, firstNonEmpty(b.Role, "Member"), b.LoginURL))
 	}
+	lines = append(lines, "To add another business, sign in and use Add business.")
 	sent := h.notifyPerson(ctx, me, notice{
 		Subject: "You already have a CRM account",
 		Heading: "Your business URLs",
@@ -282,21 +322,6 @@ func (h *Handler) sendURLs(ctx context.Context, me uuid.UUID, person registeredP
 	_ = shared.WriteAudit(ctx, h.store.Pool, shared.AuditEvent{ActorID: &me, Action: "register.urls_sent", EntityType: "identity", EntityID: &me,
 		IP: meta.IP, RequestID: meta.RequestID, After: map[string]any{"businesses": len(list), "channels": sent}})
 	return sent
-}
-
-// channels says where a notice to the person can go: the masked email, and whether SMS and
-// WhatsApp are set up on this server.
-func (h *Handler) channels(p registeredPerson) map[string]any {
-	smsOK := false
-	if h.sms != nil && p.Phone != "" {
-		_, texter := h.sms.(sms.Texter)
-		smsOK = texter || sms.IsPreview(h.sms)
-	}
-	email := ""
-	if p.Email != "" {
-		email = maskEmail(p.Email)
-	}
-	return map[string]any{"email": email, "sms": smsOK, "whatsapp": p.Phone != "" && h.wa.Ready()}
 }
 
 // PendingApplication is a business of the person's that waits for the owner's approval.
@@ -325,14 +350,6 @@ func (h *Handler) pendingApplications(ctx context.Context, me uuid.UUID) ([]Pend
 		out = append(out, a)
 	}
 	return out, rows.Err()
-}
-
-func maskEmail(e string) string {
-	user, domain, ok := strings.Cut(e, "@")
-	if !ok || len(user) == 0 {
-		return e
-	}
-	return user[:1] + strings.Repeat("•", max(len(user)-1, 1)) + "@" + domain
 }
 
 func firstNonEmpty(vals ...string) string {

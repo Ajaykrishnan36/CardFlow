@@ -64,9 +64,6 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 	// ---- 2. Ajay: first business waits, the owner approves it from the lead ----
 	ajay := "9876543211"
 	reg := register(t, ajay)
-	if reg.Body["hasAccount"] != false {
-		t.Fatalf("98765 43211 is new after the fresh start: %s", truncate(reg.Raw, 200))
-	}
 	bikesApp := registerBusiness(t, reg.str("registrationToken"), map[string]any{
 		"mode": "first", "name": "Ajay Bikes", "displayName": "Ajay Kumar", "personalEmail": "ajay.kumar.demo@example.com",
 		"teamSize": "11-50", "industry": "Automotive", "taxIdType": "gstin", "taxId": "33ABCDE1234F1Z7", "state": "Tamil Nadu",
@@ -74,7 +71,7 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 	if bikesApp.Status != 202 {
 		t.Fatalf("Ajay's first business waits for approval: %d %s", bikesApp.Status, truncate(bikesApp.Raw, 300))
 	}
-	bikes := bikesApp.str("business", "tenantSlug")
+	bikes := slugOf(t, ajay, "Ajay Bikes")
 	if !regexpCode(bikes) || !strings.HasSuffix(bikes[:12], "1z7") {
 		t.Fatalf("the URL code is DDMMYY + week + last 4 of the GSTIN + running number: %s", bikes)
 	}
@@ -91,24 +88,32 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 	want(t, call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{
 		"account": map[string]any{"mode": "new", "name": "Ajay Bikes", "kind": "business"}, "createContact": true}), 200, "owner converts Ajay's lead into a contact")
 
+	// Ajay fills the form again on "/": same answer, nothing new; his URL is sent to him.
 	later(ajay)
 	back := register(t, ajay)
-	if back.Body["hasAccount"] != true {
-		t.Fatalf("after approval Ajay has an account: %s", truncate(back.Raw, 300))
+	if r := registerBusiness(t, back.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Again"}); r.Status != 202 {
+		t.Fatalf("an existing account sees the same answer: %d", r.Status)
 	}
-	traders := registerBusiness(t, back.str("registrationToken"), map[string]any{"mode": "add", "name": "Ajay Traders", "teamSize": "2-10", "industry": "Retail", "taxIdType": "pan", "taxId": "ABCDE1234F"})
-	tech := registerBusiness(t, back.str("registrationToken"), map[string]any{"mode": "add", "name": "Ajay Tech", "teamSize": "2-10", "industry": "Technology", "taxIdType": "pan", "taxId": "ABCDE1234F"})
-	if traders.Status != 201 || tech.Status != 201 {
-		t.Fatalf("Ajay's next businesses open at once: %d %d", traders.Status, tech.Status)
+	waitAudit(t, "register.urls_sent", ajay)
+	// "Forgot my CRM URL"
+	want(t, call(t, "POST", crmAPI+"/public/register/request-url", "", map[string]any{"registrationToken": back.str("registrationToken")}), 200, "Ajay requests his URL")
+	later(ajay)
+	ajaySession := signInAt(t, ajay, bikes)
+	want(t, ajaySession, 200, "Ajay signs in at Ajay Bikes")
+	boss := ajaySession.str("token")
+	// Step 6: Traders and Tech are added from inside and open at once.
+	slug := map[string]string{"bikes": bikes}
+	for k, in := range map[string]map[string]any{
+		"traders": {"mode": "add", "name": "Ajay Traders", "teamSize": "2-10", "industry": "Retail", "taxIdType": "pan", "taxId": "ABCDE1234F"},
+		"tech":    {"mode": "add", "name": "Ajay Tech", "teamSize": "2-10", "industry": "Technology", "taxIdType": "pan", "taxId": "ABCDE1234F"},
+	} {
+		r := call(t, "POST", crmAPI+"/businesses", boss, in)
+		want(t, r, 201, "Ajay adds "+k)
+		slug[k] = r.str("business", "tenantSlug")
 	}
-	slug := map[string]string{"bikes": bikes, "traders": traders.str("business", "tenantSlug"), "tech": tech.str("business", "tenantSlug")}
 	for _, s := range slug {
 		want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+workspaceID(t, s), owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for "+s)
 	}
-	later(ajay)
-	ajaySession := signInAt(t, ajay, slug["bikes"])
-	want(t, ajaySession, 200, "Ajay signs in at Ajay Bikes")
-	boss := ajaySession.str("token")
 
 	// ---- 3. Teams ----
 	phoneOf := map[string]string{}
@@ -247,16 +252,13 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 	// ---- 7. Priya, insurance agent: one business, same work ----
 	priya := "9876543210"
 	pr := register(t, priya)
-	if pr.Body["hasAccount"] != false {
-		t.Fatalf("98765 43210 is new: %s", truncate(pr.Raw, 200))
-	}
 	insApp := registerBusiness(t, pr.str("registrationToken"), map[string]any{
 		"mode": "first", "name": "Priya Insurance Services", "displayName": "Priya Sharma", "personalEmail": "priya.sharma.demo@example.com",
 		"teamSize": "2-10", "industry": "Insurance", "taxIdType": "pan", "taxId": "PQRSA6789K"})
 	if insApp.Status != 202 {
 		t.Fatalf("Priya's business waits for approval: %d", insApp.Status)
 	}
-	slug["insurance"] = insApp.str("business", "tenantSlug")
+	slug["insurance"] = slugOf(t, priya, "Priya Insurance Services")
 	if x := signInAt(t, priya, slug["insurance"]); x.str("code") != "business_pending" {
 		t.Fatalf("Priya can't sign in before approval: %d %s", x.Status, truncate(x.Raw, 200))
 	}
@@ -317,8 +319,8 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 	if len(appsOf) != 2 || appsOf["+91"+ajay] != 3 || appsOf["+91"+priya] != 1 {
 		t.Fatalf("Products: Ajay with 3 apps, Priya with 1: %v", appsOf)
 	}
-	if n := len(call(t, "GET", crmAPI+"/platform/applications", owner, nil).list("data")); n != 4 {
-		t.Fatalf("Apps lists %d businesses, want 4", n)
+	if all := call(t, "GET", crmAPI+"/platform/applications", owner, nil); len(all.list("data")) != 4 {
+		t.Fatalf("Apps lists %d businesses, want 4: %s", len(all.list("data")), truncate(all.Raw, 6000))
 	}
 	t.Logf("business URLs: %v", slug)
 }
