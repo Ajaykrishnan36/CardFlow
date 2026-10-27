@@ -43,7 +43,7 @@ func ownerToken(t *testing.T) string {
 func workspaceID(t *testing.T, slug string) string {
 	t.Helper()
 	var id string
-	if err := testDB.Pool.QueryRow(context.Background(), `SELECT id::text FROM crm.workspaces WHERE code = $1`, slug).Scan(&id); err != nil {
+	if err := testDB.Pool.QueryRow(context.Background(), `SELECT w.id::text FROM crm.workspaces w LEFT JOIN crm.tenants tn ON tn.id = w.tenant_id WHERE w.code = $1 OR tn.slug = $1 ORDER BY (w.code = $1) DESC LIMIT 1`, slug).Scan(&id); err != nil {
 		t.Fatalf("business %s: %v", slug, err)
 	}
 	return id

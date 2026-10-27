@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"cardflow-backend/internal/crm/shared"
 )
 
 // Runs last (file name). Ajay's plan of 2026-10-28 from end to end, on a database that
@@ -34,21 +36,25 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		return n
 	}
 
-	// ---- 1. Only the owner stays ----
-	label := "erase-everything-owner-only-" + time.Now().Format("20060102-150405")
-	if targetDB != "" {
-		label = "erase-everything-2026-10-28-owner-only"
-	}
-	os.Setenv("CRM_FRESH_START", label)
-	os.Setenv("CRM_FRESH_START_PHONE", "none")
-	crmMod.FreshStart(ctx)
-	os.Unsetenv("CRM_FRESH_START")
-	os.Unsetenv("CRM_FRESH_START_PHONE")
-	if n := count(`SELECT count(*) FROM crm.identities WHERE NOT is_platform_owner`); n != 0 {
-		t.Fatalf("after an owner-only fresh start %d other people are left", n)
-	}
-	if n := count(`SELECT count(*) FROM crm.workspaces w WHERE NOT w.is_platform AND w.code <> 'business-card-snap'`); n != 0 {
-		t.Fatalf("after an owner-only fresh start %d businesses are left", n)
+	// ---- 1. Only the owner stays (never on an existing database unless E2E_WIPE=1) ----
+	// keep: an existing database's data stays; the scenario is added on top of it.
+	keep := targetDB != "" && os.Getenv("E2E_WIPE") != "1"
+	if !keep {
+		label := "erase-everything-owner-only-" + time.Now().Format("20060102-150405")
+		if targetDB != "" {
+			label = "erase-everything-2026-10-28-owner-only"
+		}
+		os.Setenv("CRM_FRESH_START", label)
+		os.Setenv("CRM_FRESH_START_PHONE", "none")
+		crmMod.FreshStart(ctx)
+		os.Unsetenv("CRM_FRESH_START")
+		os.Unsetenv("CRM_FRESH_START_PHONE")
+		if n := count(`SELECT count(*) FROM crm.identities WHERE NOT is_platform_owner`); n != 0 {
+			t.Fatalf("after an owner-only fresh start %d other people are left", n)
+		}
+		if n := count(`SELECT count(*) FROM crm.workspaces w WHERE NOT w.is_platform AND w.code <> 'business-card-snap'`); n != 0 {
+			t.Fatalf("after an owner-only fresh start %d businesses are left", n)
+		}
 	}
 	if count(`SELECT count(*) FROM crm.identities WHERE is_platform_owner AND status = 'active'`) == 0 {
 		t.Fatal("the owner is kept")
@@ -58,61 +64,121 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		defer setReview(t, false)
 	}
 	owner := ownerToken(t)
+	defer func() {
+		// The test's own owner session ends with the run.
+		_, _ = testDB.Pool.Exec(ctx, `UPDATE crm.sessions SET revoked_at = now() WHERE token_hash = $1`, shared.HashToken(strings.TrimPrefix(owner, "crms_")))
+	}()
 	want(t, call(t, "PUT", crmAPI+"/platform/plans/team20", owner, map[string]any{"name": "Team 20", "isActive": true, "position": 8, "limits": map[string]any{"members": 20}}), 200, "a plan with room for a team")
 	later := func(phone string) { crmMod.Identity().ForgetCodeLimits("+91" + phone) }
 
-	// ---- 2. Ajay: first business waits, the owner approves it from the lead ----
+	// ---- 2. Ajay ----
 	ajay := "9876543211"
-	reg := register(t, ajay)
-	bikesApp := registerBusiness(t, reg.str("registrationToken"), map[string]any{
-		"mode": "first", "name": "Ajay Bikes", "displayName": "Ajay Kumar", "personalEmail": "ajay.kumar.demo@example.com",
-		"teamSize": "11-50", "industry": "Automotive", "taxIdType": "gstin", "taxId": "33ABCDE1234F1Z7", "state": "Tamil Nadu",
-	})
-	if bikesApp.Status != 202 {
-		t.Fatalf("Ajay's first business waits for approval: %d %s", bikesApp.Status, truncate(bikesApp.Raw, 300))
-	}
-	bikes := slugOf(t, ajay, "Ajay Bikes")
-	if !regexpCode(bikes) || !strings.HasSuffix(bikes[:12], "1z7") {
-		t.Fatalf("the URL code is DDMMYY + week + last 4 of the GSTIN + running number: %s", bikes)
-	}
-	var leadID string
-	for _, a := range call(t, "GET", crmAPI+"/platform/applications?status=pending", owner, nil).list("data") {
-		if m := a.(map[string]any); m["code"] == bikes {
-			leadID, _ = m["leadId"].(string)
+	ownsAlready := count(`SELECT count(*) FROM crm.workspaces w JOIN crm.verified_identifiers v ON v.identity_id = w.created_by_identity AND v.kind = 'phone'
+		WHERE v.value_normalized = '+91' || $1 AND w.status = 'active' AND w.origin = 'self_serve'`, ajay) > 0
+	slug := map[string]string{}
+	var boss, tradersCode string
+	if ownsAlready {
+		// He already has a CRM: "/" answers "we will review", creates nothing and sends his
+		// URLs. He signs in at his own business and adds Ajay Bikes and Ajay Tech from inside;
+		// his existing "Ajay traders" is the traders business. (Priya shows the approval path.)
+		reg := register(t, ajay)
+		before := ownedBy(t, ajay)
+		if r := registerBusiness(t, reg.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Bikes"}); r.Status != 202 {
+			t.Fatalf("an existing account sees the same answer: %d", r.Status)
 		}
-	}
-	if leadID == "" {
-		t.Fatal("Ajay Bikes' application is a lead in the owner console")
-	}
-	approve(t, owner, bikes)
-	want(t, call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{
-		"account": map[string]any{"mode": "new", "name": "Ajay Bikes", "kind": "business"}, "createContact": true}), 200, "owner converts Ajay's lead into a contact")
+		waitAudit(t, "register.urls_sent", ajay)
+		if ownedBy(t, ajay) != before {
+			t.Fatal("an existing account's form creates nothing")
+		}
+		want(t, call(t, "POST", crmAPI+"/public/register/request-url", "", map[string]any{"registrationToken": reg.str("registrationToken")}), 200, "Ajay requests his URL")
+		var home string
+		if err := testDB.Pool.QueryRow(ctx, `SELECT COALESCE(tn.slug, w.code), w.name FROM crm.workspaces w
+			JOIN crm.verified_identifiers v ON v.identity_id = w.created_by_identity AND v.kind = 'phone' AND v.value_normalized = '+91' || $1
+			LEFT JOIN crm.tenants tn ON tn.id = w.tenant_id
+			WHERE w.status = 'active' AND w.origin = 'self_serve' ORDER BY (lower(w.name) = 'ajay traders') DESC, w.created_at LIMIT 1`, ajay).Scan(&home, new(string)); err != nil {
+			t.Fatal(err)
+		}
+		later(ajay)
+		s := signInAt(t, ajay, home)
+		want(t, s, 200, "Ajay signs in at his business")
+		boss = s.str("token")
+		for k, in := range map[string]map[string]any{
+			"bikes": {"mode": "add", "name": "Ajay Bikes", "teamSize": "11-50", "industry": "Automotive", "taxIdType": "gstin", "taxId": "33ABCDE1234F1Z7", "state": "Tamil Nadu"},
+			"tech":  {"mode": "add", "name": "Ajay Tech", "teamSize": "2-10", "industry": "Technology", "taxIdType": "pan", "taxId": "ABCDE1234F"},
+		} {
+			r := call(t, "POST", crmAPI+"/businesses", boss, in)
+			want(t, r, 201, "Ajay adds "+k)
+			slug[k] = r.str("business", "tenantSlug")
+		}
+		if n := count(`SELECT count(*) FROM crm.workspaces w JOIN crm.verified_identifiers v ON v.identity_id = w.created_by_identity AND v.kind = 'phone'
+			WHERE v.value_normalized = '+91' || $1 AND lower(w.name) = 'ajay traders' AND w.status = 'active'`, ajay); n > 0 {
+			// An older business: its API code differs from its URL code; sign-in takes either.
+			if err := testDB.Pool.QueryRow(ctx, `SELECT w.code FROM crm.workspaces w JOIN crm.verified_identifiers v ON v.identity_id = w.created_by_identity AND v.kind = 'phone'
+				WHERE v.value_normalized = '+91' || $1 AND lower(w.name) = 'ajay traders' AND w.status = 'active' ORDER BY w.created_at LIMIT 1`, ajay).Scan(&tradersCode); err != nil {
+				t.Fatal(err)
+			}
+			slug["traders"] = tradersCode
+		} else {
+			r := call(t, "POST", crmAPI+"/businesses", boss, map[string]any{"mode": "add", "name": "Ajay Traders", "teamSize": "2-10", "industry": "Retail", "taxIdType": "pan", "taxId": "ABCDE1234F"})
+			want(t, r, 201, "Ajay adds traders")
+			slug["traders"] = r.str("business", "tenantSlug")
+		}
+	} else {
+		// A new number: the first business waits, the owner approves it from the lead.
+		reg := register(t, ajay)
+		bikesApp := registerBusiness(t, reg.str("registrationToken"), map[string]any{
+			"mode": "first", "name": "Ajay Bikes", "displayName": "Ajay Kumar", "personalEmail": "ajay.kumar.demo@example.com",
+			"teamSize": "11-50", "industry": "Automotive", "taxIdType": "gstin", "taxId": "33ABCDE1234F1Z7", "state": "Tamil Nadu",
+		})
+		if bikesApp.Status != 202 {
+			t.Fatalf("Ajay's first business waits for approval: %d %s", bikesApp.Status, truncate(bikesApp.Raw, 300))
+		}
+		bikes := slugOf(t, ajay, "Ajay Bikes")
+		if !regexpCode(bikes) || !strings.HasSuffix(bikes[:12], "1z7") {
+			t.Fatalf("the URL code is DDMMYY + week + last 4 of the GSTIN + running number: %s", bikes)
+		}
+		var leadID string
+		for _, a := range call(t, "GET", crmAPI+"/platform/applications?status=pending", owner, nil).list("data") {
+			if m := a.(map[string]any); m["code"] == bikes {
+				leadID, _ = m["leadId"].(string)
+			}
+		}
+		if leadID == "" {
+			t.Fatal("Ajay Bikes' application is a lead in the owner console")
+		}
+		approve(t, owner, bikes)
+		want(t, call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{
+			"account": map[string]any{"mode": "new", "name": "Ajay Bikes", "kind": "business"}, "createContact": true}), 200, "owner converts Ajay's lead into a contact")
 
-	// Ajay fills the form again on "/": same answer, nothing new; his URL is sent to him.
-	later(ajay)
-	back := register(t, ajay)
-	if r := registerBusiness(t, back.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Again"}); r.Status != 202 {
-		t.Fatalf("an existing account sees the same answer: %d", r.Status)
-	}
-	waitAudit(t, "register.urls_sent", ajay)
-	// "Forgot my CRM URL"
-	want(t, call(t, "POST", crmAPI+"/public/register/request-url", "", map[string]any{"registrationToken": back.str("registrationToken")}), 200, "Ajay requests his URL")
-	later(ajay)
-	ajaySession := signInAt(t, ajay, bikes)
-	want(t, ajaySession, 200, "Ajay signs in at Ajay Bikes")
-	boss := ajaySession.str("token")
-	// Step 6: Traders and Tech are added from inside and open at once.
-	slug := map[string]string{"bikes": bikes}
-	for k, in := range map[string]map[string]any{
-		"traders": {"mode": "add", "name": "Ajay Traders", "teamSize": "2-10", "industry": "Retail", "taxIdType": "pan", "taxId": "ABCDE1234F"},
-		"tech":    {"mode": "add", "name": "Ajay Tech", "teamSize": "2-10", "industry": "Technology", "taxIdType": "pan", "taxId": "ABCDE1234F"},
-	} {
-		r := call(t, "POST", crmAPI+"/businesses", boss, in)
-		want(t, r, 201, "Ajay adds "+k)
-		slug[k] = r.str("business", "tenantSlug")
+		// Ajay fills the form again on "/": same answer, nothing new; his URL is sent to him.
+		later(ajay)
+		back := register(t, ajay)
+		if r := registerBusiness(t, back.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Again"}); r.Status != 202 {
+			t.Fatalf("an existing account sees the same answer: %d", r.Status)
+		}
+		waitAudit(t, "register.urls_sent", ajay)
+		want(t, call(t, "POST", crmAPI+"/public/register/request-url", "", map[string]any{"registrationToken": back.str("registrationToken")}), 200, "Ajay requests his URL")
+		later(ajay)
+		ajaySession := signInAt(t, ajay, bikes)
+		want(t, ajaySession, 200, "Ajay signs in at Ajay Bikes")
+		boss = ajaySession.str("token")
+		// Step 6: Traders and Tech are added from inside and open at once.
+		slug["bikes"] = bikes
+		for k, in := range map[string]map[string]any{
+			"traders": {"mode": "add", "name": "Ajay Traders", "teamSize": "2-10", "industry": "Retail", "taxIdType": "pan", "taxId": "ABCDE1234F"},
+			"tech":    {"mode": "add", "name": "Ajay Tech", "teamSize": "2-10", "industry": "Technology", "taxIdType": "pan", "taxId": "ABCDE1234F"},
+		} {
+			r := call(t, "POST", crmAPI+"/businesses", boss, in)
+			want(t, r, 201, "Ajay adds "+k)
+			slug[k] = r.str("business", "tenantSlug")
+		}
 	}
 	for _, s := range slug {
 		want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+workspaceID(t, s), owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for "+s)
+	}
+	leadsBefore := map[string]int{}
+	for k, s := range slug {
+		leadsBefore[k] = total(t, boss, s, "leads", "")
 	}
 
 	// ---- 3. Teams ----
@@ -167,8 +233,8 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 			"source": "phone", "description": "Enquired about a new bike."})
 		bikeLeadIDs = append(bikeLeadIDs, id)
 	}
-	if n := total(t, boss, slug["bikes"], "leads", ""); n != 10 {
-		t.Fatalf("Ajay Bikes has %d leads, want 10", n)
+	if n := total(t, boss, slug["bikes"], "leads", ""); n != leadsBefore["bikes"]+10 {
+		t.Fatalf("Ajay Bikes has %d leads, want %d", n, leadsBefore["bikes"]+10)
 	}
 	// Some buy: account + contact + opportunity. The rest stay leads.
 	type deal struct{ opp, account, contact string }
@@ -228,8 +294,8 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 				"account": map[string]any{"mode": "new", "name": fmt.Sprintf("%s Customer %d", strings.Title(biz), i+1), "kind": "business"}, "createContact": true,
 				"opportunity": map[string]any{"create": true, "name": fmt.Sprintf("First order %d", i+1), "amount": 25000 * (i + 1)}}), 200, "convert in "+biz)
 		}
-		if n := total(t, boss, slug[biz], "leads", ""); n != 10 {
-			t.Fatalf("%s has %d leads, want 10", biz, n)
+		if n := total(t, boss, slug[biz], "leads", ""); n != leadsBefore[biz]+10 {
+			t.Fatalf("%s has %d leads, want %d", biz, n, leadsBefore[biz]+10)
 		}
 	}
 
@@ -316,13 +382,24 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		m := c.(map[string]any)
 		appsOf[fmt.Sprint(m["phone"])] = m["apps"].(float64)
 	}
-	if len(appsOf) != 2 || appsOf["+91"+ajay] != 3 || appsOf["+91"+priya] != 1 {
-		t.Fatalf("Products: Ajay with 3 apps, Priya with 1: %v", appsOf)
+	if keep {
+		// On a database that keeps its data, other accounts and businesses are there too.
+		if appsOf["+91"+ajay] < 3 || appsOf["+91"+priya] != 1 {
+			t.Fatalf("Products: Ajay with his apps, Priya with 1: %v", appsOf)
+		}
+	} else {
+		if len(appsOf) != 2 || appsOf["+91"+ajay] != 3 || appsOf["+91"+priya] != 1 {
+			t.Fatalf("Products: Ajay with 3 apps, Priya with 1: %v", appsOf)
+		}
+		if all := call(t, "GET", crmAPI+"/platform/applications", owner, nil); len(all.list("data")) != 4 {
+			t.Fatalf("Apps lists %d businesses, want 4: %s", len(all.list("data")), truncate(all.Raw, 6000))
+		}
 	}
-	if all := call(t, "GET", crmAPI+"/platform/applications", owner, nil); len(all.list("data")) != 4 {
-		t.Fatalf("Apps lists %d businesses, want 4: %s", len(all.list("data")), truncate(all.Raw, 6000))
+	for k, code := range slug {
+		var url string
+		_ = testDB.Pool.QueryRow(ctx, `SELECT COALESCE(tn.slug, w.code) FROM crm.workspaces w LEFT JOIN crm.tenants tn ON tn.id = w.tenant_id WHERE w.code = $1`, code).Scan(&url)
+		t.Logf("business URL %s: /%s/login", k, url)
 	}
-	t.Logf("business URLs: %v", slug)
 }
 
 func regexpCode(s string) bool {
