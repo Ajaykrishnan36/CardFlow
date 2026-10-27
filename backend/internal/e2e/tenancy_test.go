@@ -14,8 +14,8 @@ func TestCreateBusinessMakesCreatorSuperAdmin(t *testing.T) {
 		t.Fatalf("creator should be Super Admin: %s", r.Raw)
 	}
 	code := r.str("business", "code")
-	if code != "kovai-tools-dies" {
-		t.Fatalf("code from the name = %q", code)
+	if !codeShape.MatchString(code) || strings.Contains(code, "kovai") {
+		t.Fatalf("a generated code, never the name (D-158) = %q", code)
 	}
 	ctx := call(t, "GET", crmAPI+"/w/"+code+"/context", token, nil)
 	want(t, ctx, 200, "open the new business")

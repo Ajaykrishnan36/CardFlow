@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -163,6 +164,7 @@ func (r resp) list(path ...string) []any {
 func call(t *testing.T, method, path, token string, body any) resp {
 	t.Helper()
 	var rd io.Reader
+	body = withTaxID(method, path, body)
 	if body != nil {
 		b, _ := json.Marshal(body)
 		rd = bytes.NewReader(b)
@@ -241,6 +243,33 @@ func signIn(t *testing.T, phone, name string) string {
 }
 
 // newBusiness creates a business for the signed-in person and returns its code.
+var panSeq atomic.Int64
+
+// testPAN is a PAN no other test uses: sign-up needs a tax ID, one per owner (D-158).
+func testPAN() string {
+	n := panSeq.Add(1)
+	return fmt.Sprintf("TEST%c%04d%c", 'A'+rune(n/10000%26), n%10000, 'A'+rune(n%26))
+}
+
+// withTaxID gives a new business a PAN unless the test sends its own tax ID (or "taxId": "").
+func withTaxID(method, path string, body any) any {
+	m, ok := body.(map[string]any)
+	if !ok || method != "POST" || !strings.HasSuffix(path, "/businesses") {
+		return body
+	}
+	if _, has := m["taxId"]; has {
+		return body
+	}
+	if _, has := m["gstin"]; has {
+		return body
+	}
+	out := map[string]any{"taxIdType": "pan", "taxId": testPAN()}
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
 func newBusiness(t *testing.T, token, name string) string {
 	t.Helper()
 	r := call(t, "POST", crmAPI+"/businesses", token, map[string]any{"name": name})

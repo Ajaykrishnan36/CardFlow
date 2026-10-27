@@ -103,6 +103,9 @@ func (a *Address) OneLine() string {
 	return strings.Join(parts, ", ")
 }
 
+// TeamSizes are the choices for "Size of team".
+var TeamSizes = map[string]bool{"Just me": true, "2-10": true, "11-50": true, "51-200": true, "201-500": true, "500+": true}
+
 // normalizeOnboarding checks and tidies everything the create form sends.
 func (in *CreateBusinessInput) normalizeOnboarding() map[string]string {
 	fe := map[string]string{}
@@ -166,13 +169,30 @@ func (in *CreateBusinessInput) normalizeOnboarding() map[string]string {
 			in.City, in.State, in.Country = in.Address.City, in.Address.State, in.Address.Country
 		}
 	}
-	if strings.TrimSpace(in.GSTIN) != "" {
-		state := in.State
-		g, msg := shared.CheckGSTIN(in.GSTIN, state)
-		in.GSTIN = g
-		if msg != "" {
-			fe["gstin"] = msg
+	if strings.TrimSpace(in.TaxID) == "" && strings.TrimSpace(in.GSTIN) != "" { // clients from before D-158
+		in.TaxIDType, in.TaxID = "gstin", in.GSTIN
+	}
+	if strings.TrimSpace(in.TaxID) != "" {
+		in.TaxIDType = strings.ToLower(strings.TrimSpace(in.TaxIDType))
+		if in.TaxIDType == "" {
+			in.TaxIDType = "gstin"
 		}
+		id, msg := shared.CheckTaxID(in.TaxIDType, in.TaxID, in.State)
+		in.TaxID = id
+		if msg != "" {
+			fe["taxId"] = msg
+			if in.TaxIDType == "gstin" && strings.TrimSpace(in.GSTIN) != "" {
+				fe["gstin"] = msg
+			}
+		} else if in.TaxIDType == "gstin" {
+			in.GSTIN = id
+		}
+	} else {
+		in.TaxIDType = ""
+	}
+	in.TeamSize = strings.TrimSpace(in.TeamSize)
+	if in.TeamSize != "" && !TeamSizes[in.TeamSize] {
+		fe["teamSize"] = "Choose the size of your team."
 	}
 	return fe
 }
@@ -189,8 +209,11 @@ func businessProfileFrom(in CreateBusinessInput) map[string]string {
 		}
 	}
 	for k, v := range map[string]string{"industry": in.Industry, "phone": in.Phone, "whatsapp": in.Whatsapp, "email": in.Email, "website": in.Website,
-		"gstin": in.GSTIN, "city": in.City, "state": in.State, "country": in.Country} {
+		"gstin": in.GSTIN, "city": in.City, "state": in.State, "country": in.Country, "teamSize": in.TeamSize, "taxIdType": in.TaxIDType, "taxId": in.TaxID} {
 		add(k, v)
+	}
+	if in.TaxIDType == "pan" || in.TaxIDType == "tan" {
+		add(in.TaxIDType, in.TaxID)
 	}
 	if a := in.Address; !a.empty() {
 		for k, v := range map[string]string{"addressLine": a.Line, "landmark": a.Landmark, "area": a.Area, "district": a.District, "postalCode": a.PostalCode, "address": a.OneLine()} {
@@ -313,7 +336,7 @@ func (h *Handler) onboardingRoutes(r chi.Router) {
 	r.Get("/geo/reverse", h.handleReverseGeocode)
 }
 
-// PublicTenantRoutes need no sign-in: a tenant's login page finds its name (D-156).
+// PublicTenantRoutes need no sign-in: a business's login page finds its name (D-156, D-158).
 func (h *Handler) PublicTenantRoutes(r chi.Router) {
 	r.Get("/public/tenants/by-host", func(w http.ResponseWriter, r *http.Request) {
 		host := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("host")))
@@ -324,7 +347,7 @@ func (h *Handler) PublicTenantRoutes(r chi.Router) {
 		err := h.store.Pool.QueryRow(r.Context(), `SELECT id, slug, name, COALESCE(custom_domain, '') FROM crm.tenants WHERE lower(custom_domain) = $1 AND status = 'active'`, host).
 			Scan(&t.ID, &t.Slug, &t.Name, &t.CustomDomain)
 		if errors.Is(err, pgx.ErrNoRows) || host == "" {
-			err = shared.NotFound("business_not_found")
+			err = identity.BusinessNotFound()
 		}
 		h.writeTenant(w, r, t, err)
 	})

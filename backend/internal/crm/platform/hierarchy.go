@@ -65,6 +65,34 @@ func EnsureRoleTree(ctx context.Context, tx pgx.Tx, ws uuid.UUID) error {
 			return err
 		}
 	}
+	// Sales staff and Service staff (D-158): roles at Staff level, each with its own default
+	// permission set — Sales staff work like Staff; Service staff also get the Service desk.
+	staff, _ := access.FindSystemRole("STAFF")
+	for _, nr := range []struct {
+		key, name, desc string
+		rules           access.Rules
+	}{
+		{"SALES_STAFF", "Sales staff", "Leads, customers, deals, quotes and orders they own (and their team's).", staff.Rules},
+		{"SERVICE_STAFF", "Service staff", "Their own work plus every customer, asset, case, job card, appointment and due item of the business.",
+			access.MergeRules(staff.Rules, access.ServiceDeskRules())},
+	} {
+		base, _ := json.Marshal(staff.Rules)
+		if _, err := tx.Exec(ctx, `INSERT INTO crm.roles (workspace_id, key, name, is_system, rank, base_rules, parent_role_id)
+			SELECT $1, $2, $3, true, $4, $5, (SELECT id FROM crm.roles WHERE workspace_id = $1 AND key = 'ADMIN')
+			WHERE NOT EXISTS (SELECT 1 FROM crm.roles WHERE workspace_id = $1 AND key = $2)
+			  AND EXISTS (SELECT 1 FROM crm.roles WHERE workspace_id = $1 AND key = 'STAFF')`, ws, nr.key, nr.name, access.RankStaff, base); err != nil {
+			return err
+		}
+		if _, ok := DefaultPermissionSetFor(ctx, tx, ws, nr.key); ok {
+			continue
+		}
+		raw, _ := json.Marshal(nr.rules)
+		if _, err := tx.Exec(ctx, `INSERT INTO crm.permission_sets (workspace_id, name, description, rules, system_key)
+			SELECT $1, CASE WHEN EXISTS (SELECT 1 FROM crm.permission_sets WHERE workspace_id = $1 AND lower(name) = lower($2)) THEN $2 || ' (default)' ELSE $2 END, $3, $4, $5
+			WHERE EXISTS (SELECT 1 FROM crm.roles WHERE workspace_id = $1 AND key = $5)`, ws, nr.name+" access", nr.desc, raw, nr.key); err != nil {
+			return err
+		}
+	}
 	for _, s := range defaultSets {
 		if _, ok := DefaultPermissionSetFor(ctx, tx, ws, s.key); ok {
 			continue

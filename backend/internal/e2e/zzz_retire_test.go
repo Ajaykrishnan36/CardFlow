@@ -27,15 +27,26 @@ func TestRetireTestWorkspacesTouchesNothingElse(t *testing.T) {
 	surya := newBusiness(t, b, "surya work space")
 	k := signIn(t, freshPhone(), "Keeper")
 	keeper := newBusiness(t, k, "Keeper Co")
-	if gova != "gova-test" || surya != "surya-work-space" {
-		t.Fatalf("business codes: %q %q", gova, surya)
+	// The clean-up is for two businesses made before D-158, when codes came from the name.
+	for code, old := range map[string]string{gova: "gova-test", surya: "surya-work-space"} {
+		if _, err := testDB.Pool.Exec(ctx, `UPDATE crm.workspaces SET code = $2 WHERE code = $1`, code, old); err != nil {
+			t.Fatal(err)
+		}
 	}
+	gova, surya = "gova-test", "surya-work-space"
 	create(t, a, gova, "leads", map[string]any{"lastName": "Gova lead"})
 	acc := create(t, a, gova, "accounts", map[string]any{"name": "Gova account"})
 	create(t, a, gova, "opportunities", map[string]any{"name": "Gova deal", "accountId": acc, "closeDate": today(), "amount": 10})
 	create(t, b, surya, "contacts", map[string]any{"lastName": "Surya contact"})
 	keptLead := create(t, k, keeper, "leads", map[string]any{"lastName": "Kept lead"})
 	keptInv := create(t, k, keeper, "invoices", map[string]any{"name": "Kept invoice", "total": 500, "status": "sent"})
+	// The sample records go to the business whose code was "ajay-traders" before D-158.
+	if count(`SELECT count(*) FROM crm.workspaces WHERE code = 'ajay-traders'`) == 0 {
+		at := newBusiness(t, signIn(t, freshPhone(), "Ajay"), "Ajay traders")
+		if _, err := testDB.Pool.Exec(ctx, `UPDATE crm.workspaces SET code = 'ajay-traders' WHERE code = $1`, at); err != nil {
+			t.Fatal(err)
+		}
+	}
 	people := count(`SELECT count(*) FROM crm.identities`)
 	cards := count(`SELECT count(*) FROM public.saved_cards`)
 

@@ -463,6 +463,10 @@ type GiveLoginResult struct {
 	MembershipID  uuid.UUID   `json:"membershipId"`
 	Invitation    *Invitation `json:"invitation,omitempty"`
 	ExistingLogin bool        `json:"existingLogin,omitempty"`
+	// LoginURL is the business's own sign-in address, to share with the person (D-158);
+	// URLEmailed says it was also emailed to them.
+	LoginURL   string `json:"loginUrl,omitempty"`
+	URLEmailed bool   `json:"urlEmailed,omitempty"`
 }
 
 // PrepareGiveLogin validates input that doesn't need the database and hashes a

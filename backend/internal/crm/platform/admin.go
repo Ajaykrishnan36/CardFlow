@@ -932,6 +932,7 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 			shared.WriteError(w, r, err)
 			return
 		}
+		res.LoginURL = h.BusinessLoginURL(ctx, sc.WS)
 		shared.WriteJSON(w, http.StatusCreated, res)
 		return
 	}
@@ -956,8 +957,12 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 		shared.WriteError(w, r, err)
 		return
 	}
+	res.LoginURL = h.BusinessLoginURL(ctx, sc.WS)
 	if sent != nil {
-		res.Invitation = h.DeliverInvitation(ctx, sent)
+		res.Invitation = h.DeliverInvitation(ctx, sent) // the invitation names the address too
+		res.URLEmailed = res.Invitation.Status == "delivered"
+	} else if email, ok := normalizeEmail(in.Email); ok {
+		res.URLEmailed = h.SendBusinessURL(ctx, sc.WS, email, strings.TrimSpace(in.DisplayName))
 	}
 	shared.WriteJSON(w, http.StatusCreated, res)
 }

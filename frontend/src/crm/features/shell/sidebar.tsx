@@ -3,7 +3,6 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Building2, Check, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Plus, Search } from 'lucide-react';
 import type { Me, NavItem, WorkspaceContext } from '@crm/api/types';
 import { isOwnerSession, workspaceHomePath } from '@crm/auth/session';
-import { memberTenantOf } from '@crm/lib/tenant';
 import { LogoMark } from '@crm/components/brand';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger, Tooltip } from '@crm/components/ui/menu';
 import { Skeleton } from '@crm/components/ui/spinner';
@@ -312,9 +311,8 @@ function WorkspaceHeader({ workspace, code, collapsed, onNavigate }: { workspace
           <MenuItem
             onSelect={() => {
               onNavigate?.();
-              // A new business joins this tenant and keeps its address (D-156).
-              const slug = memberTenantOf(code);
-              navigate(`/crm/businesses?new=1${slug ? `&tenant=${encodeURIComponent(slug)}` : ''}`);
+              // Add business: its own URL and team (D-158).
+              navigate('/crm/businesses?new=1&add=1');
             }}
           >
             <Plus />

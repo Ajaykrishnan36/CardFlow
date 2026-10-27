@@ -378,14 +378,29 @@ layout.
       `DEV_MOCK_SMS=false` and `ENV=production` on Render so codes are sent, not shown.
 - [ ] Vercel: the project must serve `/api/*` from Render (it's in `frontend/vercel.json`).
 
-## Tenant addresses and own domains (D-155, D-156, D-157)
+## Business URLs and own domains (D-155 – D-158)
 
-Each tenant (brand) has one permanent address: `https://<site>/<tenant>/login`, and every page
-under `https://<site>/<tenant>/…`, for all of its businesses. This needs no DNS at all.
+Every business has its own permanent URL, `https://<site>/<code>/login`, and every page under
+`https://<site>/<code>/…`. The code is generated, never the name: DDMMYY + ISO week + last 4 of
+the GSTIN/PAN/TAN + a 6-digit running number, e.g. `27102644234f000501`, shown grouped as
+`271026-44-234F-000501` (any case or dashes work). Only people added to that business can
+sign in there; anyone else gets "You don't have access to this business. Please contact your
+Super Admin." and an unknown code "This business URL is invalid or unavailable…". This needs
+no DNS at all.
 
-A tenant can also use its own domain (for example `crm.ajaytraders.in`):
+- New person: `/` → mobile + code → first-time form (name, email | business name, team size,
+  industry, phone, email, GSTIN/PAN/TAN) → URL card. They are its Super Admin.
+- Someone already a Super Admin: `/` shows their business URLs; another business is made
+  with **Add business** (business menu), which gets its own URL and team.
+- One tax ID belongs to one owner (the same owner may reuse it; another owner is refused).
+- Adding a member shows their sign-in URL to share and emails it when an email is given.
+  SMS of the URL needs a message template from the SMS provider (not set up yet).
+- Businesses from before D-158 got their code at the first start; old addresses
+  (`/ajay-traders/…`) and a brand's own domain lead to the oldest business of that brand.
 
-1. The business enters it in **Business profile → Login address → Your own domain** and saves.
+A business can also use its own domain (for example `crm.ajaytraders.in`):
+
+1. The business enters it in **Business profile → Business URL → Your own domain** and saves.
 2. The server adds the domain to the Vercel project by itself — once these are set on Render
    (Environment): `VERCEL_API_TOKEN` (Vercel → Account settings → Tokens), `VERCEL_PROJECT_ID`
    (Vercel project → Settings → General → Project ID) and, for a team account, `VERCEL_TEAM_ID`.

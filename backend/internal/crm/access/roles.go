@@ -505,3 +505,44 @@ func ServiceDeskRules() Rules {
 	}
 	return Normalize(Rules{Objects: objs, Rows: rows, Capabilities: []string{CapDashboard}})
 }
+
+// MergeRules joins two rule sets: every action either grants, the wider record scope
+// (workspace over team over own), every capability (D-158).
+func MergeRules(a, b Rules) Rules {
+	out := Rules{Objects: map[string][]string{}, Rows: map[string]map[string]string{}}
+	for _, r := range []Rules{a, b} {
+		for obj, acts := range r.Objects {
+			have := map[string]bool{}
+			for _, x := range out.Objects[obj] {
+				have[x] = true
+			}
+			for _, x := range acts {
+				if !have[x] {
+					out.Objects[obj] = append(out.Objects[obj], x)
+					have[x] = true
+				}
+			}
+		}
+		rank := map[string]int{"own": 1, "team": 2, "workspace": 3}
+		for obj, row := range r.Rows {
+			cur, ok := out.Rows[obj]
+			if !ok || rank[row["scope"]] > rank[cur["scope"]] {
+				cp := map[string]string{}
+				for k, v := range row {
+					cp[k] = v
+				}
+				out.Rows[obj] = cp
+			}
+		}
+		for _, c := range r.Capabilities {
+			seen := false
+			for _, x := range out.Capabilities {
+				seen = seen || x == c
+			}
+			if !seen {
+				out.Capabilities = append(out.Capabilities, c)
+			}
+		}
+	}
+	return Normalize(out)
+}

@@ -13,6 +13,7 @@ import (
 	"cardflow-backend/internal/crm/access"
 	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/crm/plans"
+	"cardflow-backend/internal/crm/platform"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -59,7 +60,10 @@ type businessProfile struct {
 
 // businessProfileKeys are the profile fields a business can fill in.
 var businessProfileKeys = []string{"industry", "phone", "email", "website", "address", "city", "state", "postalCode", "country", "gstin", "pan", "about", "packs",
-	"addressLine", "landmark", "area", "district", "latitude", "longitude", "whatsapp", "customDomain"}
+	"addressLine", "landmark", "area", "district", "latitude", "longitude", "whatsapp", "customDomain", "tan", "teamSize"}
+
+// readOnlyProfileKeys are shown but not edited: the business's address was made from them (D-158).
+var readOnlyProfileKeys = []string{"taxIdType", "taxId"}
 
 var domainRe = regexp.MustCompile(`^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$`)
 
@@ -81,7 +85,7 @@ func (h *Handler) loadBusiness(r *http.Request) (*businessProfile, error) {
 	}
 	all := map[string]any{}
 	_ = json.Unmarshal(raw, &all)
-	for _, k := range businessProfileKeys {
+	for _, k := range append(append([]string{}, businessProfileKeys...), readOnlyProfileKeys...) {
 		if s, ok := all[k].(string); ok && s != "" {
 			b.Profile[k] = s
 		}
@@ -175,6 +179,11 @@ func (h *Handler) handleUpdateBusiness(w http.ResponseWriter, r *http.Request) {
 			timezone = COALESCE($4, timezone), updated_at = now() WHERE id = $1`, sc.WS, in.Name, in.Currency, in.Timezone); err != nil {
 			return err
 		}
+		if in.Name != nil { // one business per address (D-158): its sign-in page shows the new name
+			if _, err := tx.Exec(ctx, `UPDATE crm.tenants SET name = $2, updated_at = now() WHERE id = (SELECT tenant_id FROM crm.workspaces WHERE id = $1)`, sc.WS, *in.Name); err != nil {
+				return err
+			}
+		}
 		for k, v := range in.Profile {
 			val := ""
 			if v != nil {
@@ -236,6 +245,18 @@ func (h *Handler) checkProfile(r *http.Request, p map[string]*string, fe map[str
 			fe["profile.gstin"] = msg
 		}
 		set("gstin", norm)
+	}
+	for _, k := range []string{"pan", "tan"} {
+		if v := val(k); v != "" {
+			norm, msg := shared.CheckTaxID(k, v, "")
+			if msg != "" {
+				fe["profile."+k] = msg
+			}
+			set(k, norm)
+		}
+	}
+	if v := val("teamSize"); v != "" && !platform.TeamSizes[v] {
+		fe["profile.teamSize"] = "Choose the size of your team."
 	}
 	if d := strings.ToLower(val("customDomain")); d != "" {
 		d = strings.TrimPrefix(strings.TrimPrefix(d, "https://"), "http://")
@@ -388,7 +409,8 @@ func (h *Handler) handleGettingStarted(w http.ResponseWriter, r *http.Request) {
 		    OR EXISTS (SELECT 1 FROM crm.leads WHERE workspace_id = $1 AND deleted_at IS NULL AND next_follow_up_at IS NOT NULL),
 		       (SELECT count(*) FROM crm.memberships WHERE workspace_id = $1 AND status IN ('active', 'invited')) > 1,
 		       EXISTS (SELECT 1 FROM crm.verified_identifiers WHERE identity_id = $2 AND kind = 'email' AND verified_at IS NOT NULL),
-		       (SELECT count(*) FROM jsonb_object_keys((SELECT profile FROM crm.workspaces WHERE id = $1)))`,
+		       (SELECT count(*) FROM jsonb_object_keys((SELECT profile FROM crm.workspaces WHERE id = $1)) k -- not what sign-up asks for (D-158)
+		        WHERE k NOT IN ('taxIdType', 'taxId', 'gstin', 'pan', 'tan', 'teamSize', 'industry', 'phone', 'email'))`,
 		sc.WS, me).Scan(&hasPeople, &hasFollowUp, &hasTeam, &hasEmail, &profileFields)
 	if err != nil {
 		shared.WriteError(w, r, err)

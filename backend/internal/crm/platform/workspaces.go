@@ -297,9 +297,16 @@ func ProvisionTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, in ProvisionIn
 		}
 		return uuid.Nil, err
 	}
-	// Every business starts as its own tenant, addressed by its code (D-156); creating a
-	// business inside an existing tenant moves it there.
-	if _, err := createTenantTx(ctx, tx, wsID, in.Code, in.Name, nil); err != nil {
+	// Every business is its own tenant, addressed by a generated code (D-156, D-158). Sign-up
+	// passes a generated code already; a code chosen in the console only names the workspace.
+	slug := in.Code
+	if !IsBusinessCode(slug) {
+		var err error
+		if slug, err = GenerateBusinessCode(ctx, tx, time.Now(), ""); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	if _, err := createTenantTx(ctx, tx, wsID, slug, in.Name, nil); err != nil {
 		return uuid.Nil, err
 	}
 	for _, role := range access.SystemRoles() {

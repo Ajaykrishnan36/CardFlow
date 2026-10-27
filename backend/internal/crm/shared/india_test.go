@@ -19,3 +19,21 @@ func TestCheckGSTIN(t *testing.T) {
 		t.Fatal("state spellings are understood")
 	}
 }
+
+func TestCheckTaxID(t *testing.T) {
+	if v, msg := CheckTaxID("pan", "abcde1234f", ""); msg != "" || v != "ABCDE1234F" {
+		t.Fatalf("a valid PAN passes: %q %q", v, msg)
+	}
+	if _, msg := CheckTaxID("pan", "ABCDE12345", ""); msg == "" {
+		t.Fatal("a PAN ending in a digit is caught")
+	}
+	if _, msg := CheckTaxID("tan", "ABCD12345E", ""); msg != "" {
+		t.Fatalf("a valid TAN passes: %q", msg)
+	}
+	if _, msg := CheckTaxID("tan", "ABCDE1234F", ""); msg == "" {
+		t.Fatal("a PAN is not a TAN")
+	}
+	if _, msg := CheckTaxID("cin", "X", ""); msg == "" {
+		t.Fatal("unknown kinds are refused")
+	}
+}

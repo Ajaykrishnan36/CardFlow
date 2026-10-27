@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -51,30 +52,21 @@ func createTenantTx(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, slug, name s
 	return id, err
 }
 
-// TenantBySlug finds an active tenant; an old business code still finds its tenant.
+// TenantBySlug finds an active business address. The code may be typed grouped or in any
+// case; an old address (a brand slug or business code from before D-158) finds the
+// business it now points to, so its Slug can differ from what was asked for.
 func TenantBySlug(ctx context.Context, q querier, slug string) (*Tenant, error) {
 	slug = strings.ToLower(strings.TrimSpace(slug))
+	code := NormalizeCode(slug)
 	t := &Tenant{}
-	err := q.QueryRow(ctx, `SELECT t.id, t.slug, t.name, COALESCE(t.custom_domain, '') FROM crm.tenants t WHERE t.slug = $1 AND t.status = 'active'`, slug).
-		Scan(&t.ID, &t.Slug, &t.Name, &t.CustomDomain)
+	err := q.QueryRow(ctx, `
+		WITH f AS (SELECT t.id, t.status, t.redirect_to, 0 AS pri FROM crm.tenants t WHERE t.slug IN ($1, $2)
+		           UNION ALL SELECT t.id, t.status, t.redirect_to, 1 FROM crm.workspaces w JOIN crm.tenants t ON t.id = w.tenant_id WHERE w.code IN ($1, $2))
+		SELECT t.id, t.slug, t.name, COALESCE(t.custom_domain, '') FROM f
+		JOIN crm.tenants t ON t.id = CASE WHEN f.status = 'redirected' THEN f.redirect_to ELSE f.id END
+		WHERE t.status = 'active' ORDER BY f.pri LIMIT 1`, slug, code).Scan(&t.ID, &t.Slug, &t.Name, &t.CustomDomain)
 	if errors.Is(err, pgx.ErrNoRows) {
-		err = q.QueryRow(ctx, `SELECT t.id, t.slug, t.name, COALESCE(t.custom_domain, '') FROM crm.workspaces w JOIN crm.tenants t ON t.id = w.tenant_id
-			WHERE w.code = $1 AND t.status = 'active'`, slug).Scan(&t.ID, &t.Slug, &t.Name, &t.CustomDomain)
-	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, shared.NotFound("business_not_found")
+		return nil, identity.BusinessNotFound()
 	}
 	return t, err
-}
-
-// canAddToTenant: the tenant's owner, or a Super Admin of one of its businesses.
-func canAddToTenant(ctx context.Context, q querier, who, tenant uuid.UUID) (bool, error) {
-	var ok bool
-	err := q.QueryRow(ctx, `
-		SELECT EXISTS (SELECT 1 FROM crm.tenants WHERE id = $2 AND owner_identity = $1)
-		    OR EXISTS (SELECT 1 FROM crm.memberships m JOIN crm.workspaces w ON w.id = m.workspace_id
-		               JOIN crm.role_assignments ra ON ra.membership_id = m.id JOIN crm.roles r ON r.id = ra.role_id
-		               WHERE m.identity_id = $1 AND m.status = 'active' AND w.tenant_id = $2 AND r.key = 'SUPER_ADMIN'
-		                 AND (ra.expires_at IS NULL OR ra.expires_at > now()))`, who, tenant).Scan(&ok)
-	return ok, err
 }

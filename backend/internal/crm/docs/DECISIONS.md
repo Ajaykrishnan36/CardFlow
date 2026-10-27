@@ -1485,6 +1485,26 @@ Without the Vercel settings the same record is shown and the platform owner adds
 in Vercel. The tenant's /<slug>/… address needs no DNS and always works. A DNS record at the
 customer's registrar can only be added by whoever owns the domain.
 
+## D-158 — Every business has its own generated URL
+
+Replaces D-156's one address per brand. Each business is its own tenant, addressed by a code
+made at creation: DDMMYY (India time) + ISO week (2 digits) + the last 4 characters of its
+GSTIN, PAN or TAN (0000 when a business made internally has none) + the next 6-digit number of
+`crm.business_code_seq`, stored lower case (`27102644234f000501`), accepted in any case or with
+dashes, shown as `271026-44-234F-000501`. The name is never in it and renaming never moves it.
+Sign-in at `/<code>/login` checks only that business's members (same query path as D-156, one
+business). The first-time form at `/` asks for the person's name and email, then the business
+name, team size, industry, phone and email (each "same as mine") and one tax ID, which is
+required; date of birth, address, website, WhatsApp and card photos moved to Business profile.
+`mode: "first"` is refused (409 `already_registered`, listing their URLs) to anyone already a
+Super Admin; they use Add business. A tax ID is one owner's: the same owner may reuse it,
+another owner is refused. The tax ID shown on the profile cannot be edited — the URL was made
+from it. New system roles Sales staff and Service staff (rank of Staff, under Admin) with their
+own permission sets. Adding a member returns the URL and emails it when an email is known; SMS
+waits for a provider template. Existing businesses got codes at start-up
+(`MigrateBusinessAddresses`, safe to re-run); the old brand tenant is kept as `redirected`
+with `redirect_to` the oldest business and its own domain moved there. Nothing is deleted.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

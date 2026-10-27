@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -205,7 +204,8 @@ func ListBusinesses(ctx context.Context, pool *pgxpool.Pool, identityID uuid.UUI
 	return out, rows.Err()
 }
 
-// CreateBusinessInput is what a person types to start a business. Only the name is required.
+// CreateBusinessInput is what a person types to start a business. The sign-up form needs the
+// name and one tax ID (GSTIN, PAN or TAN); internal callers may leave the tax ID out.
 type CreateBusinessInput struct {
 	Name     string `json:"name"`
 	Industry string `json:"industry"`
@@ -220,9 +220,15 @@ type CreateBusinessInput struct {
 	Locale   string `json:"locale"`
 	// ListingID links one of the person's own directory listings as the business's public profile.
 	ListingID string `json:"listingId"`
-	// Tenant: add the business to this existing tenant (its owner or a Super Admin there);
-	// empty makes a new tenant — a new brand with its own permanent address (D-156).
+	// Tenant is ignored since D-158: every business gets its own address. Old clients still send it.
 	Tenant string `json:"tenant"`
+	// Mode: "first" is the first-time form at the site's own address, refused to anyone who
+	// is already a Super Admin (they add businesses from inside); "add" or empty is Add business.
+	Mode string `json:"mode"`
+	// D-158: the tax ID the address is made from, and the size of the team.
+	TaxIDType string `json:"taxIdType"`
+	TaxID     string `json:"taxId"`
+	TeamSize  string `json:"teamSize"`
 	// Onboarding (D-155): the person, their address, and the business's own details.
 	DisplayName   string   `json:"displayName"`
 	DateOfBirth   string   `json:"dateOfBirth"`
@@ -233,36 +239,6 @@ type CreateBusinessInput struct {
 	Address       *Address `json:"address"`
 }
 
-var slugStrip = regexp.MustCompile(`[^a-z0-9]+`)
-
-// businessCode turns a name into a unique workspace code; the person never types one.
-func businessCode(ctx context.Context, tx pgx.Tx, name string) (string, error) {
-	base := strings.Trim(slugStrip.ReplaceAllString(strings.ToLower(name), "-"), "-")
-	if len(base) > 30 {
-		base = strings.Trim(base[:30], "-")
-	}
-	if len(base) < 3 || base == "platform" {
-		base = "business"
-	}
-	code := base
-	for i := 0; i < 8; i++ {
-		// The code is also the tenant's address: free among tenants, businesses and the site's pages.
-		taken, err := slugTaken(ctx, tx, code)
-		if err != nil {
-			return "", err
-		}
-		if !taken {
-			return code, nil
-		}
-		suffix, err := shared.RandomToken(4)
-		if err != nil {
-			return "", err
-		}
-		code = base + "-" + strings.ToLower(slugStrip.ReplaceAllString(strings.ToLower(suffix), ""))[:4]
-	}
-	return "", errors.New("could not find a free business code")
-}
-
 // CreateBusinessTx creates the business and makes the creator its Super Admin. It is the
 // single path for self-serve creation (the API, and the sample-data seed).
 func CreateBusinessTx(ctx context.Context, tx pgx.Tx, creator uuid.UUID, setupID uuid.UUID, in CreateBusinessInput) (uuid.UUID, string, error) {
@@ -270,7 +246,21 @@ func CreateBusinessTx(ctx context.Context, tx pgx.Tx, creator uuid.UUID, setupID
 	if fe := in.normalizeOnboarding(); len(fe) > 0 {
 		return uuid.Nil, "", shared.Validation(fe)
 	}
-	code, err := businessCode(ctx, tx, in.Name)
+	if in.TaxID != "" {
+		// One tax ID belongs to one owner: the same owner may reuse it for another business.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, "taxid:"+in.TaxID); err != nil {
+			return uuid.Nil, "", err
+		}
+		var taken bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.workspaces WHERE (profile->>'taxId' = $1 OR profile->>'gstin' = $1 OR profile->>'pan' = $1 OR profile->>'tan' = $1)
+			AND created_by_identity IS DISTINCT FROM $2)`, in.TaxID, creator).Scan(&taken); err != nil {
+			return uuid.Nil, "", err
+		}
+		if taken {
+			return uuid.Nil, "", shared.Validation(map[string]string{"taxId": "This " + strings.ToUpper(in.TaxIDType) + " is already registered by another business owner. Contact support if it is yours."})
+		}
+	}
+	code, err := GenerateBusinessCode(ctx, tx, time.Now(), in.TaxID)
 	if err != nil {
 		return uuid.Nil, "", err
 	}
@@ -288,26 +278,7 @@ func CreateBusinessTx(ctx context.Context, tx pgx.Tx, creator uuid.UUID, setupID
 	if err := savePersonDetails(ctx, tx, creator, in.DisplayName, in.DateOfBirth, in.PersonalEmail, in.Personal); err != nil {
 		return uuid.Nil, "", err
 	}
-	if slug := strings.TrimSpace(in.Tenant); slug != "" {
-		t, err := TenantBySlug(ctx, tx, slug)
-		if err != nil {
-			return uuid.Nil, "", err
-		}
-		ok, err := canAddToTenant(ctx, tx, creator, t.ID)
-		if err != nil {
-			return uuid.Nil, "", err
-		}
-		if !ok {
-			return uuid.Nil, "", shared.Forbidden("not_tenant_admin", "Only the owner or a Super Admin of "+t.Name+" can add a business to it.")
-		}
-		// The tenant made for the new business by itself is not needed: it joins this one.
-		if _, err := tx.Exec(ctx, `UPDATE crm.workspaces SET tenant_id = $2 WHERE id = $1`, wsID, t.ID); err != nil {
-			return uuid.Nil, "", err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM crm.tenants WHERE slug = $1 AND NOT EXISTS (SELECT 1 FROM crm.workspaces WHERE tenant_id = crm.tenants.id)`, code); err != nil {
-			return uuid.Nil, "", err
-		}
-	} else if _, err := tx.Exec(ctx, `UPDATE crm.tenants SET owner_identity = $2, name = $3 WHERE id = (SELECT tenant_id FROM crm.workspaces WHERE id = $1)`, wsID, creator, in.Name); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE crm.tenants SET owner_identity = $2, name = $3 WHERE id = (SELECT tenant_id FROM crm.workspaces WHERE id = $1)`, wsID, creator, in.Name); err != nil {
 		return uuid.Nil, "", err
 	}
 	rawProfile, _ := json.Marshal(businessProfileFrom(in))
@@ -386,6 +357,16 @@ func (h *Handler) handleCreateBusiness(w http.ResponseWriter, r *http.Request) {
 	}
 	me := actorID(r)
 	ctx := r.Context()
+	if strings.TrimSpace(in.TaxID) == "" && strings.TrimSpace(in.GSTIN) == "" {
+		shared.WriteError(w, r, shared.Validation(map[string]string{"taxId": "Enter your GSTIN, PAN or TAN."}))
+		return
+	}
+	if in.Mode == "first" {
+		if err := h.refuseExistingOwner(ctx, me); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+	}
 	status, resp, err := shared.Idempotent(ctx, h.store.Pool, me, r.Header.Get("Idempotency-Key"), in, func() (int, any, error) {
 		settings := SelfServe(ctx, h.store.Pool)
 		if !settings.Enabled {
@@ -424,13 +405,46 @@ func (h *Handler) handleCreateBusiness(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
-		return http.StatusCreated, map[string]any{"business": b, "next": "/" + b.TenantSlug + "/home?b=" + b.Code}, nil
+		return http.StatusCreated, map[string]any{"business": b, "next": "/" + b.TenantSlug + "/home"}, nil
 	})
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
 	shared.WriteJSON(w, status, resp)
+}
+
+// refuseExistingOwner: someone who is already a Super Admin adds businesses from inside;
+// the first-time form shows them their own addresses instead (D-158).
+func (h *Handler) refuseExistingOwner(ctx context.Context, me uuid.UUID) error {
+	rows, err := h.store.Pool.Query(ctx, `
+		SELECT w.name, t.slug FROM crm.memberships m
+		JOIN crm.workspaces w ON w.id = m.workspace_id AND w.status = 'active'
+		JOIN crm.tenants t ON t.id = w.tenant_id AND t.status = 'active'
+		JOIN crm.role_assignments ra ON ra.membership_id = m.id JOIN crm.roles r ON r.id = ra.role_id AND r.key = 'SUPER_ADMIN'
+		WHERE m.identity_id = $1 AND m.status = 'active' AND (ra.expires_at IS NULL OR ra.expires_at > now())
+		ORDER BY w.created_at`, me)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	list := []map[string]string{}
+	for rows.Next() {
+		var name, slug string
+		if err := rows.Scan(&name, &slug); err != nil {
+			return err
+		}
+		list = append(list, map[string]string{"name": name, "slug": slug, "display": DisplayCode(slug), "loginPath": "/" + slug + "/login"})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	e := shared.NewError(http.StatusConflict, "already_registered", "You already have an account. Sign in at your business URL below, or contact support.")
+	e.Details = map[string]any{"businesses": list}
+	return e
 }
 
 func (h *Handler) handleSaveSelfServe(w http.ResponseWriter, r *http.Request) {

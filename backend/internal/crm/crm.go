@@ -168,6 +168,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	if err != nil {
 		return m.disable("role hierarchy migration failed: " + err.Error())
 	}
+	// Every business its own generated address (D-158); a problem here never stops the CRM.
+	addrCtx, cancelAddr := context.WithTimeout(context.Background(), 120*time.Second)
+	if err := platform.MigrateBusinessAddresses(addrCtx, st.Pool); err != nil {
+		slog.Error("giving businesses their own addresses failed", "err", err)
+	}
+	cancelAddr()
 	// Connected app: Business Card Snap (CardFlow) users, sign-ins and support tickets (D-36).
 	// The owner's one-time clean-up of test businesses (D-129) comes first: it also retires the connector.
 	cleanCtx, cancelClean := context.WithTimeout(context.Background(), 120*time.Second)

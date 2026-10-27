@@ -1,25 +1,66 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
-import { ArrowRight, Building2, Check, Copy, ImagePlus, LogOut, Plus, Users } from 'lucide-react';
-import { businessApi, onboardingApi, type PostalAddress } from '@crm/api/endpoints';
-import { isApiError } from '@crm/api/client';
-import { isOwnerSession, meKey, useMe, useSignOut, workspaceHomePath } from '@crm/auth/session';
-import { Button } from '@crm/components/ui/button';
-import { Badge, Card, Alert } from '@crm/components/ui/card';
-import { Field } from '@crm/components/ui/field';
-import { Input } from '@crm/components/ui/input';
-import { Checkbox, Select } from '@crm/components/ui/form-controls';
-import { AddressFields, addressFilled, emptyAddress } from './address-fields';
-import { Skeleton } from '@crm/components/ui/spinner';
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/components/ui/menu';
-import { ErrorState } from '@crm/components/states';
-import { useDocumentTitle } from '@crm/features/auth/login-pages';
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  ArrowRight,
+  Building2,
+  Check,
+  Copy,
+  LogOut,
+  Plus,
+  Users,
+} from "lucide-react";
+import {
+  businessApi,
+  onboardingApi,
+  type BusinessSummary,
+} from "@crm/api/endpoints";
+import { isApiError } from "@crm/api/client";
+import {
+  isOwnerSession,
+  meKey,
+  useMe,
+  useSignOut,
+  workspaceHomePath,
+} from "@crm/auth/session";
+import { Button } from "@crm/components/ui/button";
+import { Badge, Card, Alert } from "@crm/components/ui/card";
+import { Field } from "@crm/components/ui/field";
+import { Input } from "@crm/components/ui/input";
+import { Checkbox, Select } from "@crm/components/ui/form-controls";
+import { Skeleton } from "@crm/components/ui/spinner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@crm/components/ui/menu";
+import { ErrorState } from "@crm/components/states";
+import { useDocumentTitle } from "@crm/features/auth/login-pages";
+import { businessLoginUrl, displayCode } from "@crm/lib/tenant";
 
-export const businessesKey = ['businesses'] as const;
+export const businessesKey = ["businesses"] as const;
 
-const industries = ['Retail', 'Wholesale & distribution', 'Automotive', 'Manufacturing', 'Agriculture', 'Transport & logistics', 'Services', 'Real estate', 'Construction', 'Education', 'Healthcare', 'Hospitality', 'Technology', 'Finance', 'Insurance', 'Beauty & salon', 'Other'];
+const industries = [
+  "Retail",
+  "Wholesale & distribution",
+  "Automotive",
+  "Manufacturing",
+  "Agriculture",
+  "Transport & logistics",
+  "Services",
+  "Real estate",
+  "Construction",
+  "Education",
+  "Healthcare",
+  "Hospitality",
+  "Technology",
+  "Finance",
+  "Insurance",
+  "Beauty & salon",
+  "Other",
+];
 
 /**
  * /crm/businesses — every business the person belongs to, and "create a business".
@@ -31,31 +72,44 @@ export function BusinessesHomePage() {
   const navigate = useNavigate();
   const signOut = useSignOut();
   const [params, setParams] = useSearchParams();
-  const q = useQuery({ queryKey: businessesKey, queryFn: businessApi.list, staleTime: 30_000 });
+  const q = useQuery({
+    queryKey: businessesKey,
+    queryFn: businessApi.list,
+    staleTime: 30_000,
+  });
   const [creating, setCreating] = useState(false);
-  useDocumentTitle('Your businesses');
-  // ?tenant=<slug>: "New business" from inside a tenant adds to it (D-156).
-  const askedTenant = params.get('tenant');
-  const own = (me?.memberships ?? []).find((m) => m.tenantSlug === askedTenant && m.roleKey === 'SUPER_ADMIN');
-  const tenantForNew = askedTenant && own ? { slug: askedTenant, name: own.tenantName } : undefined;
+  useDocumentTitle("Your businesses");
+  // Someone who is already a Super Admin adds businesses; the first-time form is for new people (D-158).
+  const superAdmin = (me?.memberships ?? []).some(
+    (m) =>
+      m.status === "active" &&
+      !m.isPlatformWorkspace &&
+      m.roleKey === "SUPER_ADMIN",
+  );
+  const mode = superAdmin || params.get("add") ? "add" : "first";
 
   // First sign-in with no business: go straight to the form.
   useEffect(() => {
-    if (params.get('new') && q.data?.canCreate) setCreating(true);
-    else if (q.data && q.data.data.length === 0 && q.data.canCreate) setCreating(true);
+    if (params.get("new") && q.data?.canCreate) setCreating(true);
+    else if (q.data && q.data.data.length === 0 && q.data.canCreate)
+      setCreating(true);
   }, [params, q.data]);
 
   if (!me) return null;
-  const firstName = me.identity.displayName.split(' ')[0] ?? '';
+  const firstName = me.identity.displayName.split(" ")[0] ?? "";
   const list = q.data?.data ?? [];
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6 lg:py-12">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[22px] font-semibold tracking-tight sm:text-2xl">Your businesses</h1>
+          <h1 className="text-[22px] font-semibold tracking-tight sm:text-2xl">
+            Your businesses
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {firstName && firstName !== 'New' ? `Hi ${firstName}. ` : ''}Each business has its own CRM. Records never mix between them.
+            {firstName && firstName !== "New" ? `Hi ${firstName}. ` : ""}Each
+            business has its own URL and its own CRM. Records never mix between
+            them.
           </p>
         </div>
         <div className="flex gap-2">
@@ -64,17 +118,28 @@ export function BusinessesHomePage() {
               <Link to="/crm/owner/dashboard">Owner console</Link>
             </Button>
           ) : null}
-          {q.data?.canCreate ? (
+          {q.data?.canCreate && list.length > 0 ? (
             <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus /> New business
+              <Plus /> {mode === "add" ? "Add business" : "New business"}
             </Button>
           ) : null}
         </div>
       </div>
 
+      {superAdmin && list.length > 0 ? (
+        <Alert tone="info" title="You already have an account" className="mb-4">
+          Your team signs in at each business’s own URL below — save them. If
+          something is wrong, contact support.
+        </Alert>
+      ) : null}
+
       {q.isError ? (
         <Card>
-          <ErrorState title="Couldn't load your businesses" message={isApiError(q.error) ? q.error.message : undefined} onRetry={() => void q.refetch()} />
+          <ErrorState
+            title="Couldn't load your businesses"
+            message={isApiError(q.error) ? q.error.message : undefined}
+            onRetry={() => void q.refetch()}
+          />
         </Card>
       ) : q.isPending ? (
         <div className="space-y-3">
@@ -90,45 +155,63 @@ export function BusinessesHomePage() {
           <span className="mx-auto grid size-11 place-items-center rounded-full bg-primary-soft text-primary">
             <Building2 className="size-5" aria-hidden />
           </span>
-          <h2 className="mt-3 text-base font-semibold">Create your first business</h2>
+          <h2 className="mt-3 text-base font-semibold">
+            Create your first business
+          </h2>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-            It takes a minute. You become its Super Admin and can invite your team afterwards.
+            It takes a minute. You become its Super Admin, get its own URL, and
+            can add your team afterwards.
           </p>
           {q.data?.canCreate ? (
             <Button className="mt-4" onClick={() => setCreating(true)}>
               <Plus /> Create a business
             </Button>
           ) : (
-            <p className="mt-4 text-sm text-muted-foreground">Creating a business isn’t open right now. Ask your administrator for an invitation.</p>
+            <p className="mt-4 text-sm text-muted-foreground">
+              Creating a business isn’t open right now. Ask your administrator
+              for an invitation.
+            </p>
           )}
         </Card>
       ) : (
         <ul className="space-y-3">
           {list.map((b) => (
-            <li key={b.id}>
+            <li
+              key={b.id}
+              className="rounded-xl border bg-card transition-colors hover:border-primary/50"
+            >
               <Link
                 to={workspaceHomePath(b.code)}
-                className="group block rounded-xl border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="group block rounded-t-xl p-4 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-center gap-3">
                   <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary-soft text-sm font-semibold text-primary">
                     {b.name.slice(0, 2).toUpperCase()}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-semibold text-foreground">{b.isPlatform ? 'Platform CRM' : b.name}</p>
+                    <p className="truncate text-[15px] font-semibold text-foreground">
+                      {b.isPlatform ? "Platform CRM" : b.name}
+                    </p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <Badge tone="primary">{b.roleName || 'Member'}</Badge>
+                      <Badge tone="primary">{b.roleName || "Member"}</Badge>
                       <span className="flex items-center gap-1">
-                        <Users className="size-3.5" aria-hidden /> {b.members} {b.members === 1 ? 'person' : 'people'}
+                        <Users className="size-3.5" aria-hidden /> {b.members}{" "}
+                        {b.members === 1 ? "person" : "people"}
                       </span>
-                      {b.tenantSlug ? <span className="font-mono">/{b.tenantSlug}</span> : null}
                       {b.profile?.city ? <span>{b.profile.city}</span> : null}
-                      <span>{b.currency}</span>
                     </p>
                   </div>
-                  <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden />
+                  <ArrowRight
+                    className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+                    aria-hidden
+                  />
                 </div>
               </Link>
+              {b.tenantSlug && !b.isPlatform ? (
+                <div className="border-t px-4 py-2.5">
+                  <BusinessUrl slug={b.tenantSlug} />
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -136,7 +219,8 @@ export function BusinessesHomePage() {
 
       {q.data && !q.data.canCreate && list.length > 0 ? (
         <p className="mt-4 text-xs text-muted-foreground">
-          You’ve created {q.data.created} of {q.data.limit} businesses this account can create.
+          You’ve created {q.data.created} of {q.data.limit} businesses this
+          account can create.
         </p>
       ) : null}
 
@@ -151,50 +235,145 @@ export function BusinessesHomePage() {
 
       <CreateBusinessDialog
         open={creating}
+        mode={mode}
         onOpenChange={(open) => {
           setCreating(open);
-          if (!open && params.get('new')) setParams({}, { replace: true });
+          if (!open && (params.get("new") || params.get("add")))
+            setParams({}, { replace: true });
         }}
-        onCreated={(code, slug) => navigate(`/${slug}/home?b=${encodeURIComponent(code)}`)}
-        tenant={tenantForNew}
+        onCreated={(slug) => navigate(`/${slug}/home`)}
       />
     </div>
   );
 }
 
-type Side = 'front' | 'back';
+/** A business's own sign-in URL with its grouped code and a copy button (D-158). */
+export function BusinessUrl({
+  slug,
+  className,
+}: {
+  slug: string;
+  className?: string;
+}) {
+  const url = businessLoginUrl(slug);
+  return (
+    <div className={`flex items-center gap-2 ${className ?? ""}`}>
+      <div className="min-w-0 flex-1">
+        <p
+          className="truncate font-mono text-[13px] text-foreground"
+          title={url}
+        >
+          {url}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          Business code {displayCode(slug)}
+        </p>
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          void navigator.clipboard?.writeText(url);
+          toast.success("Business URL copied");
+        }}
+      >
+        <Copy /> Copy
+      </Button>
+    </div>
+  );
+}
+
+/** Every business URL of the signed-in person (My Profile). */
+export function MyBusinessUrls() {
+  const q = useQuery({
+    queryKey: businessesKey,
+    queryFn: businessApi.list,
+    staleTime: 30_000,
+  });
+  const list = (q.data?.data ?? []).filter(
+    (b: BusinessSummary) => !b.isPlatform && b.tenantSlug,
+  );
+  if (q.isPending) return <Skeleton className="h-12 w-full" />;
+  if (list.length === 0)
+    return (
+      <p className="text-sm text-muted-foreground">
+        You don’t belong to a business yet.
+      </p>
+    );
+  return (
+    <ul className="divide-y">
+      {list.map((b: BusinessSummary) => (
+        <li key={b.id} className="py-3 first:pt-0 last:pb-0">
+          <p className="mb-1 text-sm font-medium">
+            {b.name}{" "}
+            <span className="font-normal text-muted-foreground">
+              · {b.roleName || "Member"}
+            </span>
+          </p>
+          <BusinessUrl slug={b.tenantSlug} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const teamSizes = ["Just me", "2-10", "11-50", "51-200", "201-500", "500+"];
+const taxIdKinds = [
+  { value: "gstin", label: "GSTIN", placeholder: "33ABCDE1234F1Z5", max: 15 },
+  { value: "pan", label: "PAN", placeholder: "ABCDE1234F", max: 10 },
+  { value: "tan", label: "TAN", placeholder: "ABCD12345E", max: 10 },
+] as const;
+type TaxKind = (typeof taxIdKinds)[number]["value"];
 
 /**
- * Create a business (D-155), in sections split by a line: you (name, date of birth,
- * personal email, the mobile you signed in with, the business / brand name), your address,
- * the business (industry, phone and WhatsApp — same as yours by default — email, website,
- * GSTIN) and its address, and the business card photos. Your own details are remembered
- * and filled in again for your next business. At the end: the business's own login address.
+ * The first-time form (D-158): your name and email, then — below a line — the business:
+ * name, team size, industry, phone and email (each "same as mine" by default) and one tax
+ * ID: GSTIN, PAN or TAN. The business gets its own generated URL, shown at the end; address,
+ * website, WhatsApp and card photos are filled in later in Business profile. "add" (Add
+ * business, for someone who already has one) skips the part about you.
  */
 function CreateBusinessDialog({
   open,
+  mode,
   onOpenChange,
   onCreated,
-  tenant
 }: {
   open: boolean;
+  mode: "first" | "add";
   onOpenChange: (open: boolean) => void;
-  onCreated: (code: string, tenantSlug: string) => void;
-  /** Add the business to this tenant (it keeps the tenant's address); none = a new brand. */
-  tenant?: { slug: string; name: string };
+  onCreated: (tenantSlug: string) => void;
 }) {
   const qc = useQueryClient();
-  const details = useQuery({ queryKey: ['me', 'details'], queryFn: onboardingApi.details, enabled: open, staleTime: 60_000 });
-  const [you, setYou] = useState({ displayName: '', dateOfBirth: '', personalEmail: '' });
-  const [biz, setBiz] = useState({ name: '', industry: '', phone: '', whatsapp: '', email: '', website: '', gstin: '' });
+  const details = useQuery({
+    queryKey: ["me", "details"],
+    queryFn: onboardingApi.details,
+    enabled: open,
+    staleTime: 60_000,
+  });
+  const [you, setYou] = useState({ displayName: "", personalEmail: "" });
+  const [biz, setBiz] = useState({
+    name: "",
+    teamSize: "",
+    industry: "",
+    phone: "",
+    email: "",
+    taxIdType: "gstin" as TaxKind,
+    taxId: "",
+  });
   const [samePhone, setSamePhone] = useState(true);
-  const [sameWhatsapp, setSameWhatsapp] = useState(true);
-  const [address, setAddress] = useState<PostalAddress>(emptyAddress());
-  const [cards, setCards] = useState<Record<Side, File | null>>({ front: null, back: null });
+  const [sameEmail, setSameEmail] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [alert, setAlert] = useState<string | null>(null);
-  const [done, setDone] = useState<{ code: string; name: string; tenantSlug: string } | null>(null);
-  const myPhone = details.data?.phone ?? '';
+  const [registered, setRegistered] = useState<Array<{
+    name: string;
+    slug: string;
+  }> | null>(null);
+  const [done, setDone] = useState<{ name: string; tenantSlug: string } | null>(
+    null,
+  );
+  const myPhone = details.data?.phone ?? "";
+  const adding = mode === "add";
 
   // Fill in what we already know about the person, once per opening.
   const filled = useRef(false);
@@ -206,70 +385,69 @@ function CreateBusinessDialog({
     const d = details.data;
     if (!d || filled.current) return;
     filled.current = true;
-    setYou({ displayName: d.displayName, dateOfBirth: d.dateOfBirth, personalEmail: d.personalEmail });
+    setYou({ displayName: d.displayName, personalEmail: d.personalEmail });
   }, [open, details.data]);
 
   const create = useMutation({
-    mutationFn: async () => {
-      const phone = samePhone ? myPhone : biz.phone.trim();
-      const res = await businessApi.create({
+    mutationFn: () =>
+      businessApi.create({
+        mode,
         name: biz.name.trim(),
+        teamSize: biz.teamSize,
         industry: biz.industry,
-        phone,
-        whatsapp: sameWhatsapp ? phone : biz.whatsapp.trim(),
-        email: biz.email.trim(),
-        website: biz.website.trim(),
-        gstin: biz.gstin.trim(),
-        displayName: you.displayName.trim(),
-        dateOfBirth: you.dateOfBirth,
-        personalEmail: you.personalEmail.trim(),
-        address: addressFilled(address) ? address : undefined,
-        tenant: tenant?.slug
-      });
-      // The card photos are optional: a failed upload never undoes the business.
-      for (const side of ['front', 'back'] as Side[]) {
-        const f = cards[side];
-        if (f) await businessApi.uploadCardImage(res.business.code, side, f).catch(() => toast.error(`The ${side} of the card wasn’t saved. Add it later in Business profile.`));
-      }
-      return res;
-    },
+        phone: samePhone ? myPhone : biz.phone.trim(),
+        email: sameEmail ? you.personalEmail.trim() : biz.email.trim(),
+        taxIdType: biz.taxIdType,
+        taxId: biz.taxId.trim(),
+        displayName: adding ? undefined : you.displayName.trim(),
+        personalEmail: adding ? undefined : you.personalEmail.trim(),
+      }),
     onSuccess: async (res) => {
-      await Promise.all([qc.invalidateQueries({ queryKey: businessesKey }), qc.invalidateQueries({ queryKey: meKey }), qc.invalidateQueries({ queryKey: ['me', 'details'] })]);
-      qc.removeQueries({ queryKey: ['capabilities'] });
-      setDone({ code: res.business.code, name: res.business.name, tenantSlug: res.business.tenantSlug || res.business.code });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: businessesKey }),
+        qc.invalidateQueries({ queryKey: meKey }),
+        qc.invalidateQueries({ queryKey: ["me", "details"] }),
+      ]);
+      qc.removeQueries({ queryKey: ["capabilities"] });
+      setDone({
+        name: res.business.name,
+        tenantSlug: res.business.tenantSlug || res.business.code,
+      });
     },
     onError: (e) => {
+      if (isApiError(e) && e.code === "already_registered") {
+        const list =
+          (e.details?.businesses as
+            Array<{ name: string; slug: string }> | undefined) ?? [];
+        setRegistered(list);
+        setAlert(e.message);
+        return;
+      }
       if (isApiError(e)) {
-        setErrors(e.fieldErrors);
-        setAlert(Object.keys(e.fieldErrors).length ? 'Please fix the highlighted fields.' : e.message);
-      } else setAlert('Something went wrong. Please try again.');
-    }
+        const fe = { ...e.fieldErrors };
+        if (fe.gstin && !fe.taxId) fe.taxId = fe.gstin;
+        setErrors(fe);
+        setAlert(
+          Object.keys(fe).length
+            ? "Please fix the highlighted fields."
+            : e.message,
+        );
+      } else setAlert("Something went wrong. Please try again.");
+    },
   });
 
   const close = (o: boolean) => {
     if (!o && done) {
-      const { code, tenantSlug } = done;
+      const { tenantSlug } = done;
       setDone(null);
       onOpenChange(false);
-      onCreated(code, tenantSlug);
+      onCreated(tenantSlug);
       return;
     }
     onOpenChange(o);
   };
-
-  const pickCard = (side: Side) => (e: { target: HTMLInputElement }) => {
-    const f = e.target.files?.[0] ?? null;
-    if (f && f.size > 5 * 1024 * 1024) {
-      setErrors((x) => ({ ...x, [`card.${side}`]: 'Use a photo up to 5 MB.' }));
-      return;
-    }
-    setErrors((x) => ({ ...x, [`card.${side}`]: '' }));
-    setCards((c) => ({ ...c, [side]: f }));
-  };
-
-  const previews = useMemo(() => ({ front: cards.front ? URL.createObjectURL(cards.front) : '', back: cards.back ? URL.createObjectURL(cards.back) : '' }), [cards]);
-  useEffect(() => () => Object.values(previews).forEach((u) => u && URL.revokeObjectURL(u)), [previews]);
-  const loginUrl = done ? `${window.location.origin}/${done.tenantSlug}/login` : '';
+  const kind =
+    taxIdKinds.find((k) => k.value === biz.taxIdType) ?? taxIdKinds[0];
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -279,39 +457,63 @@ function CreateBusinessDialog({
             <span className="grid size-11 place-items-center rounded-full bg-success/15 text-success">
               <Check className="size-5" aria-hidden />
             </span>
-            <DialogTitle className="mt-3 text-lg font-semibold">{done.name} is ready</DialogTitle>
+            <DialogTitle className="mt-3 text-lg font-semibold">
+              {done.name} is ready
+            </DialogTitle>
             <DialogDescription className="mt-1 text-sm text-muted-foreground">
-              {tenant
-                ? `It is part of ${tenant.name} and uses the same login address. Everyone signs in there; what they see depends on the business and their role.`
-                : 'This is your business’s permanent login address. Share it with your team — every business you add later uses the same address.'}
+              This is your business’s own URL. Save it and share it with your
+              team: only people you add can sign in there. You can always find
+              it in My Profile.
             </DialogDescription>
-            <div className="mt-4 flex items-center gap-2 rounded-lg border bg-muted/40 p-2 pl-3">
-              <code className="min-w-0 flex-1 truncate text-sm">{loginUrl}</code>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  void navigator.clipboard?.writeText(loginUrl);
-                  toast.success('Login address copied');
-                }}
-              >
-                <Copy /> Copy
-              </Button>
+            <div className="mt-4 rounded-lg border bg-muted/40 p-3">
+              <BusinessUrl slug={done.tenantSlug} />
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">Address: /{done.tenantSlug} · Business code: {done.code}</p>
             <div className="mt-6 flex justify-end">
               <Button onClick={() => close(false)}>
                 Open {done.name} <ArrowRight />
               </Button>
             </div>
           </div>
+        ) : registered ? (
+          <div className="p-6">
+            <DialogTitle className="text-lg font-semibold">
+              You already have an account
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm text-muted-foreground">
+              Sign in at your business URL below, or contact support. To start
+              another business, use Add business from inside.
+            </DialogDescription>
+            <ul className="mt-4 space-y-3">
+              {registered.map((b) => (
+                <li key={b.slug} className="rounded-lg border p-3">
+                  <p className="mb-1 text-sm font-medium">{b.name}</p>
+                  <BusinessUrl slug={b.slug} />
+                </li>
+              ))}
+            </ul>
+            <div className="mt-6 flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRegistered(null);
+                  setAlert(null);
+                  onOpenChange(false);
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
         ) : (
           <>
             <div className="border-b px-5 py-4 pr-12">
-              <DialogTitle className="text-base font-semibold">{tenant ? `Add a business to ${tenant.name}` : 'Create a business'}</DialogTitle>
+              <DialogTitle className="text-base font-semibold">
+                {adding ? "Add a business" : "Set up your business"}
+              </DialogTitle>
               <DialogDescription className="mt-1 text-sm text-muted-foreground">
-                You get a full CRM for it: leads, contacts, accounts, deals, tasks, cases, finance and reports. Only the starred fields are needed now.
+                {adding
+                  ? "It gets its own URL, its own team and its own records. You are its Super Admin."
+                  : "You become its Super Admin and get its own URL. Only the starred fields are needed."}
               </DialogDescription>
             </div>
             <form
@@ -322,12 +524,18 @@ function CreateBusinessDialog({
                 setErrors({});
                 setAlert(null);
                 const fe: Record<string, string> = {};
-                if (you.displayName.trim().length < 2) fe.displayName = 'Enter your name.';
-                if (biz.name.trim().length < 2) fe.name = 'Enter your business or brand name.';
-                if (!samePhone && !biz.phone.trim()) fe.phone = 'Enter the business phone, or tick “same as my mobile”.';
+                if (!adding && you.displayName.trim().length < 2)
+                  fe.displayName = "Enter your name.";
+                if (biz.name.trim().length < 2)
+                  fe.name = "Enter your business or brand name.";
+                if (!samePhone && !biz.phone.trim())
+                  fe.phone =
+                    "Enter the business phone, or tick “same as my mobile”.";
+                if (!biz.taxId.trim())
+                  fe.taxId = "Enter your GSTIN, PAN or TAN.";
                 if (Object.keys(fe).length) {
                   setErrors(fe);
-                  setAlert('Please fix the highlighted fields.');
+                  setAlert("Please fix the highlighted fields.");
                   return;
                 }
                 create.mutate();
@@ -336,105 +544,167 @@ function CreateBusinessDialog({
               <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
                 {alert ? <Alert tone="danger">{alert}</Alert> : null}
 
-                <Section title="About you">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Your name *" error={errors.displayName}>
-                      <Input value={you.displayName} onChange={(e) => setYou({ ...you, displayName: e.target.value })} placeholder="Ajay Krishnan" maxLength={120} autoComplete="name" autoFocus />
-                    </Field>
-                    <Field label="Date of birth" error={errors.dateOfBirth}>
-                      <Input type="date" value={you.dateOfBirth} onChange={(e) => setYou({ ...you, dateOfBirth: e.target.value })} max={new Date().toISOString().slice(0, 10)} autoComplete="bday" />
-                    </Field>
-                    <Field label="Personal email" error={errors.personalEmail}>
-                      <Input type="email" inputMode="email" value={you.personalEmail} onChange={(e) => setYou({ ...you, personalEmail: e.target.value })} placeholder="you@gmail.com" autoComplete="email" />
-                    </Field>
-                    <Field label="Mobile number" hint="The number you signed in with.">
-                      <Input value={myPhone} readOnly disabled placeholder="—" />
-                    </Field>
-                    <Field
-                      label={tenant ? 'Business name *' : 'Business / brand name *'}
-                      error={errors.name}
-                      className="sm:col-span-2"
-                      hint={tenant ? `For example ${tenant.name} College. It keeps ${tenant.name}'s login address.` : 'This names your login address, which never changes: all your businesses share it.'}
-                    >
-                      <Input value={biz.name} onChange={(e) => setBiz({ ...biz, name: e.target.value })} placeholder={tenant ? `${tenant.name} College` : 'PSG'} maxLength={120} />
-                    </Field>
-                  </div>
-                </Section>
-
-                <hr className="border-border" />
-                <Section title="Your business">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field label="Industry" error={errors.industry}>
-                      <Select value={biz.industry} onChange={(e) => setBiz({ ...biz, industry: e.target.value })} placeholder="Choose…" options={industries.map((i) => ({ value: i, label: i }))} />
-                    </Field>
-                    <Field label="Website" error={errors.website}>
-                      <Input value={biz.website} onChange={(e) => setBiz({ ...biz, website: e.target.value })} placeholder="www.yourbusiness.com" inputMode="url" />
-                    </Field>
-                    <div>
-                      <Field label="Business phone" error={errors.phone}>
-                        <Input value={samePhone ? myPhone : biz.phone} onChange={(e) => setBiz({ ...biz, phone: e.target.value })} type="tel" inputMode="tel" disabled={samePhone} placeholder="+91 98765 43210" />
-                      </Field>
-                      <Checkbox className="mt-2" checked={samePhone} onCheckedChange={setSamePhone} label="Same as my mobile" />
-                    </div>
-                    <div>
-                      <Field label="WhatsApp number" error={errors.whatsapp}>
+                {adding ? null : (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field label="Your name *" error={errors.displayName}>
                         <Input
-                          value={sameWhatsapp ? (samePhone ? myPhone : biz.phone) : biz.whatsapp}
-                          onChange={(e) => setBiz({ ...biz, whatsapp: e.target.value })}
-                          type="tel"
-                          inputMode="tel"
-                          disabled={sameWhatsapp}
-                          placeholder="+91 98765 43210"
+                          value={you.displayName}
+                          onChange={(e) =>
+                            setYou({ ...you, displayName: e.target.value })
+                          }
+                          placeholder="Ajay Krishnan"
+                          maxLength={120}
+                          autoComplete="name"
+                          autoFocus
                         />
                       </Field>
-                      <Checkbox className="mt-2" checked={sameWhatsapp} onCheckedChange={setSameWhatsapp} label="Same as business phone" />
+                      <Field label="Email" error={errors.personalEmail}>
+                        <Input
+                          type="email"
+                          inputMode="email"
+                          value={you.personalEmail}
+                          onChange={(e) =>
+                            setYou({ ...you, personalEmail: e.target.value })
+                          }
+                          placeholder="you@gmail.com"
+                          autoComplete="email"
+                        />
+                      </Field>
                     </div>
+                    <hr className="border-border" />
+                  </>
+                )}
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Business / brand name *"
+                    error={errors.name}
+                    className="sm:col-span-2"
+                  >
+                    <Input
+                      value={biz.name}
+                      onChange={(e) => setBiz({ ...biz, name: e.target.value })}
+                      placeholder="Ajay Traders"
+                      maxLength={120}
+                      autoFocus={adding}
+                    />
+                  </Field>
+                  <Field label="Size of team" error={errors.teamSize}>
+                    <Select
+                      value={biz.teamSize}
+                      onChange={(e) =>
+                        setBiz({ ...biz, teamSize: e.target.value })
+                      }
+                      placeholder="Choose…"
+                      options={teamSizes.map((t) => ({
+                        value: t,
+                        label: t === "Just me" ? t : `${t} people`,
+                      }))}
+                    />
+                  </Field>
+                  <Field label="Industry type" error={errors.industry}>
+                    <Select
+                      value={biz.industry}
+                      onChange={(e) =>
+                        setBiz({ ...biz, industry: e.target.value })
+                      }
+                      placeholder="Choose…"
+                      options={industries.map((i) => ({ value: i, label: i }))}
+                    />
+                  </Field>
+                  <div>
+                    <Field label="Business phone" error={errors.phone}>
+                      <Input
+                        value={samePhone ? myPhone : biz.phone}
+                        onChange={(e) =>
+                          setBiz({ ...biz, phone: e.target.value })
+                        }
+                        type="tel"
+                        inputMode="tel"
+                        disabled={samePhone}
+                        placeholder="+91 98765 43210"
+                      />
+                    </Field>
+                    <Checkbox
+                      className="mt-2"
+                      checked={samePhone}
+                      onCheckedChange={setSamePhone}
+                      label="Same as my mobile"
+                    />
+                  </div>
+                  <div>
                     <Field label="Business email" error={errors.email}>
-                      <Input value={biz.email} onChange={(e) => setBiz({ ...biz, email: e.target.value })} type="email" inputMode="email" placeholder="sales@yourbusiness.com" />
+                      <Input
+                        value={sameEmail ? you.personalEmail : biz.email}
+                        onChange={(e) =>
+                          setBiz({ ...biz, email: e.target.value })
+                        }
+                        type="email"
+                        inputMode="email"
+                        disabled={sameEmail}
+                        placeholder="sales@yourbusiness.com"
+                      />
                     </Field>
-                    <Field label="GSTIN" error={errors.gstin} hint="15 characters. Checked against the business’s state.">
-                      <Input value={biz.gstin} onChange={(e) => setBiz({ ...biz, gstin: e.target.value.toUpperCase() })} placeholder="33ABCDE1234F1Z5" maxLength={15} className="font-mono" />
-                    </Field>
+                    <Checkbox
+                      className="mt-2"
+                      checked={sameEmail}
+                      onCheckedChange={setSameEmail}
+                      label="Same as my email"
+                    />
                   </div>
-                </Section>
-
-                <Section title="Address" hint="Enter the pincode or use your current location; we fill in the rest.">
-                  <AddressFields value={address} onChange={setAddress} errors={errors} prefix="address." />
-                </Section>
-
-                <hr className="border-border" />
-                <Section title="Business card" aside="Optional" hint="A photo of each side, up to 5 MB.">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {(['front', 'back'] as Side[]).map((side) => (
-                      <div key={side}>
-                        <p className="mb-1.5 text-[13px] font-medium text-foreground">{side === 'front' ? 'Front' : 'Back'}</p>
-                        <label className="flex h-28 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed bg-muted/30 text-sm text-muted-foreground hover:border-primary/50">
-                          {cards[side] ? (
-                            <img src={previews[side]} alt={`Business card ${side}`} className="h-full w-full object-contain" />
-                          ) : (
-                            <span className="flex items-center gap-2">
-                              <ImagePlus className="size-4" aria-hidden /> Add {side} photo
-                            </span>
-                          )}
-                          <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only" onChange={pickCard(side)} />
-                        </label>
-                        {errors[`card.${side}`] ? <p className="mt-1 text-[13px] text-danger">{errors[`card.${side}`]}</p> : null}
-                        {cards[side] ? (
-                          <button type="button" className="mt-1 text-xs text-muted-foreground hover:text-danger" onClick={() => setCards((c) => ({ ...c, [side]: null }))}>
-                            Remove
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </Section>
+                  <Field
+                    label="GSTIN, PAN or TAN *"
+                    error={errors.taxId}
+                    className="sm:col-span-2"
+                    hint="One is enough. Its last 4 characters are part of your business URL."
+                  >
+                    <div className="flex gap-2">
+                      <Select
+                        className="w-28 shrink-0"
+                        aria-label="Which ID"
+                        value={biz.taxIdType}
+                        onChange={(e) =>
+                          setBiz({
+                            ...biz,
+                            taxIdType: e.target.value as TaxKind,
+                          })
+                        }
+                        options={taxIdKinds.map((k) => ({
+                          value: k.value,
+                          label: k.label,
+                        }))}
+                      />
+                      <Input
+                        value={biz.taxId}
+                        onChange={(e) =>
+                          setBiz({
+                            ...biz,
+                            taxId: e.target.value
+                              .toUpperCase()
+                              .replace(/\s/g, ""),
+                          })
+                        }
+                        placeholder={kind.placeholder}
+                        maxLength={kind.max}
+                        className="font-mono"
+                        aria-label={kind.label}
+                      />
+                    </div>
+                  </Field>
+                </div>
               </div>
               <div className="flex justify-end gap-2 border-t bg-muted/30 px-5 py-3">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={create.isPending}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  disabled={create.isPending}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" loading={create.isPending}>
-                  Create business
+                  {adding ? "Add business" : "Create business"}
                 </Button>
               </div>
             </form>
@@ -442,18 +712,5 @@ function CreateBusinessDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Section({ title, hint, aside, children }: { title: string; hint?: string; aside?: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {aside ? <span className="text-xs font-medium text-muted-foreground">{aside}</span> : null}
-      </div>
-      {hint ? <p className="mb-3 mt-0.5 text-xs text-muted-foreground">{hint}</p> : <div className="mb-3" />}
-      {children}
-    </section>
   );
 }

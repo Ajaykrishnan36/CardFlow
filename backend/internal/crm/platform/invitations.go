@@ -219,22 +219,66 @@ func (h *Handler) acceptURL(token string) string {
 	return h.cfg.BaseURL + "/crm/accept-invite?token=" + token
 }
 
+// BusinessLoginURL is the business's own sign-in address (D-158), "" when it has none.
+func (h *Handler) BusinessLoginURL(ctx context.Context, ws uuid.UUID) string {
+	var slug string
+	if err := h.store.Pool.QueryRow(ctx, `SELECT t.slug FROM crm.workspaces w JOIN crm.tenants t ON t.id = w.tenant_id AND t.status = 'active' WHERE w.id = $1`, ws).Scan(&slug); err != nil {
+		return ""
+	}
+	return strings.TrimRight(h.cfg.BaseURL, "/") + "/" + slug + "/login"
+}
+
+// SendBusinessURL emails someone just added to a business the address they sign in at.
+// SMS needs a message template the SMS provider doesn't have yet, so it is email only.
+func (h *Handler) SendBusinessURL(ctx context.Context, ws uuid.UUID, email, name string) bool {
+	u := h.BusinessLoginURL(ctx, ws)
+	var wsName string
+	if u == "" || h.store.Pool.QueryRow(ctx, `SELECT name FROM crm.workspaces WHERE id = $1`, ws).Scan(&wsName) != nil {
+		return false
+	}
+	if name == "" {
+		name = "there"
+	}
+	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+	defer cancel()
+	err := h.mailer.Send(sendCtx, mail.Message{
+		To:      email,
+		Subject: fmt.Sprintf("Your sign-in address for %s", wsName),
+		Heading: "You've been added to " + wsName,
+		Lines: []string{
+			"Hi " + name + ", you can now sign in to " + wsName + " on " + h.cfg.AppName + ".",
+			"Sign in at your business's own address and save it: " + u,
+		},
+		Button: &mail.Button{Label: "Open " + wsName, URL: u},
+		Footer: "Only " + wsName + "'s own address signs you in to it. If you weren't expecting this, you can ignore this email.",
+	})
+	if err != nil {
+		slog.Warn("crm: business address email not sent", "workspace", ws, "error", err)
+		return false
+	}
+	return true
+}
+
 // DeliverInvitation emails the invitation after the transaction commits and records
 // the outcome. In local/dev the link is also returned so it can be shown in the UI.
 func (h *Handler) DeliverInvitation(ctx context.Context, sent *SentInvitation) *Invitation {
 	link := h.acceptURL(sent.token)
 	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 	defer cancel()
+	lines := []string{
+		"Hi " + sent.DisplayName + ", you've been invited to join " + sent.WorkspaceName + " on " + h.cfg.AppName + " as " + sent.RoleName + ".",
+		"Accept the invitation to set your password and sign in.",
+	}
+	if u := h.BusinessLoginURL(ctx, sent.WorkspaceID); u != "" {
+		lines = append(lines, "After that, sign in at your business's own address: "+u+" — save it, it's the only place you can sign in to "+sent.WorkspaceName+".")
+	}
 	err := h.mailer.Send(sendCtx, mail.Message{
 		To:      sent.Email,
 		Subject: fmt.Sprintf("You're invited to %s on %s", sent.WorkspaceName, h.cfg.AppName),
 		Heading: "You're invited to " + sent.WorkspaceName,
-		Lines: []string{
-			"Hi " + sent.DisplayName + ", you've been invited to join " + sent.WorkspaceName + " on " + h.cfg.AppName + " as " + sent.RoleName + ".",
-			"Accept the invitation to set your password and sign in.",
-		},
-		Button: &mail.Button{Label: "Accept invitation", URL: link},
-		Footer: "This link works once and expires in 72 hours. If you weren't expecting it, you can ignore this email.",
+		Lines:   lines,
+		Button:  &mail.Button{Label: "Accept invitation", URL: link},
+		Footer:  "This link works once and expires in 72 hours. If you weren't expecting it, you can ignore this email.",
 	})
 	status := "delivered"
 	if err != nil {

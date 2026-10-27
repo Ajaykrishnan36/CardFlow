@@ -671,8 +671,12 @@ export interface PostalAddress {
 
 export interface CreateBusinessBody {
   name: string;
-  /** Add the business to this existing tenant; omitted = a new brand. */
-  tenant?: string;
+  /** "first": the first-time form (refused to someone already a Super Admin); "add": Add business (D-158). */
+  mode?: 'first' | 'add';
+  /** The tax ID the business's address is made from (D-158). */
+  taxIdType?: 'gstin' | 'pan' | 'tan';
+  taxId?: string;
+  teamSize?: string;
   industry?: string;
   phone?: string;
   whatsapp?: string;
