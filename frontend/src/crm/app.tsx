@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { MutationCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import { isApiError, setUnauthorizedHandler } from '@crm/api/client';
@@ -28,6 +28,8 @@ import { DeveloperPage } from './features/tools/developer-page';
 import { SignupPage } from './features/auth/signup-page';
 import { AppsPage } from './features/owner/apps-page';
 import { CustomerDetailPage, CustomersPage } from './features/owner/customers-page';
+import { OwnerBillingPage } from './features/owner/billing-page';
+import { BillingPage } from './features/billing/billing-panel';
 import { ProductObjectDetailPage, ProductObjectsPage } from './features/objects/product-objects';
 import { NotFoundPage } from '@crm/features/system/pages';
 
@@ -78,6 +80,13 @@ const queryClient = new QueryClient({
   // An action that fails must say so. A mutation that brings its own onError handles it;
   // any other one (delete a team, remove a mailbox, retry a webhook…) gets a toast here
   // instead of a dialog that just closes.
+  // A member whose paid time runs out mid-session (D-164): reload the business's context,
+  // which puts the payment screen up.
+  queryCache: new QueryCache({
+    onError: (err) => {
+      if (isApiError(err) && err.code === 'payment_required') void queryClient.invalidateQueries({ queryKey: ['workspace'], predicate: (q) => q.queryKey[2] === 'context' });
+    }
+  }),
   mutationCache: new MutationCache({
     onError: (err, _vars, _ctx, mutation) => {
       if (mutation.options.onError) return;
@@ -168,6 +177,7 @@ function AppRoutes() {
               <Route path="/crm/owner/products/:id" element={<ProductDetailPage />} />
               <Route path="/crm/owner/apps" element={<AppsPage />} />
               <Route path="/crm/owner/customers" element={<CustomersPage />} />
+              <Route path="/crm/owner/billing" element={<OwnerBillingPage />} />
               <Route path="/crm/owner/customers/:id" element={<CustomerDetailPage />} />
               <Route path="/crm/owner/workspaces" element={<WorkspacesPage />} />
               <Route path="/crm/owner/workspaces/new" element={<ProvisionWorkspacePage />} />
@@ -208,6 +218,7 @@ function workspaceRoutes(prefix: string) {
               <Route path="listing" element={<Navigate to="../settings/business" relative="path" replace />} />
               <Route path="home" element={<WorkspaceDashboardPage />} />
               <Route path="settings/access" element={<WorkspaceAccessPage />} />
+              <Route path="settings/billing" element={<BillingPage />} />
               <Route path="settings/business" element={<BusinessProfilePage />} />
               <Route path="cards" element={<CardsPage />} />
               <Route path="forecasts" element={<ForecastPage />} />

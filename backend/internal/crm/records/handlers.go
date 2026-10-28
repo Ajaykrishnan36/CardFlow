@@ -1,6 +1,7 @@
 package records
 
 import (
+	"cardflow-backend/internal/crm/billing"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,17 @@ type Handler struct {
 	mailer     Mailer
 	// sweepWake pokes the time-based checks (SLA clocks) when a case changes.
 	sweepWake chan struct{}
+	// billing locks members who aren't paid for (D-164); nil = nobody is charged.
+	billing *billing.Service
+}
+
+// SetBilling turns per-member charging on for the business routes (D-164).
+func (h *Handler) SetBilling(b *billing.Service) { h.billing = b }
+
+// billingScope is the caller as billing sees them.
+func billingScope(r *http.Request) billing.Scope {
+	sc := scopeFrom(r.Context())
+	return billing.Scope{WS: sc.WS, Code: sc.Code, Name: sc.Name, IsPlatform: sc.IsPlatformWS, MembershipID: sc.MembershipID, Owner: sc.Owner}
 }
 
 // Mailer sends the CRM's own emails (record emails, campaigns, workflow emails).
@@ -96,6 +108,9 @@ func (h *Handler) Routes(r chi.Router) {
 			}
 		}
 		h.workspaceRoutes(r)
+		if h.billing != nil {
+			h.billing.MemberRoutes(r, billingScope)
+		}
 		h.platform.AdminRoutes(r, func(r *http.Request) *platform.AdminScope {
 			sc := scopeFrom(r.Context())
 			return &platform.AdminScope{WS: sc.WS, Code: sc.Code, IsPlatform: sc.IsPlatformWS, MembershipID: sc.MembershipID, Limit: sc.Eff}

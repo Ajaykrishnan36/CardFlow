@@ -4,6 +4,7 @@
 package crm
 
 import (
+	"cardflow-backend/internal/crm/billing"
 	"context"
 	"log/slog"
 	"net/http"
@@ -32,6 +33,7 @@ type Module struct {
 	identity       *identity.Service
 	platform       *platform.Handler
 	records        *records.Handler
+	billing        *billing.Service
 	cardflow       *cardflow.Connector
 	store          *store.Store
 	profile        *appProfile
@@ -105,6 +107,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 		slog.Info("CRM WhatsApp notices are off: set WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_TEMPLATE")
 	}
 	m.records = records.NewHandler(st, cfg, m.platform, recordMailer{mailer})
+	// Members are paid for with Razorpay (D-164).
+	m.billing = billing.New(st.Pool, billing.LoadConfig())
+	m.records.SetBilling(m.billing)
+	if !m.billing.Config().Ready() {
+		slog.Info("CRM billing is off: set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to charge members")
+	}
 	identity.SetAPIKeyResolver(m.records.ResolveAPIKey)
 	records.SetAllowedMethodsHook(identity.AllowedMethods)
 	identity.SetMethodPolicy(func(ctx context.Context, code string) ([]string, error) {
@@ -211,6 +219,14 @@ func (m *Module) Sweep(ctx context.Context) {
 	}
 }
 
+// Billing is the per-member charging (D-164); nil while the module is off.
+func (m *Module) Billing() *billing.Service {
+	if m == nil || m.disabledReason != "" {
+		return nil
+	}
+	return m.billing
+}
+
 func (m *Module) Identity() *identity.Service {
 	if m == nil || m.disabledReason != "" {
 		return nil
@@ -243,6 +259,11 @@ func (m *Module) Mount(r chi.Router) {
 		m.identity.Routes(r)
 		m.platform.Routes(r)
 		m.platform.SelfServeRoutes(r)
+		m.billing.PublicRoutes(r)
+		r.Group(func(r chi.Router) {
+			r.Use(identity.RequireOwner)
+			m.billing.OwnerRoutes(r)
+		})
 		m.records.Routes(r)
 		m.records.PublicRoutes(r)
 		m.platform.PublicTenantRoutes(r)

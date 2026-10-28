@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { PayForNewMember } from "@crm/features/billing/billing-panel";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -935,6 +936,11 @@ function InviteDialog({
                   </div>
                 </div>
               ) : null}
+              <PayForNewMember
+                code={code}
+                membershipId={result.res.membershipId}
+                name={result.body.displayName}
+              />
               {result.res.invitation?.devAcceptUrl ? (
                 <div className="px-5 pb-5">
                   <DevLink

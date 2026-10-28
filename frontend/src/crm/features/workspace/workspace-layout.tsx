@@ -13,6 +13,7 @@ import { PageContainer } from '@crm/components/page';
 import { RecordScopeProvider, scopeFromContext } from '@crm/features/records/record-scope';
 import { hexToHsl } from '@crm/lib/utils';
 import { setDefaultCurrency } from '@crm/lib/money';
+import { BillingLock } from '@crm/features/billing/billing-panel';
 import { useWorkspaceContextQuery, WorkspaceProvider } from './workspace-context';
 
 /**
@@ -61,7 +62,8 @@ export function WorkspaceLayout({ code }: { code?: string } = {}) {
   return (
     <WorkspaceProvider value={value}>
       <RecordScopeProvider value={scope}>
-        <Outlet />
+        {/* Not paid for (D-164): the business stays blurred behind the payment screen. */}
+        {q.data?.billing?.locked && !q.data.viewerIsOwner ? <BillingLock /> : <Outlet />}
       </RecordScopeProvider>
     </WorkspaceProvider>
   );

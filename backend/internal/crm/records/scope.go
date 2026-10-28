@@ -1,6 +1,7 @@
 package records
 
 import (
+	"cardflow-backend/internal/crm/billing"
 	"context"
 	"encoding/json"
 	"errors"
@@ -176,6 +177,19 @@ func (h *Handler) memberScope(next http.Handler) http.Handler {
 			shared.WriteError(w, r, err)
 			return
 		}
+		// A member nobody has paid for, or whose time ran out, is locked out of everything but
+		// the context and billing calls (D-164).
+		if h.billing.Enforced(r.Context()) && !billing.Exempt(sc.IsPlatformWS, code) && !billing.AllowedWhileLocked(r.URL.Path, code) {
+			locked, _, err := h.billing.Locked(r.Context(), membershipID)
+			if err != nil {
+				shared.WriteError(w, r, err)
+				return
+			}
+			if locked {
+				shared.WriteError(w, r, billing.PaymentRequired())
+				return
+			}
+		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), scopeKeyT{}, sc)))
 	})
 }
@@ -215,6 +229,8 @@ type workspaceContext struct {
 		APIAccess         bool   `json:"apiAccess"`
 		Webhooks          bool   `json:"webhooks"`
 	} `json:"setup"`
+	// Billing: whether the viewer is paid for here, and may pay for others (D-164).
+	Billing billing.Status `json:"billing"`
 	// Apps are the setups installed in this product that the viewer may use (D-73).
 	// Switching app changes the menu and colour; the records are shared.
 	Apps []workspaceApp `json:"apps"`
@@ -326,6 +342,14 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 	out.Navigation = access.WorkspaceNav(sc.Code, sc.Eff, access.HasSupport(sc.WS))
 	out.CanCustomize = sc.CanCustomize()
 	out.ViewerIsOwner = sc.Owner
+	if h.billing != nil {
+		out.Billing = h.billing.StatusFor(r.Context(), billingScope(r))
+		if out.Billing.Enforced {
+			// Everyone may pay for themselves; payers see the people they can pay for too.
+			out.Navigation = append(out.Navigation, access.NavItem{Key: "billing", Label: "Billing", Path: "/crm/w/" + sc.Code + "/settings/billing",
+				Icon: "credit-card", Group: "Settings", Available: true})
+		}
+	}
 	if cfg, ok := cachedSetup(r.Context(), h.store.Pool, sc.WS); ok {
 		out.Setup.CreateContact, out.Setup.CreateOpportunity, out.Setup.RequireQualified = cfg.Conversion.CreateContact, cfg.Conversion.CreateOpportunity, cfg.Conversion.RequireQualified
 		out.Setup.AccentColor, out.Setup.APIAccess, out.Setup.Webhooks = cfg.AccentColor, cfg.Integrations.APIAccess, cfg.Integrations.Webhooks

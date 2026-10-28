@@ -1579,7 +1579,27 @@ can be added. The mobile app's RevenueCat billing is removed too — the webhook
 its config and SDKs, the paywall, the Plan and Transactions screens, the 5-saved-card and
 2-business free limits and the premium-only card styles and colours: everything is open to
 everyone. The App users screens no longer show or grant premium. Tables and columns stay
-(migrations only add). Paying is coming back as Razorpay, per member (next decision).
+(migrations only add). Paying is coming back as Razorpay, per member (D-164).
+
+## D-164 — Every member is paid for, with Razorpay
+
+Each person in a customer's business is paid for, for 1, 3, 6 or 12 months at a time —
+members only, never leads or other records. `crm.memberships.paid_until` holds how far; a
+member with none, or past it, is locked: every `/w/{code}` call answers `402
+payment_required` except `/context` and `/billing…`, and the screen shows the business
+blurred behind the payment page. The first payment comes after the owner approves the
+business (D-161): the Super Admin's first sign-in is locked until paid. There is no trial.
+Who pays: anyone for themselves; for others, anyone ranked above them (role rank); a Super
+Admin for everyone — several people in one payment. Adding a member offers "Pay now" right
+away; unpaid, they stay locked. Payment: the server creates a Razorpay order (amount =
+price × people), Checkout takes the money, the server checks the signature
+(HMAC-SHA256 of order|payment with the key secret) and adds the months to each person
+(from today or from their current end). The webhook `/public/billing/razorpay` (signed
+with `RAZORPAY_WEBHOOK_SECRET`) settles payments the browser didn't report. Prices per
+person are the owner's (`/crm/owner/billing`; start ₹499 / ₹1,399 / ₹2,599 / ₹4,799), with
+a switch to stop charging and the list of payments. Never charged: the platform workspace,
+the app connector's workspace and the platform owner. Charging is on only while
+`RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are set.
 
 ## Seed
 

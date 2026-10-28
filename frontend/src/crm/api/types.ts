@@ -782,11 +782,21 @@ export interface AddMembershipBody {
 }
 
 // ---- Workspace app (what a signed-in member sees at /crm/w/:ws) ----
+/** Paying for members (D-164): whether this person is paid for here, and may pay for others. */
+export interface BillingStatus {
+  enforced: boolean;
+  locked: boolean;
+  paidUntil?: string;
+  canPayOthers: boolean;
+}
+
 export interface WorkspaceContext {
   workspace: { id: string; code: string; name: string; isPlatform: boolean; currency?: string; timezone?: string; tenantSlug?: string; tenantName?: string };
   role?: { key: RoleKey; name: string };
   effective: EffectiveAccess;
   navigation: NavItem[];
+  /** Absent on servers before D-164. */
+  billing?: BillingStatus;
   /** metadata.manage: may edit page layouts and custom fields. */
   canCustomize: boolean;
   /** Other workspaces the user can switch to. */

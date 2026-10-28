@@ -1467,3 +1467,88 @@ export function commerceApi(code: string) {
       )
   };
 }
+
+// ---- Paying for members with Razorpay (D-164) ----
+
+export type BillingPeriod = '1m' | '3m' | '6m' | '12m';
+export interface BillingPrice {
+  key: BillingPeriod;
+  months: number;
+  /** Rupees per member for the period. */
+  price: number;
+}
+export interface BillingMember {
+  membershipId: string;
+  identityId: string;
+  name: string;
+  phone: string;
+  roleName: string;
+  paidUntil?: string;
+  locked: boolean;
+  me: boolean;
+  canPay: boolean;
+}
+export interface BillingOverview {
+  status: import('./types').BillingStatus;
+  exempt: boolean;
+  keyId: string;
+  currency: string;
+  prices: BillingPrice[];
+  members: BillingMember[];
+  business: string;
+}
+export interface BillingOrder {
+  orderId: string;
+  /** Paise. */
+  amount: number;
+  currency: string;
+  keyId: string;
+  business: string;
+  description: string;
+  members: string[];
+  prefill: { name: string; email: string; contact: string };
+}
+export interface RazorpayResult {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+export const billingApi = (code: string) => {
+  const base = `/w/${enc(code)}/billing`;
+  return {
+    overview: () => api<BillingOverview>(base),
+    order: (body: { period: BillingPeriod; membershipIds: string[] }) => api<BillingOrder>(`${base}/orders`, { method: 'POST', body }),
+    verify: (body: RazorpayResult) => api<{ paid: boolean; members: number; status: import('./types').BillingStatus }>(`${base}/verify`, { method: 'POST', body })
+  };
+};
+
+export interface OwnerBillingOrder {
+  id: string;
+  business: string;
+  code: string;
+  paidBy: string;
+  period: BillingPeriod;
+  members: number;
+  amountPaise: number;
+  status: 'created' | 'paid' | 'failed';
+  orderId: string;
+  paymentId: string;
+  createdAt: string;
+  paidAt?: string;
+}
+export interface OwnerBilling {
+  enabled: boolean;
+  /** Razorpay's keys are set on the server. */
+  ready: boolean;
+  testMode: boolean;
+  webhookReady: boolean;
+  prices: BillingPrice[];
+  orders: OwnerBillingOrder[];
+  collectedPaise: number;
+}
+
+export const ownerBillingApi = {
+  get: () => api<OwnerBilling>('/platform/billing'),
+  save: (body: { enabled: boolean; prices: Record<BillingPeriod, number> }) => api<OwnerBilling>('/platform/billing', { method: 'PUT', body })
+};

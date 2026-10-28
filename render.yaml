@@ -27,6 +27,13 @@ services:
         value: "true"
       - key: DEV_MOCK_GEMINI
         value: "true"
+      # Per-member billing (D-164).
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
       # A tenant's own domain is added to the Vercel project by the server (D-157).
       - key: VERCEL_API_TOKEN
         sync: false

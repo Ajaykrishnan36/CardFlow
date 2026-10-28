@@ -9,6 +9,7 @@ package e2e
 
 import (
 	"bytes"
+	"cardflow-backend/internal/crm/billing"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -138,6 +139,8 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	crmMod = crmModule
+	// Members are charged only in the billing test (D-164), whatever keys the local .env has.
+	crmModule.Billing().UseConfig(billing.Config{})
 	// Most tests open businesses at once; the review flow (D-161) is tested where it is
 	// switched on (setReview).
 	if targetDB == "" {

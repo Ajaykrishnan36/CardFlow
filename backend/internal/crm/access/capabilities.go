@@ -30,6 +30,7 @@ func OwnerCapabilities() Capabilities {
 			{Key: "contacts", Label: "Contacts", Path: "/crm/owner/contacts", Icon: "contact", Group: "Platform CRM", Available: true},
 			// Products = accounts (one mobile number each) and Apps = their businesses (D-161).
 			{Key: "customers", Label: "Products", Path: "/crm/owner/customers", Icon: "users", Group: "Administration", Available: true},
+			{Key: "billing", Label: "Billing", Path: "/crm/owner/billing", Icon: "credit-card", Group: "Administration", Available: true},
 			{Key: "workspaces", Label: "Apps", Path: "/crm/owner/workspaces", Icon: "layout-grid", Group: "Administration", Available: true},
 			{Key: "objects", Label: "Objects", Path: "/crm/owner/objects", Icon: "box", Group: "Administration", Available: true},
 			{Key: "users", Label: "Users & access", Path: "/crm/owner/users", Icon: "shield-check", Group: "Administration", Available: true},
