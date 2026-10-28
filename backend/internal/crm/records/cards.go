@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/plans"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -474,9 +473,6 @@ func (h *Handler) saveCard(r *http.Request, sc *Scope, in saveCardInput, followU
 				return err
 			}
 		} else {
-			if err := plans.CountCardScan(ctx, tx, sc.WS); err != nil {
-				return err
-			}
 			cardID = uuid.New()
 			var userID *uuid.UUID
 			var uid uuid.UUID

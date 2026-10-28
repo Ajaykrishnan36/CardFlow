@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
-import { BadgeCheck, Crown, Eye, EyeOff, ShieldCheck } from 'lucide-react';
-import type { AppPlanId, AppUser, BusinessListing, BusinessStatus, BusinessVerification, WorkspaceContext } from '@crm/api/types';
+import { BadgeCheck, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import type { BusinessListing, BusinessStatus, BusinessVerification, WorkspaceContext } from '@crm/api/types';
 import { Badge } from '@crm/components/ui/card';
 import { workspaceBase } from '../workspace-context';
 
@@ -29,8 +29,6 @@ export function appAccess(ctx: WorkspaceContext, object: AppObject): { read: boo
 export const appUserPath = (code: string, id: string) => `${workspaceBase(code)}/app-users/${encodeURIComponent(id)}`;
 export const businessPath = (code: string, id: string) => `${workspaceBase(code)}/businesses/${encodeURIComponent(id)}`;
 
-export const PLANS: AppPlanId[] = ['3m', '6m', '12m', 'lifetime'];
-
 export function formatDate(iso?: string) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -50,18 +48,6 @@ export function initials(name: string) {
       .slice(0, 2)
       .map((w) => w[0]!.toUpperCase())
       .join('') || '?'
-  );
-}
-
-export function AccessBadge({ user }: { user: Pick<AppUser, 'premium' | 'planName' | 'expiresAt'> }) {
-  const { t } = useTranslation();
-  if (!user.premium) return <Badge tone="neutral">{t('workspaceApp.app.free')}</Badge>;
-  return (
-    <Badge tone="success" className="gap-1">
-      <Crown className="size-3" aria-hidden />
-      {user.planName || t('workspaceApp.app.premium')}
-      {user.expiresAt ? <span className="font-normal opacity-80">· {t('workspaceApp.app.until', { date: formatDate(user.expiresAt) })}</span> : null}
-    </Badge>
   );
 }
 

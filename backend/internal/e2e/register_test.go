@@ -178,14 +178,6 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	if n := ownedBy(t, ajay); n != 3 {
 		t.Fatalf("all three businesses are Ajay's: %d", n)
 	}
-	want(t, call(t, "PUT", crmAPI+"/platform/plans/team20", owner, map[string]any{"name": "Team 20", "isActive": true, "position": 8, "limits": map[string]any{"members": 20}}), 200, "a plan with room")
-	for _, k := range []string{"traders", "tech", "bikes"} {
-		var wsID string
-		if err := testDB.Pool.QueryRow(context.Background(), `SELECT id::text FROM crm.workspaces WHERE code = $1`, slugs[k]).Scan(&wsID); err != nil {
-			t.Fatal(err)
-		}
-		want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+wsID, owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for "+k)
-	}
 	add := func(biz, name, phone, role string) {
 		t.Helper()
 		want(t, call(t, "POST", crmAPI+"/w/"+slugs[biz]+"/admin/members", boss, map[string]any{"displayName": name, "phone": phone, "roleKey": role}), 201, "add "+name+" to "+biz)
@@ -309,11 +301,6 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	ks := signInAt(t, krishnan, krish)
 	want(t, ks, 200, "Krishnan at Krish insurance")
 	// The Free plan allows 3 people; Krish insurance needs 4, so the owner moves it to a bigger plan.
-	var krishID string
-	if err := testDB.Pool.QueryRow(context.Background(), `SELECT id::text FROM crm.workspaces WHERE code = $1`, krish).Scan(&krishID); err != nil {
-		t.Fatal(err)
-	}
-	want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+krishID, owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for Krish insurance")
 	krishTeam := []string{}
 	for i, role := range []string{"ADMIN", "SALES_STAFF", "SALES_STAFF"} {
 		p := freshPhone()

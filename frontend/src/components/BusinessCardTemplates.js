@@ -14,9 +14,6 @@ export const CARD_TEMPLATES = [
   { id: 'boutique', name: 'Boutique Frame' }
 ];
 
-// Locked behind Pro — everything else is free.
-export const PREMIUM_TEMPLATE_IDS = ['dark', 'emboss', 'boutique'];
-
 function initialOf(name) {
   return (name || '?').trim().charAt(0).toUpperCase() || '?';
 }
@@ -178,7 +175,7 @@ function Dark({ card }) {
   );
 }
 
-// Premium look #1 — a wax-seal style ring monogram with a thin gold frame.
+// Rich look #1 — a wax-seal style ring monogram with a thin gold frame.
 function EmbossSignet({ card }) {
   return (
     <View style={[s.card, { borderWidth: 1.5, borderColor: colors.gold }]}>
@@ -208,7 +205,7 @@ function EmbossSignet({ card }) {
   );
 }
 
-// Premium look #2 — a folded ribbon corner + a layered, slightly-tilted monogram badge.
+// Rich look #2 — a folded ribbon corner + a layered, slightly-tilted monogram badge.
 function RibbonCorner({ card }) {
   return (
     <View style={[s.card, { paddingTop: spacing.xl }]}>
@@ -235,7 +232,7 @@ function RibbonCorner({ card }) {
   );
 }
 
-// Premium look #3 — a boutique double-frame with a centered monogram seal.
+// Rich look #3 — a boutique double-frame with a centered monogram seal.
 function BoutiqueFrame({ card }) {
   return (
     <View style={s.card}>

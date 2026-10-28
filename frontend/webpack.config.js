@@ -3,11 +3,9 @@ const fs = require('fs');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
-// RevenueCat PUBLIC SDK keys, baked into the bundle at build time. Read from the
-// environment (Vercel project env) or a local, git-ignored frontend/.env.local.
-// Secret keys (sk_...) are server-only and fail the build if supplied here.
-function loadRevenueCatKeys() {
-  const names = ['REVENUECAT_IOS_API_KEY', 'REVENUECAT_ANDROID_API_KEY', 'REVENUECAT_WEB_API_KEY'];
+// Build-time settings baked into the bundle. Read from the environment (Vercel project
+// env) or a local, git-ignored frontend/.env.local.
+function loadBuildEnv() {
   const local = {};
   try {
     fs.readFileSync(path.resolve(__dirname, '.env.local'), 'utf8')
@@ -18,13 +16,6 @@ function loadRevenueCatKeys() {
       });
   } catch (e) {}
   const defs = {};
-  names.forEach((name) => {
-    const value = process.env[name] || local[name] || '';
-    if (/^sk_/.test(value)) {
-      throw new Error(`${name} looks like a RevenueCat SECRET key — only public SDK keys may be used in the app.`);
-    }
-    defs[`process.env.${name}`] = JSON.stringify(value);
-  });
   // Where the native app shell finds the API. Set CRM_API_ORIGIN when the server moves;
   // the default is today's server so an unset build keeps working.
   const origin = process.env.CRM_API_ORIGIN || local.CRM_API_ORIGIN || 'https://cardflow-api-fsij.onrender.com';
@@ -80,7 +71,7 @@ module.exports = {
     ]
   },
   plugins: [
-    new webpack.DefinePlugin(loadRevenueCatKeys()),
+    new webpack.DefinePlugin(loadBuildEnv()),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html'),
       title: "Ajay's CRM"

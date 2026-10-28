@@ -1065,7 +1065,6 @@ export interface ObjectsResponse {
 }
 
 // ---- Connected app data (Business Card Snap): /w/{code}/app/* ----
-export type AppPlanId = '3m' | '6m' | '12m' | 'lifetime';
 
 export interface AppUser {
   id: string;
@@ -1078,13 +1077,6 @@ export interface AppUser {
   role: 'user' | 'admin';
   /** pending_profile | active | suspended */
   status: string;
-  /** Premium right now (subscribed and not expired). */
-  premium: boolean;
-  planId?: AppPlanId | string;
-  planName?: string;
-  /** Absent for lifetime or never granted. */
-  expiresAt?: string;
-  freeScansLeft: number;
   createdAt: string;
   lastLoginAt?: string;
   businesses: number;
@@ -1096,8 +1088,6 @@ export interface AppUser {
 
 export interface AppUserCounts {
   all: number;
-  premium: number;
-  free: number;
   admin: number;
   suspended: number;
 }
@@ -1117,17 +1107,6 @@ export interface SavedCard {
   source: string;
   createdAt: string;
   business?: { id: string; name: string };
-}
-
-export interface AppPayment {
-  planId: string;
-  planName: string;
-  amountInr: number;
-  /** Set for RevenueCat purchases (store currency); empty means INR. */
-  currency?: string;
-  status: string;
-  createdAt: string;
-  paidAt?: string;
 }
 
 export type BusinessStatus = 'draft' | 'pending_verification' | 'live' | 'under_review' | 'suspended' | 'removed';
@@ -1219,7 +1198,6 @@ export interface AppUserDetail extends AppUser {
   businessList: AppBusiness[];
   cardList: SavedCard[];
   ticketList: SupportTicket[];
-  payments: AppPayment[];
 }
 
 export interface AppUserPatch {
@@ -1228,7 +1206,6 @@ export interface AppUserPatch {
   city?: string;
   role?: 'user' | 'admin';
   status?: 'active' | 'suspended';
-  access?: { action: 'grant'; planId: AppPlanId } | { action: 'revoke' };
 }
 
 export type BusinessPatch = Partial<

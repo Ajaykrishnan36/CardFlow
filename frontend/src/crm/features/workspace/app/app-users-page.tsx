@@ -16,9 +16,9 @@ import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { Avatar } from '@crm/features/shell/user-menu';
 import { RecordNoAccess } from '@crm/features/records/record-states';
 import { useWorkspace } from '../workspace-context';
-import { AccessBadge, appAccess, appKeys, appUserPath, formatPhone, RoleBadge, UserStatusBadge } from './app-utils';
+import { appAccess, appKeys, appUserPath, formatPhone, RoleBadge, UserStatusBadge } from './app-utils';
 
-const FILTERS = ['all', 'premium', 'free', 'admin', 'suspended'] as const;
+const FILTERS = ['all', 'admin', 'suspended'] as const;
 type Filter = (typeof FILTERS)[number];
 
 /** Search params as list state (shareable, survives back/forward). */
@@ -143,7 +143,6 @@ function UserRow({ user: u, code }: { user: AppUser; code: string }) {
       </div>
       <div className="flex flex-wrap items-center gap-1.5 pl-12 sm:w-72 sm:pl-0">
         <RoleBadge role={u.role} />
-        <AccessBadge user={u} />
         <UserStatusBadge status={u.status} />
       </div>
       <div className="flex items-center gap-3 pl-12 text-xs tabular-nums text-muted-foreground sm:w-56 sm:justify-end sm:pl-0">

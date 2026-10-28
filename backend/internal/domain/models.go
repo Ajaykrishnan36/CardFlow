@@ -47,15 +47,6 @@ type User struct {
 	DeletedAt             *time.Time       `json:"deleted_at,omitempty"`
 }
 
-// IsPremiumActive reports whether the user currently has an unexpired premium
-// subscription — a nil expiry means a lifetime plan, which never expires.
-func (u *User) IsPremiumActive() bool {
-	if u == nil || !u.IsSubscribed {
-		return false
-	}
-	return u.SubscriptionExpiresAt == nil || u.SubscriptionExpiresAt.After(time.Now())
-}
-
 type UserKYC struct {
 	UserID             uuid.UUID  `json:"user_id"`
 	AadhaarStatus      string     `json:"aadhaar_status"`

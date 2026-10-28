@@ -1,4 +1,4 @@
-// App API client (cards, directory listings, support, billing).
+// App API client (cards, directory listings, support).
 import { API_ORIGIN, IS_NATIVE, ensureCsrf, sessionToken } from '@crm/api/client';
 
 // One sign-in for the whole site (D-104). In a browser the app API is called on this
@@ -166,36 +166,6 @@ export const apiClient = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data?.error?.message || 'Could not update mobile number');
-    return data.data || data;
-  },
-
-  // Pro (RevenueCat). The server's stored state is what premium
-  // APIs enforce; the app shows it and asks the server to re-sync after a purchase.
-  async getBillingStatus(token = '') {
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await appFetch(`${API_BASE_URL}/billing/status`, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Could not load subscription status');
-    return data.data || data;
-  },
-
-  // Asks the server to re-read this user's entitlements from RevenueCat.
-  async syncBilling(token = '') {
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await appFetch(`${API_BASE_URL}/billing/sync`, { method: 'POST', headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Could not refresh subscription');
-    return data.data || data;
-  },
-
-  async getBillingTransactions(token = '') {
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await appFetch(`${API_BASE_URL}/billing/transactions`, { headers });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Could not load transactions');
     return data.data || data;
   },
 

@@ -11,8 +11,7 @@ import {
   Phone,
   Save,
   Headphones,
-  Palette,
-  Crown
+  Palette
 } from 'lucide-react';
 import { colors, spacing, radii, typography } from '../../theme';
 import { Card } from '../../components/Card';
@@ -20,12 +19,10 @@ import { Input } from '../../components/Input';
 import { Button } from '../../components/Button';
 import { ThemeSettings } from '../../components/ThemeSettings';
 import { NotificationSettings } from '../../components/NotificationSettings';
-import { SubscriptionScreen } from '../../components/SubscriptionScreen';
 import { ChangePhoneModal } from '../../components/ChangePhoneModal';
 import { useAuth } from '../../context/AuthContext';
 import { useCrm } from '../../context/CrmContext';
 import { AccountSecurity, VerifiedBadge } from '../crm/AccountSecurity';
-import { PlanScreen } from '../crm/PlanScreen';
 
 function formatPhoneDisplay(phone) {
   if (!phone) return '';
@@ -38,13 +35,11 @@ function formatPhoneDisplay(phone) {
 export function ProfileScreen({ onNavigate, onBack, onSignOut, onOpenListing, onOpenBusiness, onNewBusiness }) {
   const { user, logout, updateProfile, myBusinesses } = useAuth();
   const { businesses, active, canCreate } = useCrm();
-  const [showPlan, setShowPlan] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
   const [showTheme, setShowTheme] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showSubscription, setShowSubscription] = useState(false);
   const [showChangePhone, setShowChangePhone] = useState(false);
 
   useEffect(() => {
@@ -59,12 +54,6 @@ export function ProfileScreen({ onNavigate, onBack, onSignOut, onOpenListing, on
   }
   if (showNotifications) {
     return <NotificationSettings onBack={() => setShowNotifications(false)} />;
-  }
-  if (showSubscription) {
-    return <SubscriptionScreen onBack={() => setShowSubscription(false)} />;
-  }
-  if (showPlan) {
-    return <PlanScreen onBack={() => setShowPlan(false)} onUpgrade={() => { setShowPlan(false); setShowSubscription(true); }} />;
   }
   const flash = (msg) => {
     setToast(msg);
@@ -89,7 +78,6 @@ export function ProfileScreen({ onNavigate, onBack, onSignOut, onOpenListing, on
   };
 
   const primaryItems = [
-    { icon: Crown, label: 'Plan', sub: active ? `${active.name} — plan, usage and upgrades` : 'Plans for your business', action: () => setShowPlan(true) },
     { icon: Headphones, label: 'Support', action: () => onNavigate?.('user_support') }
   ];
 

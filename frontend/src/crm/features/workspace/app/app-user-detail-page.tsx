@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Briefcase, Contact, Crown, CreditCard, Gift, LifeBuoy, Mail, MapPin, MoreHorizontal, Pencil, Phone, ShieldCheck, Smartphone, Store, Trash2, UserX } from 'lucide-react';
+import { Briefcase, Contact, CreditCard, LifeBuoy, Mail, MapPin, MoreHorizontal, Pencil, Phone, ShieldCheck, Smartphone, Store, Trash2, UserX } from 'lucide-react';
 import { workspaceAppApi } from '@crm/api/endpoints';
 import { isApiError } from '@crm/api/client';
-import type { AppPlanId, AppUserDetail, AppUserPatch, SavedCard } from '@crm/api/types';
-import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
+import type { AppUserDetail, AppUserPatch, SavedCard } from '@crm/api/types';
+import { Badge, Card, CardHeader } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
 import { Field } from '@crm/components/ui/field';
 import { Input } from '@crm/components/ui/input';
@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle, Menu, MenuConten
 import { Skeleton } from '@crm/components/ui/spinner';
 import { Breadcrumbs, ConfirmDialog, DetailItem, PageContainer, Tabs } from '@crm/components/page';
 import { EmptyState, ErrorState } from '@crm/components/states';
-import { cn, relativeTime } from '@crm/lib/utils';
+import { relativeTime } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { Avatar } from '@crm/features/shell/user-menu';
 import { scopedLookupHref, useRecordScope } from '@crm/features/records/record-scope';
@@ -23,23 +23,21 @@ import { RecordNoAccess } from '@crm/features/records/record-states';
 import { ticketAccess, useWorkspace, workspaceBase } from '../workspace-context';
 import { supportPath, TicketStatusBadge } from '../support/support-utils';
 import {
-  AccessBadge,
   appAccess,
   appKeys,
   businessPath,
   formatDate,
   formatPhone,
   ListingBadge,
-  PLANS,
   RoleBadge,
   UserStatusBadge,
   VerificationBadge
 } from './app-utils';
 
-type Tab = 'overview' | 'businesses' | 'cards' | 'tickets' | 'payments';
-const TABS: Tab[] = ['overview', 'businesses', 'cards', 'tickets', 'payments'];
+type Tab = 'overview' | 'businesses' | 'cards' | 'tickets';
+const TABS: Tab[] = ['overview', 'businesses', 'cards', 'tickets'];
 
-/** /crm/w/:ws/app-users/:id — one app user's profile, access and everything they own in the app. */
+/** /crm/w/:ws/app-users/:id — one app user's profile and everything they own in the app. */
 export function AppUserDetailPage() {
   const { context } = useWorkspace();
   const { id = '' } = useParams();
@@ -70,9 +68,8 @@ function AppUserDetailView({ id }: { id: string }) {
   const u = q.data;
   useDocumentTitle(u ? u.name || u.phone : t('workspaceApp.app.usersTitle'));
 
-  const [grantOpen, setGrantOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [confirm, setConfirm] = useState<null | 'revoke' | 'admin' | 'user' | 'suspend' | 'activate' | 'delete'>(null);
+  const [confirm, setConfirm] = useState<null | 'admin' | 'user' | 'suspend' | 'activate' | 'delete'>(null);
 
   const update = useMutation({
     mutationFn: (body: AppUserPatch) => workspaceAppApi(code).updateUser(id, body),
@@ -81,12 +78,9 @@ function AppUserDetailView({ id }: { id: string }) {
       void qc.invalidateQueries({ queryKey: appKeys.all(code) });
       void qc.invalidateQueries({ queryKey: ['workspace', code, 'records'] });
       const name = next.name || formatPhone(next.phone);
-      if (body.access?.action === 'grant') toast.success(t('workspaceApp.app.grantedToast', { name, plan: next.planName }));
-      else if (body.access?.action === 'revoke') toast.success(t('workspaceApp.app.revokedToast', { name }));
-      else if (body.role) toast.success(t('workspaceApp.app.roleToast', { name, role: t(body.role === 'admin' ? 'workspaceApp.app.roleAdmin' : 'workspaceApp.app.roleUser') }));
+      if (body.role) toast.success(t('workspaceApp.app.roleToast', { name, role: t(body.role === 'admin' ? 'workspaceApp.app.roleAdmin' : 'workspaceApp.app.roleUser') }));
       else if (body.status) toast.success(t(body.status === 'suspended' ? 'workspaceApp.app.suspendedToast' : 'workspaceApp.app.activatedToast', { name }));
       else toast.success(t('workspaceApp.app.savedToast'));
-      setGrantOpen(false);
       setEditOpen(false);
       setConfirm(null);
     },
@@ -137,8 +131,7 @@ function AppUserDetailView({ id }: { id: string }) {
     { value: 'overview' as Tab, label: t('workspaceApp.app.tabOverview') },
     ...(canBiz ? [{ value: 'businesses' as Tab, label: <TabLabel text={t('workspaceApp.app.tabBusinesses')} n={u.businessList.length} /> }] : []),
     { value: 'cards' as Tab, label: <TabLabel text={t('workspaceApp.app.tabCards')} n={u.cardList.length} /> },
-    ...(canTickets ? [{ value: 'tickets' as Tab, label: <TabLabel text={t('workspaceApp.app.tabTickets')} n={u.ticketList.length} /> }] : []),
-    { value: 'payments' as Tab, label: <TabLabel text={t('workspaceApp.app.tabPayments')} n={u.payments.length} /> }
+    ...(canTickets ? [{ value: 'tickets' as Tab, label: <TabLabel text={t('workspaceApp.app.tabTickets')} n={u.ticketList.length} /> }] : [])
   ];
 
   return (
@@ -152,7 +145,6 @@ function AppUserDetailView({ id }: { id: string }) {
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-xl font-semibold tracking-tight">{name}</h1>
               <RoleBadge role={u.role} />
-              <AccessBadge user={u} />
               <UserStatusBadge status={u.status} />
             </div>
             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
@@ -190,17 +182,6 @@ function AppUserDetailView({ id }: { id: string }) {
           </div>
           {can.update || can.delete ? (
             <div className="flex shrink-0 items-center gap-2">
-              {can.update ? (
-                u.premium ? (
-                  <Button variant="outline" onClick={() => setGrantOpen(true)}>
-                    <Gift /> {t('workspaceApp.app.changeAccess')}
-                  </Button>
-                ) : (
-                  <Button onClick={() => setGrantOpen(true)}>
-                    <Gift /> {t('workspaceApp.app.grantAccess')}
-                  </Button>
-                )
-              ) : null}
               <Menu>
                 <MenuTrigger asChild>
                   <Button variant="outline" size="icon" aria-label={t('workspaceApp.app.moreActions')}>
@@ -213,11 +194,6 @@ function AppUserDetailView({ id }: { id: string }) {
                       <MenuItem onSelect={() => setEditOpen(true)}>
                         <Pencil /> {t('workspaceApp.app.editProfile')}
                       </MenuItem>
-                      {u.premium ? (
-                        <MenuItem onSelect={() => setConfirm('revoke')}>
-                          <Crown /> {t('workspaceApp.app.revokeAccess')}
-                        </MenuItem>
-                      ) : null}
                       <MenuItem onSelect={() => setConfirm(u.role === 'admin' ? 'user' : 'admin')}>
                         <ShieldCheck /> {u.role === 'admin' ? t('workspaceApp.app.makeUser') : t('workspaceApp.app.makeAdmin')}
                       </MenuItem>
@@ -264,27 +240,11 @@ function AppUserDetailView({ id }: { id: string }) {
               </dl>
             </Card>
             <Card>
-              <CardHeader
-                title={t('workspaceApp.app.access')}
-                actions={
-                  can.update ? (
-                    <Button size="sm" variant={u.premium ? 'outline' : 'primary'} onClick={() => setGrantOpen(true)}>
-                      <Gift /> {u.premium ? t('workspaceApp.app.changeAccess') : t('workspaceApp.app.grantAccess')}
-                    </Button>
-                  ) : null
-                }
-              />
+              <CardHeader title={t('workspaceApp.app.access')} />
               <dl className="grid gap-4 px-4 pb-4 sm:grid-cols-2">
-                <DetailItem label={t('workspaceApp.app.plan')}>
-                  <AccessBadge user={u} />
-                </DetailItem>
-                <DetailItem label={t('workspaceApp.app.expires')}>
-                  {u.premium ? (u.expiresAt ? formatDate(u.expiresAt) : t('workspaceApp.app.neverExpires')) : null}
-                </DetailItem>
                 <DetailItem label={t('workspaceApp.app.appRole')}>
                   <RoleBadge role={u.role} />
                 </DetailItem>
-                <DetailItem label={t('workspaceApp.app.freeScans')}>{u.premium ? t('workspaceApp.app.unlimited') : u.freeScansLeft}</DetailItem>
               </dl>
             </Card>
           </div>
@@ -292,7 +252,7 @@ function AppUserDetailView({ id }: { id: string }) {
           <BusinessList user={u} code={code} />
         ) : tab === 'cards' ? (
           <CardList cards={u.cardList} code={code} canBiz={canBiz} />
-        ) : tab === 'tickets' ? (
+        ) : (
           <Card className="overflow-hidden">
             {u.ticketList.length === 0 ? (
               <EmptyState icon={LifeBuoy} title={t('workspaceApp.app.noTickets')} />
@@ -313,34 +273,9 @@ function AppUserDetailView({ id }: { id: string }) {
               </ul>
             )}
           </Card>
-        ) : (
-          <Card className="overflow-hidden">
-            {u.payments.length === 0 ? (
-              <EmptyState icon={CreditCard} title={t('workspaceApp.app.noPayments')} />
-            ) : (
-              <ul className="divide-y">
-                {u.payments.map((p, i) => (
-                  <li key={i} className="flex items-center gap-3 px-4 py-3 text-[13px]">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">{p.planName}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(p.paidAt ?? p.createdAt).toLocaleString('en-IN')}</p>
-                    </div>
-                    <Badge tone={p.status === 'paid' ? 'success' : p.status === 'failed' ? 'danger' : 'neutral'}>
-                      {t(`workspaceApp.app.payment.${p.status}`, { defaultValue: p.status })}
-                    </Badge>
-                    <span className="w-24 text-right font-medium tabular-nums">
-                      {p.currency && p.currency !== 'INR' ? `${p.currency} ` : '₹'}
-                      {p.amountInr.toLocaleString('en-IN')}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
         )}
       </div>
 
-      <GrantDialog open={grantOpen} onOpenChange={setGrantOpen} user={u} loading={update.isPending} onGrant={(planId) => update.mutate({ access: { action: 'grant', planId } })} />
       <EditProfileDialog open={editOpen} onOpenChange={setEditOpen} user={u} loading={update.isPending} onSave={(body) => update.mutate(body)} />
       <ConfirmDialog
         open={confirm !== null && confirm !== 'delete'}
@@ -348,11 +283,10 @@ function AppUserDetailView({ id }: { id: string }) {
         title={confirm ? t(`workspaceApp.app.confirm.${confirm}.title`, { name }) : ''}
         body={confirm ? t(`workspaceApp.app.confirm.${confirm}.body`, { name }) : ''}
         confirmLabel={confirm ? t(`workspaceApp.app.confirm.${confirm}.action`) : ''}
-        tone={confirm === 'suspend' || confirm === 'revoke' ? 'danger' : 'primary'}
+        tone={confirm === 'suspend' ? 'danger' : 'primary'}
         loading={update.isPending}
         onConfirm={() => {
-          if (confirm === 'revoke') update.mutate({ access: { action: 'revoke' } });
-          else if (confirm === 'admin' || confirm === 'user') update.mutate({ role: confirm });
+          if (confirm === 'admin' || confirm === 'user') update.mutate({ role: confirm });
           else if (confirm === 'suspend') update.mutate({ status: 'suspended' });
           else if (confirm === 'activate') update.mutate({ status: 'active' });
         }}
@@ -472,71 +406,6 @@ function CardList({ cards, code, canBiz }: { cards: SavedCard[]; code: string; c
   );
 }
 
-function GrantDialog({
-  open,
-  onOpenChange,
-  user,
-  loading,
-  onGrant
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  user: AppUserDetail;
-  loading: boolean;
-  onGrant: (plan: AppPlanId) => void;
-}) {
-  const { t } = useTranslation();
-  const [plan, setPlan] = useState<AppPlanId>('12m');
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-5">
-        <DialogTitle className="pr-8 text-base font-semibold">{t('workspaceApp.app.grantTitle', { name: user.name || formatPhone(user.phone) })}</DialogTitle>
-        <DialogDescription className="mt-1 text-sm text-muted-foreground">{t('workspaceApp.app.grantBody')}</DialogDescription>
-        {user.premium ? (
-          <Alert tone="info" className="mt-3">
-            {t('workspaceApp.app.grantCurrent', { plan: user.planName, date: user.expiresAt ? formatDate(user.expiresAt) : t('workspaceApp.app.neverExpires') })}
-          </Alert>
-        ) : null}
-        <div role="radiogroup" className="mt-4 grid grid-cols-2 gap-2">
-          {PLANS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              role="radio"
-              aria-checked={plan === p}
-              onClick={() => setPlan(p)}
-              className={cn(
-                'rounded-lg border px-3 py-2.5 text-left transition-colors',
-                plan === p ? 'border-primary bg-primary-soft ring-2 ring-primary/20' : 'hover:bg-muted'
-              )}
-            >
-              <p className="text-[13px] font-semibold">{t(`workspaceApp.app.plans.${p}`)}</p>
-              <p className="text-xs text-muted-foreground">
-                {p === 'lifetime'
-                  ? t('workspaceApp.app.neverExpires')
-                  : t('workspaceApp.app.untilDate', { date: formatDate(addMonths(new Date(), { '3m': 3, '6m': 6, '12m': 12 }[p]).toISOString()) })}
-              </p>
-            </button>
-          ))}
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-            {t('common.cancel')}
-          </Button>
-          <Button loading={loading} onClick={() => onGrant(plan)}>
-            <Gift /> {t('workspaceApp.app.grantConfirm')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function addMonths(d: Date, n: number) {
-  const x = new Date(d);
-  x.setMonth(x.getMonth() + n);
-  return x;
-}
 
 function EditProfileDialog({
   open,

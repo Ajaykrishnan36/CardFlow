@@ -2,11 +2,10 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { apiClient, currentSessionToken } from '../services/api';
 import { crmApi } from '../services/crmApi';
 import { syncAuthNotifications } from '../utils/pushNotifications';
-import * as subscriptionService from '../services/subscription/subscriptionService';
 
 const AuthContext = createContext(null);
 
-// The signed-in person's app profile (cards, listings, premium) for the phone layout.
+// The signed-in person's app profile (cards, listings) for the phone layout.
 // Signing in and out happens once for the whole site (D-104): this provider starts from
 // the session that already exists and asks the site to end it.
 //   onUnavailable — there is no app profile for this session (the phone layout can't run)
@@ -21,11 +20,6 @@ export function AuthProvider({ children, onUnavailable, onSignOut }) {
   const [isLoading, setIsLoading] = useState(false);
   const [savedCards, setSavedCards] = useState([]);
   const [myBusinesses, setMyBusinesses] = useState([]);
-  // Global paywall overlay — any screen can call openSubscription() to show
-  // the full plan-chooser without needing its own navigation route.
-  const [subscriptionOverlayOpen, setSubscriptionOverlayOpen] = useState(false);
-  const openSubscription = useCallback(() => setSubscriptionOverlayOpen(true), []);
-  const closeSubscription = useCallback(() => setSubscriptionOverlayOpen(false), []);
 
   // Load user's saved card vault
   const loadUserVault = useCallback(async (authToken) => {
@@ -141,13 +135,7 @@ export function AuthProvider({ children, onUnavailable, onSignOut }) {
           hasPassword: Boolean(me?.identity?.hasPassword),
           city: profile.city || '',
           state: profile.state || '',
-          plan: profile.plan || 'free',
-          freeScansRemaining: profile.free_scans_remaining != null ? profile.free_scans_remaining : 30,
-          credits: profile.credit_balance != null ? profile.credit_balance : 0,
-          isIdVerified: profile.is_id_verified || false,
-          isSubscribed: profile.is_subscribed || false,
-          subscriptionPlanId: profile.subscription_plan_id || null,
-          subscriptionExpiresAt: profile.subscription_expires_at || null
+          isIdVerified: profile.is_id_verified || false
         };
         setUser(account);
         setRole('user');
@@ -220,156 +208,15 @@ export function AuthProvider({ children, onUnavailable, onSignOut }) {
     return merged;
   }, [user, token]);
 
-  // ---------------------------------------------------------------------
-  // Pro (RevenueCat)
-  // The RevenueCat App User ID is the signed-in CardFlow user id (returned by
-  // the server). Premium access comes from the server's stored state, which
-  // it builds from RevenueCat webhooks / REST — the client never grants it.
-  // ---------------------------------------------------------------------
-  const [subscription, setSubscription] = useState(null); // server /billing/status
-  const [isPurchasing, setIsPurchasing] = useState(false);
-  const purchasingRef = useRef(false);
-  const tokenRef = useRef(token);
-  tokenRef.current = token;
-
-  const applyServerStatus = useCallback((st) => {
-    if (!st) return;
-    setSubscription(st);
-    setUser((prev) => {
-      if (!prev) return prev;
-      const merged = {
-        ...prev,
-        id: st.app_user_id || prev.id,
-        isSubscribed: !!st.is_premium,
-        subscriptionStatus: st.status,
-        subscriptionPlanId: st.product_id || null,
-        subscriptionExpiresAt: st.expires_at || null
-      };
-      return merged;
-    });
-  }, []);
-
-  const refreshSubscription = useCallback(async ({ sync = false } = {}) => {
-    const t = tokenRef.current;
-    if (!t) return null;
-    const st = sync ? await apiClient.syncBilling(t) : await apiClient.getBillingStatus(t);
-    applyServerStatus(st);
-    return st;
-  }, [applyServerStatus]);
-
-  // Log RevenueCat in whenever a session starts (login or restore), out on logout.
-  useEffect(() => {
-    if (!token || token.startsWith('cf_token_')) {
-      setSubscription(null);
-      subscriptionService.reset();
-      return undefined;
-    }
-    let alive = true;
-    let syncTimer = null;
-    apiClient
-      .getBillingStatus(token)
-      .then((st) => {
-        if (!alive) return;
-        applyServerStatus(st);
-        // The SDK tells us when the store reports a change (renewal,
-        // purchase on another device…) — ask the server to re-sync.
-        return subscriptionService.identify(st.app_user_id, () => {
-          clearTimeout(syncTimer);
-          syncTimer = setTimeout(() => {
-            if (alive && !purchasingRef.current) refreshSubscription({ sync: true }).catch(() => {});
-          }, 1500);
-        });
-      })
-      .catch((e) => console.warn('Could not load subscription status', e));
-    return () => {
-      alive = false;
-      clearTimeout(syncTimer);
-    };
-  }, [token, applyServerStatus, refreshSubscription]);
-
-  // After a purchase/restore the server may learn about it a moment later
-  // (webhook). Re-sync until it confirms, for up to ~20 seconds.
-  const waitForServerPremium = useCallback(async () => {
-    for (let i = 0; i < 8; i += 1) {
-      try {
-        const st = await refreshSubscription({ sync: true });
-        if (st?.is_premium) return st;
-      } catch (e) {}
-      await new Promise((r) => setTimeout(r, 2500));
-    }
-    return null;
-  }, [refreshSubscription]);
-
-  const loadOfferings = useCallback(() => subscriptionService.getOfferings(), []);
-
-  // Buys a RevenueCat package. Resolves { status: 'active' | 'pending' }.
-  // Throws BillingError (code 'cancelled' when the user backs out).
-  const purchasePackage = useCallback(async (pkg) => {
-    if (!tokenRef.current) throw new subscriptionService.BillingError('failed', 'Please sign in first.');
-    if (purchasingRef.current) throw new subscriptionService.BillingError('busy', 'A purchase is already in progress.');
-    purchasingRef.current = true;
-    setIsPurchasing(true);
-    try {
-      const info = await subscriptionService.purchaseSubscription(pkg);
-      if (!subscriptionService.hasPremiumAccess(info)) {
-        // e.g. an Ask-to-Buy / pending payment — nothing granted yet.
-        return { status: 'pending' };
-      }
-      const st = await waitForServerPremium();
-      return { status: st?.is_premium ? 'active' : 'pending' };
-    } finally {
-      purchasingRef.current = false;
-      setIsPurchasing(false);
-    }
-  }, [waitForServerPremium]);
-
-  // Resolves { restored: boolean }.
-  const restorePurchases = useCallback(async () => {
-    if (purchasingRef.current) throw new subscriptionService.BillingError('busy', 'A purchase is already in progress.');
-    purchasingRef.current = true;
-    setIsPurchasing(true);
-    try {
-      const info = await subscriptionService.restorePurchases();
-      if (!subscriptionService.hasPremiumAccess(info)) {
-        await refreshSubscription({ sync: true }).catch(() => {});
-        return { restored: false };
-      }
-      const st = await waitForServerPremium();
-      return { restored: !!st?.is_premium };
-    } finally {
-      purchasingRef.current = false;
-      setIsPurchasing(false);
-    }
-  }, [refreshSubscription, waitForServerPremium]);
-
-  // Store subscription page / Web Billing portal (cancel, change plan, update payment).
-  const manageSubscription = useCallback(async () => {
-    let url = subscription?.management_url || null;
-    try {
-      const info = await subscriptionService.getCustomerInfo();
-      url = info?.managementURL || url;
-    } catch (e) {}
-    return subscriptionService.openCustomerCenter(url);
-  }, [subscription]);
-
-  // Server state wins; the cached user flags only cover the moment before it loads.
-  const isPremiumActive = subscription
-    ? !!subscription.is_premium
-    : !!(
-        user?.isSubscribed &&
-        (!user?.subscriptionExpiresAt || new Date(user.subscriptionExpiresAt) > new Date())
-      );
-
   // Re-arms the local push-notification queue whenever the caller's auth
-  // state changes: logged out -> "please log in", logged in free -> "go
-  // premium", logged in premium -> "back up your contacts". Waits for the
-  // session-restore effect above so it never briefly fires "logged out"
-  // for a user who was actually still signed in.
+  // state changes: logged out -> "please log in", logged in -> "back up your
+  // contacts". Waits for the session-restore effect above so it never briefly
+  // fires "logged out" for a user who was actually still signed in.
   useEffect(() => {
     if (!authReady) return;
-    const authState = !user || !token ? 'logged_out' : isPremiumActive ? 'premium' : 'free';
+    const authState = !user || !token ? 'logged_out' : 'signed_in';
     syncAuthNotifications(authState);
-  }, [authReady, user, token, isPremiumActive]);
+  }, [authReady, user, token]);
 
   // Helper to check if a business is already saved in this user's vault.
   // GSTIN is checked first since it's the one field that's actually unique
@@ -489,8 +336,6 @@ export function AuthProvider({ children, onUnavailable, onSignOut }) {
   };
 
   const logout = () => {
-    subscriptionService.reset();
-    setSubscription(null);
     setUser(null);
     setRole(null);
     setToken(null);
@@ -525,17 +370,6 @@ export function AuthProvider({ children, onUnavailable, onSignOut }) {
         sendOtp,
         updateProfile,
         changePhone,
-        isPremiumActive,
-        subscription,
-        isPurchasing,
-        loadOfferings,
-        purchasePackage,
-        restorePurchases,
-        refreshSubscription,
-        manageSubscription,
-        subscriptionOverlayOpen,
-        openSubscription,
-        closeSubscription,
         logout,
         setUser
       }}

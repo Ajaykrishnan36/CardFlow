@@ -264,17 +264,15 @@ func (c *Connector) Extension() records.Extension {
 			out := []records.KPI{}
 			// The connected app's own data lives on this workspace's dashboard (not the owner console).
 			if sc.Owner || sc.Eff.Can("app_user", "read") {
-				var total, premium, newWeek int
+				var total, newWeek int
 				if err := c.store.Pool.QueryRow(ctx, `
-					SELECT count(*), count(*) FILTER (WHERE `+strings.ReplaceAll(premiumExpr, "u.", "")+`),
-					       count(*) FILTER (WHERE created_at > now() - interval '7 days')
-					FROM public.users WHERE deleted_at IS NULL`).Scan(&total, &premium, &newWeek); err != nil {
+					SELECT count(*), count(*) FILTER (WHERE created_at > now() - interval '7 days')
+					FROM public.users WHERE deleted_at IS NULL`).Scan(&total, &newWeek); err != nil {
 					return nil, err
 				}
-				k := records.KPI{Key: "app-users", Label: "App users", Value: total, Path: "/crm/w/" + sc.Code + "/app-users", Icon: "smartphone",
-					Hint: strconv.Itoa(premium) + " premium"}
+				k := records.KPI{Key: "app-users", Label: "App users", Value: total, Path: "/crm/w/" + sc.Code + "/app-users", Icon: "smartphone"}
 				if newWeek > 0 {
-					k.Hint += " · " + strconv.Itoa(newWeek) + " new this week"
+					k.Hint = strconv.Itoa(newWeek) + " new this week"
 				}
 				out = append(out, k)
 			}

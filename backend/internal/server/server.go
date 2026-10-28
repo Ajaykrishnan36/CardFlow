@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"cardflow-backend/internal/auth"
-	"cardflow-backend/internal/billing"
 	"cardflow-backend/internal/business"
 	"cardflow-backend/internal/card"
 	"cardflow-backend/internal/config"
@@ -136,7 +135,6 @@ func New(d Deps) (http.Handler, *crm.Module) {
 	businessHandler := business.NewBusinessHandler(businessSvc)
 	cardHandler := card.NewCardHandler(cardSvc, s3Svc)
 	enquiryHandler := enquiry.NewEnquiryHandler(d.DB)
-	billingHandler := billing.NewBillingHandler(d.DB, d.Cfg)
 	contactsHandler := contacts.NewContactsHandler(d.DB)
 	supportHandler := support.NewSupportHandler(d.DB)
 
@@ -188,10 +186,6 @@ func New(d Deps) (http.Handler, *crm.Module) {
 	// Public Web Profile Route (e.g. https://cardflow-api-fsij.onrender.com/b/kovai-precision-tools)
 	r.Get("/b/{slug}", discoveryHandler.RenderPublicHTML)
 
-	// RevenueCat server-to-server webhook (no user JWT) — authenticated by the
-	// Authorization header configured in the RevenueCat dashboard.
-	r.Post("/api/webhooks/revenuecat", billingHandler.Webhook)
-
 	// API v1 Routes
 	r.Route("/api/v1", func(r chi.Router) {
 		// 1. Auth Endpoints
@@ -240,12 +234,6 @@ func New(d Deps) (http.Handler, *crm.Module) {
 			r.Get("/support/tickets/my", supportHandler.GetMyTickets)
 			r.Get("/support/tickets/my/{id}", supportHandler.GetMyTicket)
 			r.Post("/support/tickets/my/{id}/messages", supportHandler.AddMyMessage)
-
-			// Billing: CardFlow Premium via RevenueCat (purchases happen in the SDKs)
-			r.Get("/billing/status", billingHandler.GetStatus)
-			r.Post("/billing/sync", billingHandler.Sync)
-			r.Get("/billing/transactions", billingHandler.GetTransactions)
-			r.Get("/billing/credits", billingHandler.GetCredits)
 
 			// Phone contacts backup/restore (native app only — the web build never calls these)
 			r.Post("/contacts/backup", contactsHandler.BackupContacts)

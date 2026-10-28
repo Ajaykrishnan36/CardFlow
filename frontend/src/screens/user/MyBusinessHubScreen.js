@@ -5,14 +5,12 @@ import { colors, radii, spacing, typography } from '../../theme';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { CardStyleModal } from '../../components/CardStyleModal';
-import { UpgradeModal } from '../../components/UpgradeModal';
 import { useAuth } from '../../context/AuthContext';
 import { useCrm } from '../../context/CrmContext';
 
-const FREE_BUSINESS_LIMIT = 2;
 
 export function MyBusinessHubScreen({ onSelectBusiness, onNewBusiness }) {
-  const { myBusinesses, addMyBusiness, isPremiumActive, loadMyBusinesses } = useAuth();
+  const { myBusinesses, addMyBusiness, loadMyBusinesses } = useAuth();
   // A business created in the CRM gets its listing on the server: show it as soon as it exists.
   const { businesses } = useCrm();
   React.useEffect(() => {
@@ -20,7 +18,6 @@ export function MyBusinessHubScreen({ onSelectBusiness, onNewBusiness }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businesses.length]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);
   const [styleBusiness, setStyleBusiness] = useState(null);
   const [form, setForm] = useState({
     business_name: '', category: 'Manufacturing', phone: '', whatsapp: '',
@@ -46,10 +43,6 @@ export function MyBusinessHubScreen({ onSelectBusiness, onNewBusiness }) {
     // A new business is created once, in the CRM; its listing and cards come with it.
     if (onNewBusiness) {
       onNewBusiness();
-      return;
-    }
-    if (!isPremiumActive && myBusinesses.length >= FREE_BUSINESS_LIMIT) {
-      setShowUpgrade(true);
       return;
     }
     setShowAddModal(true);
@@ -218,12 +211,6 @@ export function MyBusinessHubScreen({ onSelectBusiness, onNewBusiness }) {
         onSaved={() => setStyleBusiness(null)}
       />
 
-      <UpgradeModal
-        visible={showUpgrade}
-        onClose={() => setShowUpgrade(false)}
-        title="Business limit reached"
-        message="Free plan allows up to 2 businesses. Upgrade to Pro for unlimited business listings."
-      />
     </ScrollView>
   );
 }

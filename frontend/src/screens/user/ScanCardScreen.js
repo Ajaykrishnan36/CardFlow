@@ -28,10 +28,8 @@ import { SaveCardSheet } from '../crm/CardCrmPanel';
 import { apiClient } from '../../services/api';
 import { extractCardWithTesseract, mergeExtractions } from '../../utils/ocrParser';
 import { DetailScreenHeader } from '../../components/DetailScreenHeader';
-import { UpgradeModal } from '../../components/UpgradeModal';
 import { CardCornerAdjuster } from '../../components/CardCornerAdjuster';
 
-const FREE_SAVED_CARD_LIMIT = 5;
 // Same shape the server checks (2-digit state code, PAN, entity, Z, checksum).
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const cleanGstin = (v) => (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -63,8 +61,7 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
   const crm = useCrm();
   const [crmSheet, setCrmSheet] = useState(false);
   const [crmSaved, setCrmSaved] = useState('');
-  const { token, loadUserVault, savedCards, isPremiumActive } = useAuth();
-  const [showUpgrade, setShowUpgrade] = useState(false);
+  const { token, loadUserVault, savedCards } = useAuth();
 
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -356,10 +353,6 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
         alert('Front side image is required.');
         return;
       }
-    }
-    if (!isPremiumActive && (savedCards?.length || 0) >= FREE_SAVED_CARD_LIMIT) {
-      setShowUpgrade(true);
-      return;
     }
 
     setIsSaving(true);
@@ -754,12 +747,6 @@ export function ScanCardScreen({ onCardSaved, onBack }) {
         )}
       </ScrollView>
 
-      <UpgradeModal
-        visible={showUpgrade}
-        onClose={() => setShowUpgrade(false)}
-        title="Card vault is full"
-        message="Free plan allows up to 5 saved cards. Upgrade to Pro to save unlimited cards."
-      />
     </View>
   );
 }

@@ -17,7 +17,6 @@ import { SavedCardDetailScreen } from '../screens/user/SavedCardDetailScreen';
 import { SharedCardScreen } from '../screens/user/SharedCardScreen';
 import { ScanCardScreen } from '../screens/user/ScanCardScreen';
 import { ProfileScreen } from '../screens/user/ProfileScreen';
-import { SubscriptionScreen } from '../components/SubscriptionScreen';
 import { MyBusinessHubScreen } from '../screens/user/MyBusinessHubScreen';
 import { SupportHubScreen } from '../screens/user/SupportHubScreen';
 import { SupportRequestScreen } from '../screens/user/SupportRequestScreen';
@@ -39,7 +38,7 @@ import { WelcomeTour } from '../screens/crm/GettingStarted';
  * Bottom tabs: Home · My CRM · Scan · My Cards · Browse.
  */
 export function AppNavigator() {
-  const { isAuthenticated, authReady, savedCards, subscriptionOverlayOpen, closeSubscription, logout, user } = useAuth();
+  const { isAuthenticated, authReady, savedCards, logout, user } = useAuth();
   const { status, businesses, activeCode, switchBusiness } = useCrm();
   const location = useLocation();
   const navigate = useNavigate();
@@ -365,16 +364,10 @@ export function AppNavigator() {
         onSwitched={(nextCode) => go(paths.home(nextCode))}
       />
 
-      {subscriptionOverlayOpen ? (
-        <View style={styles.paywallOverlay}>
-          <SubscriptionScreen onBack={closeSubscription} />
-        </View>
-      ) : null}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  stack: { flex: 1 },
-  paywallOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.bgMuted, zIndex: 50 }
+  stack: { flex: 1 }
 });

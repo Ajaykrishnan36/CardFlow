@@ -5,8 +5,9 @@
 // *other* states is cancelled whenever that state changes, so a user never
 // gets a "please log in" nudge after they've logged in, etc.
 //   - logged_out: alternating reminders to log in (ids 1000-4999)
-//   - free (logged in, no active subscription): "go premium" nudge (ids 5000-5999)
-//   - premium (logged in, active subscription): "back up your contacts" nudge (ids 6000-6999)
+//   - signed_in: "back up your contacts" nudge (ids 6000-6999)
+// Ids 5000-5999 held the old "go premium" nudge; they are still cancelled so a phone
+// that scheduled them before paid plans were removed stops showing them.
 
 const PREFS_KEY = 'cf_notification_prefs';
 
@@ -26,12 +27,7 @@ const LOGGED_OUT_MESSAGES = {
   }
 };
 
-const FREE_USER_MESSAGE = {
-  title: 'CardFlow',
-  body: 'Hey! Subscribe now and unlock your Premium account.'
-};
-
-const PREMIUM_USER_MESSAGE = {
+const SIGNED_IN_MESSAGE = {
   title: 'CardFlow',
   body: 'Back up your contacts and keep them safe with CardFlow Cloud.'
 };
@@ -39,8 +35,8 @@ const PREMIUM_USER_MESSAGE = {
 // Reserved notification-id ranges so cancelling one bucket never touches another.
 const ID_RANGES = {
   logged_out: { start: 1000, end: 4999 },
-  free: { start: 5000, end: 5999 },
-  premium: { start: 6000, end: 6999 }
+  retiredPremiumNudge: { start: 5000, end: 5999 },
+  signed_in: { start: 6000, end: 6999 }
 };
 
 const DEFAULT_PREFS = { exploreBusiness: true, addBusiness: true };
@@ -150,8 +146,7 @@ export async function setNotificationPref(key, enabled) {
 }
 
 // Schedules the reminder queue for the given auth state and clears whatever
-// was scheduled for the other two states. Call this on every login/logout/
-// subscription change so the phone only ever nudges for the current state.
+// was scheduled for the other state. Call this on every login/logout so the phone only ever nudges for the current state.
 export async function syncAuthNotifications(authState) {
   await ensurePlugin();
   const plugin = cachedPlugin;
@@ -159,8 +154,8 @@ export async function syncAuthNotifications(authState) {
   const granted = await requestNotificationPermission();
   if (!granted) return;
 
-  await cancelRange(plugin, ID_RANGES.free);
-  await cancelRange(plugin, ID_RANGES.premium);
+  await cancelRange(plugin, ID_RANGES.retiredPremiumNudge);
+  await cancelRange(plugin, ID_RANGES.signed_in);
 
   if (authState === 'logged_out') {
     await rescheduleTestNotifications();
@@ -170,11 +165,7 @@ export async function syncAuthNotifications(authState) {
   // Logged in — the "please log in" reminders no longer apply.
   await cancelRange(plugin, ID_RANGES.logged_out);
 
-  if (authState === 'free') {
-    await plugin.schedule({ notifications: buildSchedule(ID_RANGES.free.start, [FREE_USER_MESSAGE]) });
-  } else if (authState === 'premium') {
-    await plugin.schedule({ notifications: buildSchedule(ID_RANGES.premium.start, [PREMIUM_USER_MESSAGE]) });
-  }
+  await plugin.schedule({ notifications: buildSchedule(ID_RANGES.signed_in.start, [SIGNED_IN_MESSAGE]) });
 }
 
 // Call once at app startup, before auth state is known — just arms the

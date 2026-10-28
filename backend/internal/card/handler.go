@@ -14,9 +14,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// FreeSavedCardLimit is how many cards a non-premium user may save to their vault.
-const FreeSavedCardLimit = 5
-
 type CardHandler struct {
 	svc *CardService
 	s3  *storage.S3Service
@@ -64,19 +61,6 @@ func (h *CardHandler) CreateCard(w http.ResponseWriter, r *http.Request) {
 	if msg := validateCard(card); msg != "" {
 		response.BadRequest(w, msg, nil)
 		return
-	}
-
-	if !user.IsPremiumActive() {
-		existing, err := h.svc.GetSavedCards(r.Context(), user.ID)
-		if err != nil {
-			response.InternalServerError(w, "failed to check card count: "+err.Error())
-			return
-		}
-		if len(existing) >= FreeSavedCardLimit {
-			response.Error(w, http.StatusPaymentRequired, "UPGRADE_REQUIRED",
-				"Free plan allows up to 5 saved cards. Upgrade to CardFlow Premium to save unlimited cards.", nil)
-			return
-		}
 	}
 
 	created, err := h.svc.CreateSavedCard(r.Context(), user.ID, card)

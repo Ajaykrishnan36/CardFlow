@@ -3,18 +3,17 @@
 // `colors.primary`, so anything lighter fails contrast.
 export const DEFAULT_PRIMARY = '#32145F';
 
-// Royal Purple and Indigo are free; every other accent is a Premium unlock.
 export const THEME_PALETTE = [
   { name: 'Royal Purple', value: '#32145F' },
   { name: 'Indigo', value: '#3730A3' },
-  { name: 'Sapphire', value: '#1D4ED8', premium: true },
-  { name: 'Teal', value: '#0F766E', premium: true },
-  { name: 'Emerald', value: '#047857', premium: true },
-  { name: 'Crimson', value: '#B91C1C', premium: true },
-  { name: 'Rose', value: '#9D174D', premium: true },
-  { name: 'Slate', value: '#334155', premium: true },
-  { name: 'Charcoal', value: '#1F2937', premium: true },
-  { name: 'Bronze Gold', value: '#B89445', premium: true }
+  { name: 'Sapphire', value: '#1D4ED8' },
+  { name: 'Teal', value: '#0F766E' },
+  { name: 'Emerald', value: '#047857' },
+  { name: 'Crimson', value: '#B91C1C' },
+  { name: 'Rose', value: '#9D174D' },
+  { name: 'Slate', value: '#334155' },
+  { name: 'Charcoal', value: '#1F2937' },
+  { name: 'Bronze Gold', value: '#B89445' }
 ];
 
 function hexToRgb(hex) {

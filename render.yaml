@@ -27,10 +27,6 @@ services:
         value: "true"
       - key: DEV_MOCK_GEMINI
         value: "true"
-      - key: REVENUECAT_WEBHOOK_AUTH
-        sync: false
-      - key: REVENUECAT_SECRET_API_KEY
-        sync: false
       # A tenant's own domain is added to the Vercel project by the server (D-157).
       - key: VERCEL_API_TOKEN
         sync: false

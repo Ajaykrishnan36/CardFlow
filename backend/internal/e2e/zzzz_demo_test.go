@@ -68,7 +68,6 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		// The test's own owner session ends with the run.
 		_, _ = testDB.Pool.Exec(ctx, `UPDATE crm.sessions SET revoked_at = now() WHERE token_hash = $1`, shared.HashToken(strings.TrimPrefix(owner, "crms_")))
 	}()
-	want(t, call(t, "PUT", crmAPI+"/platform/plans/team20", owner, map[string]any{"name": "Team 20", "isActive": true, "position": 8, "limits": map[string]any{"members": 20}}), 200, "a plan with room for a team")
 	later := func(phone string) { crmMod.Identity().ForgetCodeLimits("+91" + phone) }
 
 	// ---- 2. Ajay ----
@@ -172,9 +171,6 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 			want(t, r, 201, "Ajay adds "+k)
 			slug[k] = r.str("business", "tenantSlug")
 		}
-	}
-	for _, s := range slug {
-		want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+workspaceID(t, s), owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for "+s)
 	}
 	leadsBefore := map[string]int{}
 	for k, s := range slug {
@@ -329,7 +325,6 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		t.Fatalf("Priya can't sign in before approval: %d %s", x.Status, truncate(x.Raw, 200))
 	}
 	approve(t, owner, slug["insurance"])
-	want(t, call(t, "PUT", crmAPI+"/platform/subscriptions/"+workspaceID(t, slug["insurance"]), owner, map[string]any{"planKey": "team20", "status": "active"}), 200, "plan for Priya")
 	later(priya)
 	ps := signInAt(t, priya, slug["insurance"])
 	want(t, ps, 200, "Priya signs in")

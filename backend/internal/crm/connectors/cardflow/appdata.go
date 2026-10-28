@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,20 +19,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// The app's own data, read and edited in place (D-44): app users with their premium
-// access, business listings and saved cards. The app's tables stay the source of truth —
-// the CRM writes the same columns the app's admin console and billing flow use, so a
-// change here shows in the app immediately. Catalog objects: app_user, app_business.
-
-// premiumPlans mirrors the app's billing plans (internal/billing). Months 0 = lifetime.
-var premiumPlans = map[string]struct {
-	Name   string
-	Months int
-}{
-	"3m": {"3 Months", 3}, "6m": {"6 Months", 6}, "12m": {"12 Months", 12}, "lifetime": {"Lifetime", 0},
-}
-
-const premiumExpr = `(u.is_subscribed AND (u.subscription_expires_at IS NULL OR u.subscription_expires_at > now()))`
+// The app's own data, read and edited in place (D-44): app users, business listings and
+// saved cards. The app's tables stay the source of truth — the CRM writes the same
+// columns the app uses, so a change here shows in the app immediately. There are no
+// paid plans (D-163). Catalog objects: app_user, app_business.
 
 // appScope checks the request is for the connected workspace and the object action.
 func (c *Connector) appScope(w http.ResponseWriter, r *http.Request, object, action string) (*records.Scope, bool) {
@@ -60,26 +49,21 @@ func likePattern(q string) string {
 // ---- app users ----
 
 type AppUser struct {
-	ID            string       `json:"id"`
-	Name          string       `json:"name"`
-	Phone         string       `json:"phone"`
-	Email         string       `json:"email"`
-	City          string       `json:"city"`
-	State         string       `json:"state"`
-	Role          string       `json:"role"`
-	Status        string       `json:"status"`
-	Premium       bool         `json:"premium"`
-	PlanID        string       `json:"planId,omitempty"`
-	PlanName      string       `json:"planName,omitempty"`
-	ExpiresAt     *time.Time   `json:"expiresAt,omitempty"`
-	FreeScansLeft int          `json:"freeScansLeft"`
-	CreatedAt     time.Time    `json:"createdAt"`
-	LastLoginAt   *time.Time   `json:"lastLoginAt,omitempty"`
-	Businesses    int          `json:"businesses"`
-	Cards         int          `json:"cards"`
-	OpenTickets   int          `json:"openTickets"`
-	Account       *LookupValue `json:"account,omitempty"`
-	Contact       *LookupValue `json:"contact,omitempty"`
+	ID          string       `json:"id"`
+	Name        string       `json:"name"`
+	Phone       string       `json:"phone"`
+	Email       string       `json:"email"`
+	City        string       `json:"city"`
+	State       string       `json:"state"`
+	Role        string       `json:"role"`
+	Status      string       `json:"status"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	LastLoginAt *time.Time   `json:"lastLoginAt,omitempty"`
+	Businesses  int          `json:"businesses"`
+	Cards       int          `json:"cards"`
+	OpenTickets int          `json:"openTickets"`
+	Account     *LookupValue `json:"account,omitempty"`
+	Contact     *LookupValue `json:"contact,omitempty"`
 }
 
 func (c *Connector) userSelect() string {
@@ -96,8 +80,8 @@ func (c *Connector) userSelect() string {
 	}
 	return `
 	SELECT u.id::text, COALESCE(u.name, ''), u.phone, COALESCE(u.email, ''), COALESCE(u.city, ''), COALESCE(u.state, ''),
-	       u.role::text, u.status::text, ` + premiumExpr + `, COALESCE(u.subscription_plan_id, ''), u.subscription_expires_at,
-	       u.free_scans_remaining, u.created_at, u.last_login_at, ` + biz + `, ` + cards + `, ` + tickets + `,
+	       u.role::text, u.status::text,
+	       u.created_at, u.last_login_at, ` + biz + `, ` + cards + `, ` + tickets + `,
 	       a.id::text, a.name || ' · ' || a.code, ct.id::text,
 	       COALESCE(NULLIF(trim(concat_ws(' ', ct.first_name, ct.last_name)), ''), ct.code) || ' · ' || ct.code
 	FROM public.users u
@@ -109,15 +93,10 @@ func (c *Connector) userSelect() string {
 func scanAppUser(row pgx.Row) (AppUser, error) {
 	var u AppUser
 	var accID, accLabel, conID, conLabel *string
-	var scans int16
-	err := row.Scan(&u.ID, &u.Name, &u.Phone, &u.Email, &u.City, &u.State, &u.Role, &u.Status, &u.Premium, &u.PlanID, &u.ExpiresAt,
-		&scans, &u.CreatedAt, &u.LastLoginAt, &u.Businesses, &u.Cards, &u.OpenTickets, &accID, &accLabel, &conID, &conLabel)
+	err := row.Scan(&u.ID, &u.Name, &u.Phone, &u.Email, &u.City, &u.State, &u.Role, &u.Status,
+		&u.CreatedAt, &u.LastLoginAt, &u.Businesses, &u.Cards, &u.OpenTickets, &accID, &accLabel, &conID, &conLabel)
 	if err != nil {
 		return u, err
-	}
-	u.FreeScansLeft = int(scans)
-	if p, ok := premiumPlans[u.PlanID]; ok {
-		u.PlanName = p.Name
 	}
 	if accID != nil {
 		u.Account = &LookupValue{ID: *accID, Label: *accLabel, Object: "accounts"}
@@ -136,7 +115,7 @@ func (c *Connector) handleListAppUsers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	filter := map[string]string{
-		"premium": premiumExpr, "free": "NOT " + premiumExpr, "admin": "u.role::text = 'admin'", "suspended": "u.status::text = 'suspended'",
+		"admin": "u.role::text = 'admin'", "suspended": "u.status::text = 'suspended'",
 	}[r.URL.Query().Get("filter")]
 	if filter == "" {
 		filter = "true"
@@ -162,15 +141,12 @@ func (c *Connector) handleListAppUsers(w http.ResponseWriter, r *http.Request) {
 	rows.Close()
 	var counts struct {
 		All       int `json:"all"`
-		Premium   int `json:"premium"`
-		Free      int `json:"free"`
 		Admin     int `json:"admin"`
 		Suspended int `json:"suspended"`
 	}
 	if err := c.store.Pool.QueryRow(ctx, `
-		SELECT count(*), count(*) FILTER (WHERE `+premiumExpr+`), count(*) FILTER (WHERE NOT `+premiumExpr+`),
-		       count(*) FILTER (WHERE u.role::text = 'admin'), count(*) FILTER (WHERE u.status::text = 'suspended')
-		FROM public.users u WHERE u.deleted_at IS NULL`).Scan(&counts.All, &counts.Premium, &counts.Free, &counts.Admin, &counts.Suspended); err != nil {
+		SELECT count(*), count(*) FILTER (WHERE u.role::text = 'admin'), count(*) FILTER (WHERE u.status::text = 'suspended')
+		FROM public.users u WHERE u.deleted_at IS NULL`).Scan(&counts.All, &counts.Admin, &counts.Suspended); err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
@@ -197,22 +173,11 @@ type SavedCard struct {
 	} `json:"business,omitempty"`
 }
 
-type AppPayment struct {
-	PlanID    string     `json:"planId"`
-	PlanName  string     `json:"planName"`
-	AmountINR float64    `json:"amountInr"`
-	Currency  string     `json:"currency,omitempty"` // empty = INR (legacy payments)
-	Status    string     `json:"status"`
-	CreatedAt time.Time  `json:"createdAt"`
-	PaidAt    *time.Time `json:"paidAt,omitempty"`
-}
-
 type AppUserDetail struct {
 	AppUser
 	Businesses []AppBusiness `json:"businessList"`
 	Cards      []SavedCard   `json:"cardList"`
 	Tickets    []Ticket      `json:"ticketList"`
-	Payments   []AppPayment  `json:"payments"`
 }
 
 func (c *Connector) loadAppUser(ctx context.Context, id string) (*AppUserDetail, error) {
@@ -226,7 +191,7 @@ func (c *Connector) loadAppUser(ctx context.Context, id string) (*AppUserDetail,
 	if err != nil {
 		return nil, err
 	}
-	d := &AppUserDetail{AppUser: u, Businesses: []AppBusiness{}, Cards: []SavedCard{}, Tickets: []Ticket{}, Payments: []AppPayment{}}
+	d := &AppUserDetail{AppUser: u, Businesses: []AppBusiness{}, Cards: []SavedCard{}, Tickets: []Ticket{}}
 	if c.hasBiz {
 		if d.Businesses, _, err = c.queryBusinesses(ctx, "b.owner_user_id = $1", id); err != nil {
 			return nil, err
@@ -251,60 +216,6 @@ func (c *Connector) loadAppUser(ctx context.Context, id string) (*AppUserDetail,
 			d.Tickets = append(d.Tickets, t)
 		}
 		rows.Close()
-	}
-	if tableExists(ctx, c.store.Pool, "subscription_payments") {
-		rows, err := c.store.Pool.Query(ctx, `
-			SELECT plan_id, amount_paise, status, created_at, paid_at FROM public.subscription_payments
-			WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`, id)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var p AppPayment
-			var paise int
-			if err := rows.Scan(&p.PlanID, &paise, &p.Status, &p.CreatedAt, &p.PaidAt); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			p.AmountINR = float64(paise) / 100
-			p.PlanName = p.PlanID
-			if pl, ok := premiumPlans[p.PlanID]; ok {
-				p.PlanName = pl.Name
-			}
-			d.Payments = append(d.Payments, p)
-		}
-		rows.Close()
-	}
-	// RevenueCat purchase history (CardFlow Premium after the RevenueCat migration).
-	if tableExists(ctx, c.store.Pool, "revenuecat_events") {
-		rows, err := c.store.Pool.Query(ctx, `
-			SELECT COALESCE(product_id, ''), event_type, COALESCE(price, 0)::float8, COALESCE(currency, ''),
-			       COALESCE(event_at, received_at)
-			FROM public.revenuecat_events
-			WHERE user_id = $1 AND status IN ('processed', 'ignored') AND event_type IN ('INITIAL_PURCHASE', 'RENEWAL', 'NON_RENEWING_PURCHASE', 'PRODUCT_CHANGE', 'CANCELLATION', 'EXPIRATION', 'BILLING_ISSUE')
-			ORDER BY 5 DESC LIMIT 50`, id)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var p AppPayment
-			var typ string
-			if err := rows.Scan(&p.PlanID, &typ, &p.AmountINR, &p.Currency, &p.CreatedAt); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			p.PlanName = p.PlanID
-			p.Status = strings.ToLower(typ)
-			switch typ {
-			case "INITIAL_PURCHASE", "RENEWAL", "NON_RENEWING_PURCHASE":
-				p.Status = "paid"
-				at := p.CreatedAt
-				p.PaidAt = &at
-			}
-			d.Payments = append(d.Payments, p)
-		}
-		rows.Close()
-		sort.SliceStable(d.Payments, func(i, j int) bool { return d.Payments[i].CreatedAt.After(d.Payments[j].CreatedAt) })
 	}
 	return d, nil
 }
@@ -363,10 +274,6 @@ type appUserPatch struct {
 	City   *string `json:"city"`
 	Role   *string `json:"role"`   // user | admin (the app's admin console)
 	Status *string `json:"status"` // active | suspended
-	Access *struct {
-		Action string `json:"action"` // grant | revoke
-		PlanID string `json:"planId"` // 3m | 6m | 12m | lifetime
-	} `json:"access"`
 }
 
 var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -437,36 +344,6 @@ func (c *Connector) handleUpdateAppUser(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	activity := ""
-	if in.Access != nil {
-		switch in.Access.Action {
-		case "grant":
-			plan, ok := premiumPlans[in.Access.PlanID]
-			if !ok {
-				fields["planId"] = "Pick 3 months, 6 months, 12 months or lifetime."
-				break
-			}
-			var expires *time.Time
-			if plan.Months > 0 {
-				t := time.Now().AddDate(0, plan.Months, 0)
-				expires = &t
-			}
-			sets = append(sets, "is_subscribed = true", "subscription_status = 'ACTIVE'",
-				"subscription_source = 'crm_grant'", "subscription_will_renew = false", "subscription_updated_at = now()")
-			add("subscription_plan_id", in.Access.PlanID)
-			add("subscription_expires_at", expires)
-			changes["access"] = map[string]any{"granted": in.Access.PlanID, "expiresAt": expires}
-			activity = "Premium access granted: " + plan.Name
-		case "revoke":
-			// Store-bought (RevenueCat) access can only be cancelled by the
-			// customer in their store; revoking here removes CRM-granted access.
-			sets = append(sets, "is_subscribed = false", "subscription_status = 'FREE'",
-				"subscription_source = NULL", "subscription_will_renew = false", "subscription_updated_at = now()")
-			changes["access"] = "revoked"
-			activity = "Premium access revoked"
-		default:
-			fields["access"] = "Choose grant or revoke."
-		}
-	}
 	if len(fields) > 0 {
 		shared.WriteError(w, r, shared.Validation(fields))
 		return
@@ -1102,16 +979,8 @@ func (c *Connector) appRelated(ctx context.Context, sc *records.Scope, object, r
 		}
 		return nil, err
 	}
-	access := "Free"
-	if d.Premium {
-		access = "Premium · " + d.PlanName
-		if d.ExpiresAt != nil {
-			access += " until " + d.ExpiresAt.In(ist()).Format("2 Jan 2006")
-		}
-	}
 	out := []records.RelatedList{{Key: "app-profile", Label: AppName + " profile", Object: "app-users", Rows: []records.RelatedRow{{
-		ID: d.ID, Title: strings.TrimSpace(d.Name + " · " + d.Phone), Subtitle: access + " · " + itoa(len(d.Businesses)) + " businesses · " + itoa(len(d.Cards)) + " saved cards",
-		Status: map[bool]string{true: "premium", false: "free"}[d.Premium],
+		ID: d.ID, Title: strings.TrimSpace(d.Name + " · " + d.Phone), Subtitle: itoa(len(d.Businesses)) + " businesses · " + itoa(len(d.Cards)) + " saved cards",
 	}}}}
 	if object == "accounts" {
 		// The owner's contact, when it isn't already this account's contact (a person keeps one primary account).

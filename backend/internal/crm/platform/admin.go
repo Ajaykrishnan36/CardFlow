@@ -996,9 +996,6 @@ func (h *Handler) addMemberByPhone(ctx context.Context, tx pgx.Tx, actor, ws uui
 		Scan(&res.MembershipID, &mStatus)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		if err := checkSeat(ctx, tx, ws); err != nil {
-			return nil, err
-		}
 		if err := tx.QueryRow(ctx, `INSERT INTO crm.memberships (workspace_id, identity_id, status, created_by) VALUES ($1, $2, 'active', $3) RETURNING id`,
 			ws, res.IdentityID, actor).Scan(&res.MembershipID); err != nil {
 			return nil, err

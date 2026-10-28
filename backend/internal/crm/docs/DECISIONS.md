@@ -1570,6 +1570,17 @@ ones they belong to (`GET /platform/records/{object}/{id}/businesses`). Approvin
 setting up businesses stays with the owner for now; letting team staff do it needs its own
 permission.
 
+## D-163 — No count limits; RevenueCat removed
+
+Plans that capped a business's members, records and card scans are gone (D-101 is
+superseded): the `crm/plans` package, `/platform/plans`, `/platform/subscriptions`,
+`/w/{code}/plan` and the seat check on every path that adds a member. Any number of people
+can be added. The mobile app's RevenueCat billing is removed too — the webhook, `/billing/*`,
+its config and SDKs, the paywall, the Plan and Transactions screens, the 5-saved-card and
+2-business free limits and the premium-only card styles and colours: everything is open to
+everyone. The App users screens no longer show or grant premium. Tables and columns stay
+(migrations only add). Paying is coming back as Razorpay, per member (next decision).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

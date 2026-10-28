@@ -11,9 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// FreeBusinessLimit is how many businesses a non-premium user may own.
-const FreeBusinessLimit = 2
-
 type BusinessHandler struct {
 	svc *BusinessService
 }
@@ -52,19 +49,6 @@ func (h *BusinessHandler) CreateBusiness(w http.ResponseWriter, r *http.Request)
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		response.BadRequest(w, "invalid request body", err.Error())
 		return
-	}
-
-	if !user.IsPremiumActive() {
-		existing, err := h.svc.GetOwnerBusinesses(r.Context(), user.ID)
-		if err != nil {
-			response.InternalServerError(w, "failed to check business count: "+err.Error())
-			return
-		}
-		if len(existing) >= FreeBusinessLimit {
-			response.Error(w, http.StatusPaymentRequired, "UPGRADE_REQUIRED",
-				"Free plan allows up to 2 businesses. Upgrade to CardFlow Premium to add more.", nil)
-			return
-		}
 	}
 
 	biz, err := h.svc.CreateBusiness(r.Context(), user.ID, in)
@@ -116,7 +100,7 @@ func (h *BusinessHandler) UploadCardImage(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		Side     string `json:"side"`
+		Side      string `json:"side"`
 		ImageData string `json:"image_data"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
