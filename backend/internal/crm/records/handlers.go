@@ -869,9 +869,11 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 		sql = `SELECT i.id::text, i.display_name || COALESCE(' · ' || e.value_normalized, '') FROM crm.identities i
 			LEFT JOIN crm.verified_identifiers e ON e.identity_id = i.id AND e.kind = 'email' AND e.namespace = 'global'
 			WHERE i.status <> 'deleted' AND (i.display_name ILIKE $1 OR e.value_normalized ILIKE $1)
-			  AND ($2::boolean OR EXISTS (SELECT 1 FROM crm.memberships m WHERE m.identity_id = i.id AND m.workspace_id = $3 AND m.status = 'active'))
+			  AND EXISTS (SELECT 1 FROM crm.memberships m WHERE m.identity_id = i.id AND m.workspace_id = $2 AND m.status = 'active')
 			ORDER BY i.display_name LIMIT 20`
-		args = append(args, sc.Owner, ws)
+		// Only this business's people, also for the platform owner looking in: an owner or
+		// assignee from another business (or the owner console) can't be picked here.
+		args = append(args, ws)
 	case "products":
 		sql = `SELECT id::text, name FROM crm.products WHERE status <> 'archived' AND (name ILIKE $1 OR key ILIKE $1) ORDER BY name LIMIT 20`
 	case "workspaces":
