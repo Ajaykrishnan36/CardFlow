@@ -103,6 +103,14 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 		t.Fatalf("a first business waits for approval, its URL unseen: %d %s", traders.Status, truncate(traders.Raw, 300))
 	}
 	tradersSlug := slugOf(t, ajay, "Ajay Traders")
+	// A server restart while it waits keeps its URL: the one approval sends is the one made
+	// at sign-up (D-165).
+	if err := crmMigrateAddresses(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if again := slugOf(t, ajay, "Ajay Traders"); again != tradersSlug {
+		t.Fatalf("a business waiting for approval changed its URL at start-up: %s → %s", tradersSlug, again)
+	}
 	if x := signInAt(t, ajay, tradersSlug); x.str("code") != "business_pending" {
 		t.Fatalf("sign-in at a business in review: %d %s", x.Status, truncate(x.Raw, 200))
 	}

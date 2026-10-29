@@ -1489,8 +1489,8 @@ customer's registrar can only be added by whoever owns the domain.
 
 Replaces D-156's one address per brand. Each business is its own tenant, addressed by a code
 made at creation: DDMMYY (India time) + ISO week (2 digits) + the last 4 characters of its
-GSTIN, PAN or TAN (0000 when a business made internally has none) + the next 6-digit number of
-`crm.business_code_seq`, stored lower case (`27102644234f000501`), accepted in any case or with
+GSTIN, PAN or TAN (0000 when a business made internally has none) + 6 digits from the next number of
+`crm.business_code_seq` (shuffled, D-165), stored lower case (`27102644234f000501`), accepted in any case or with
 dashes, shown as `271026-44-234F-000501`. The name is never in it and renaming never moves it.
 Sign-in at `/<code>/login` checks only that business's members (same query path as D-156, one
 business). The first-time form at `/` asks for the person's name and email, then the business
@@ -1505,15 +1505,16 @@ waits for a provider template. Existing businesses got codes at start-up
 (`MigrateBusinessAddresses`, safe to re-run); the old brand tenant is kept as `redirected`
 with `redirect_to` the oldest business and its own domain moved there. Nothing is deleted.
 
-## D-159 — Local runs use the live database
+## D-159 — Local and live each have their own database
 
-There is one setup, not a local one and a live one. `backend/.env` (git-ignored, never
-committed) holds the same values as the live host, including `DATABASE_URL` for the live Neon
-database, so running the backend and the web app on a computer shows and changes live data.
-It also sets `CRM_APP_ENV=production` and `CRM_SEED_DEMO=false`, which the live host gets from
-`RENDER`, so a local run never seeds demo data or the local-only fallback key into live. Start-up
-steps may take up to 5 minutes (`startupTimeout`) because each statement crosses to US East;
-on the host they take seconds. The automated tests are unaffected: e2e makes its own
+Replaces the earlier "local runs use the live database". The code is the same everywhere; only
+the settings differ. Live (Render) gets `DATABASE_URL` for Neon from its dashboard. A computer
+uses `backend/.env` (git-ignored, never committed), whose `DATABASE_URL` is a local Postgres
+(`crm_local`) with `CRM_APP_ENV=local` and `CRM_BASE_URL=http://localhost:8080`; the live
+address is kept there only as a commented line. So a local run never shows or changes live
+data, and local saves take milliseconds instead of crossing to US East. The platform owner is
+made locally from `CRM_OWNER_EMAIL` and `CRM_OWNER_BOOTSTRAP_PASSWORD` (12+ characters,
+changed at first sign-in), as on live. The automated tests are unaffected: e2e makes its own
 throwaway database from the `DB_*` settings and sets its own `DATABASE_URL`.
 
 ## D-160 — "Create your own CRM" only registers
@@ -1600,6 +1601,18 @@ person are the owner's (`/crm/owner/billing`; start ₹499 / ₹1,399 / ₹2,599
 a switch to stop charging and the list of payments. Never charged: the platform workspace,
 the app connector's workspace and the platform owner. Charging is on only while
 `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are set.
+
+## D-165 — The six digits of a business code can't be guessed
+
+The last six digits of a business code (D-158) are no longer the running number itself: the
+next number of `crm.business_code_seq` goes through a keyed shuffle of 000000–999999 (a
+Feistel network on 20 bits with HMAC-SHA256 rounds, walked back below a million). Each running
+number still gets its own six digits, so codes stay unique, but seeing one code tells nothing
+about the next business's. The key is made from the server's `CRM_ENCRYPTION_KEY_BASE64` at
+start (`platform.SetCodeKey`), so it is not in the public code. Codes already given out never
+change. A business waiting for approval keeps the code made at sign-up: start-up
+(`MigrateBusinessAddresses`) used to give pending businesses a new one, so the URL changed
+between sign-up and approval.
 
 ## Seed
 

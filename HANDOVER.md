@@ -110,7 +110,15 @@ Copying the whole folder to a new repository builds as it is. What does change o
 
 ## 4. Running it on your Mac
 
-Prerequisites: Go, Node 20+, Postgres (local database `cardflow_db`), Redis (optional).
+Prerequisites: Go, Node 20+, Postgres (local database `crm_local`), Redis (optional).
+
+Local and live never share a database (D-159). `backend/.env` points `DATABASE_URL` at the
+local Postgres (`postgres://<you>@localhost:5432/crm_local?sslmode=disable`, made once with
+`createdb crm_local`) and sets `CRM_APP_ENV=local` and `CRM_BASE_URL=http://localhost:8080`.
+The live server never reads that file: Render has its own `DATABASE_URL` for Neon. The same
+code runs in both places; only these settings differ. For the platform owner locally, set
+`CRM_OWNER_EMAIL` and a `CRM_OWNER_BOOTSTRAP_PASSWORD` of 12+ characters, sign in once at
+`/crm/owner/login`, choose your own password, then remove the bootstrap line.
 
 ```bash
 cd backend && go run ./cmd/api/

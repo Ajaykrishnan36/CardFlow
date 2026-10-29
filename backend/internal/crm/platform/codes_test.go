@@ -21,3 +21,35 @@ func TestCodePartsUseIndiaDateAndISOWeek(t *testing.T) {
 		t.Fatal("display and typed forms")
 	}
 }
+
+// The six digits are a keyed shuffle of the running number (D-165): each number its own
+// digits, in no order that follows the running number, and a different key gives others.
+func TestCodeNumberIsAKeyedShuffle(t *testing.T) {
+	seen := make(map[int]int64, 1_000_000)
+	for n := int64(0); n < 1_000_000; n++ {
+		d := codeNumber(n)
+		if d < 0 || d > 999_999 {
+			t.Fatalf("number %d gave %d, not six digits", n, d)
+		}
+		if prev, ok := seen[d]; ok {
+			t.Fatalf("numbers %d and %d both gave %06d", prev, n, d)
+		}
+		seen[d] = n
+	}
+	in := 0
+	for n := int64(1); n <= 100; n++ {
+		if diff := codeNumber(n+1) - codeNumber(n); diff >= -10 && diff <= 10 {
+			in++
+		}
+	}
+	if in > 2 {
+		t.Fatalf("%d of 100 next codes sit within 10 of the one before: guessable", in)
+	}
+	before := codeNumber(501)
+	old := codeKey
+	SetCodeKey([]byte("another server secret"))
+	defer func() { codeKey = old }()
+	if codeNumber(501) == before {
+		t.Fatal("the server key must change the digits")
+	}
+}

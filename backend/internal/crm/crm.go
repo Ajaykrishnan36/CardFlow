@@ -181,7 +181,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	if err != nil {
 		return m.disable("role hierarchy migration failed: " + err.Error())
 	}
-	// Every business its own generated address (D-158); a problem here never stops the CRM.
+	// Every business its own generated address (D-158), its six digits keyed with the server's
+	// secret (D-165); a problem here never stops the CRM.
+	platform.SetCodeKey(m.cfg.EncryptionKey)
 	addrCtx, cancelAddr := context.WithTimeout(context.Background(), startupTimeout)
 	if err := platform.MigrateBusinessAddresses(addrCtx, st.Pool); err != nil {
 		slog.Error("giving businesses their own addresses failed", "err", err)

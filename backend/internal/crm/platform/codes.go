@@ -2,6 +2,8 @@ package platform
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -19,11 +21,12 @@ import (
 //	DD MM YY   the day it was created (India time)
 //	WW         ISO week of that day (Monday start, 01–53)
 //	TTTT       last four characters of its GSTIN, PAN or TAN (0000 when none)
-//	NNNNNN     the next number of crm.business_code_seq
+//	NNNNNN     the next number of crm.business_code_seq, shuffled with a server key (D-165)
 //
-// for example 27102644234F000501 (27 Oct 2026, week 44, PAN …234F, number 501). The running
-// number makes it unique; the code is stored in lower case and accepted in any case or with
-// dashes (271026-44-234F-000501). The business name is never part of it.
+// for example 27102644234F804317 (27 Oct 2026, week 44, PAN …234F, number 804317). The running
+// number makes it unique and the shuffle makes it unguessable: the next business's code can't
+// be worked out from one already seen. The code is stored in lower case and accepted in any
+// case or with dashes (271026-44-234F-804317). The business name is never part of it.
 
 var india = func() *time.Location {
 	if l, err := time.LoadLocation("Asia/Kolkata"); err == nil {
@@ -31,6 +34,42 @@ var india = func() *time.Location {
 	}
 	return time.FixedZone("IST", 5*3600+1800)
 }()
+
+// codeKey keys the shuffle of the running number. SetCodeKey replaces it with one made from
+// the server's secret at start; this default is only for tests and tools.
+var codeKey = []byte("ajays-crm-business-code")
+
+// SetCodeKey keys the six digits of new business codes with the server's secret. Codes already
+// given out never change.
+func SetCodeKey(secret []byte) {
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte("business-code-number"))
+	codeKey = mac.Sum(nil)
+}
+
+// codeNumber turns the n-th running number into the code's six digits: a keyed shuffle of
+// 000000–999999 (a Feistel network on 20 bits, walked back until it lands below a million).
+// Every running number gets its own six digits, so codes stay unique, but they come out in no
+// order anyone can follow without the key.
+func codeNumber(n int64) int {
+	x := uint32(n % 1_000_000)
+	for {
+		if x = shuffle20(x); x < 1_000_000 {
+			return int(x)
+		}
+	}
+}
+
+func shuffle20(x uint32) uint32 {
+	l, r := x>>10, x&0x3ff
+	for round := byte(0); round < 8; round++ {
+		mac := hmac.New(sha256.New, codeKey)
+		mac.Write([]byte{round, byte(r >> 8), byte(r)})
+		s := mac.Sum(nil)
+		l, r = r, l^((uint32(s[0])<<8|uint32(s[1]))&0x3ff)
+	}
+	return l<<10 | r
+}
 
 // codeParts builds the code before the running number.
 func codeParts(created time.Time, taxID string) string {
@@ -52,7 +91,7 @@ func GenerateBusinessCode(ctx context.Context, tx pgx.Tx, created time.Time, tax
 		if err := tx.QueryRow(ctx, `SELECT nextval('crm.business_code_seq')`).Scan(&n); err != nil {
 			return "", err
 		}
-		code := fmt.Sprintf("%s%06d", head, n%1_000_000)
+		code := fmt.Sprintf("%s%06d", head, codeNumber(n))
 		taken, err := slugTaken(ctx, tx, code)
 		if err != nil {
 			return "", err
@@ -69,7 +108,7 @@ func NormalizeCode(raw string) string {
 	return strings.ToLower(strings.NewReplacer("-", "", " ", "").Replace(strings.TrimSpace(raw)))
 }
 
-// DisplayCode groups a generated code for reading out: 271026-44-234F-000501.
+// DisplayCode groups a generated code for reading out: 271026-44-234F-804317.
 func DisplayCode(code string) string {
 	if len(code) != 18 {
 		return code
@@ -84,14 +123,15 @@ var businessCodeRe = regexp.MustCompile(`^[0-9]{8}[0-9a-z]{4}[0-9]{6}$`)
 func IsBusinessCode(s string) bool { return businessCodeRe.MatchString(s) }
 
 // MigrateBusinessAddresses gives every business made before D-158 its own generated address
-// (from the day it was created and its tax ID). A brand address shared by several
+// (from the day it was created and its tax ID). A business waiting for approval already has
+// its own and keeps it: its URL is the one approval sends. A brand address shared by several
 // businesses, or a code made from a name, keeps working: it now points to the oldest of
 // those businesses, and each business's own new address is shown on its URL card. Nothing
 // is removed; it runs at every start and does nothing once every business has its own code.
 func MigrateBusinessAddresses(ctx context.Context, pool *pgxpool.Pool) error {
 	rows, err := pool.Query(ctx, `
 		SELECT w.id FROM crm.workspaces w LEFT JOIN crm.tenants t ON t.id = w.tenant_id
-		WHERE NOT w.is_platform AND (t.id IS NULL OR t.status <> 'active' OR t.slug !~ '^[0-9]{8}[0-9a-z]{4}[0-9]{6}$'
+		WHERE NOT w.is_platform AND (t.id IS NULL OR t.status NOT IN ('active', 'pending') OR t.slug !~ '^[0-9]{8}[0-9a-z]{4}[0-9]{6}$'
 		   OR EXISTS (SELECT 1 FROM crm.workspaces o WHERE o.tenant_id = w.tenant_id AND o.id <> w.id AND (o.created_at, o.id) < (w.created_at, w.id)))
 		ORDER BY w.created_at, w.id`)
 	if err != nil {
