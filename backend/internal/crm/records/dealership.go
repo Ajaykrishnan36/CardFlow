@@ -915,7 +915,7 @@ func (h *Handler) syncNextService(ctx context.Context, tx pgx.Tx, ws uuid.UUID, 
 func (h *Handler) workOrderService(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op string, before, after *Row) error {
 	due := after.id("serviceDueId")
 	if due == uuid.Nil || specFor("service_dues") == nil {
-		return nil
+		return h.workOrderOnVehicle(ctx, tx, ws, op, before, after)
 	}
 	spec := specFor("service_dues")
 	row, _, err := h.getRow(ctx, tx, ws, spec, due, nil)
@@ -933,6 +933,35 @@ func (h *Handler) workOrderService(ctx context.Context, tx pgx.Tx, ws uuid.UUID,
 		_, err = h.updateValues(ctx, tx, ws, spec, due, systemActor(sourceDealer), map[string]any{"status": "booked", "workOrderId": after.ID}, nil, nil)
 	}
 	return err
+}
+
+// workOrderOnVehicle: any other job card on a customer's vehicle (a repair raised from a
+// case, a walk-in job) notes the odometer when it is completed, and the vehicle shows it
+// (D-167). Assets that aren't vehicles (no VIN, no registration) are left alone.
+func (h *Handler) workOrderOnVehicle(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op string, before, after *Row) error {
+	if after.text("status") != "completed" || (op != "create" && before.text("status") == "completed") ||
+		!after.has("assetId") || specFor("odometer_readings") == nil {
+		return nil
+	}
+	var vehicle bool
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(custom->>'vin', '') <> '' OR COALESCE(custom->>'registrationNumber', '') <> ''
+		FROM crm.object_records WHERE workspace_id = $1 AND object_key = 'assets' AND id = $2 AND deleted_at IS NULL`,
+		ws, after.id("assetId")).Scan(&vehicle); err != nil || !vehicle {
+		return nil
+	}
+	if !after.has("odometer") {
+		return refuse("odometer", "Enter the odometer reading — the vehicle's history and next service are worked out from it.")
+	}
+	km := after.num("odometer")
+	var prev *float64
+	if err := tx.QueryRow(ctx, `SELECT max((custom->>'reading')::numeric) FROM crm.object_records WHERE workspace_id = $1 AND object_key = 'odometer_readings'
+		AND deleted_at IS NULL AND custom->>'assetId' = $2 AND COALESCE(custom->>'source', '') <> 'customer'`, ws, after.text("assetId")).Scan(&prev); err != nil {
+		return err
+	}
+	if prev != nil && km < *prev {
+		return refuse("odometer", fmt.Sprintf("The last reading was %.0f km. An odometer doesn't go backwards — check the number.", *prev))
+	}
+	return h.addReading(ctx, tx, ws, after.text("assetId"), km, today(), "service", after.text("ownerId"))
 }
 
 // sweepServiceDues turns planned services into due ones when their window opens, and

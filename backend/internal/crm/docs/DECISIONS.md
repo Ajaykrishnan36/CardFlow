@@ -1624,6 +1624,14 @@ worked keeps its status and its first assignment time when it changes hands. Bil
 a payment the page picks who to pay for again only from the refreshed list, so the people
 just paid for are no longer ticked.
 
+## D-167 — Every job card on a vehicle notes the odometer
+
+Before, only a job card for a scheduled service (`serviceDueId`) needed the odometer to be
+completed. Now any completed job card on a customer's vehicle — an asset with a VIN or a
+registration number, e.g. a repair raised from a case — needs it, refuses a reading lower
+than the last, and stores it as an odometer reading (source Service), so the vehicle shows the
+latest km. Assets that aren't vehicles are not affected.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

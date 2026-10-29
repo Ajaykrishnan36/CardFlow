@@ -187,6 +187,16 @@ func TestDealershipStockBookingDeliveryService(t *testing.T) {
 		t.Fatal("the vehicle shows its next service")
 	}
 
+	// A repair job card on the vehicle (not a scheduled service) also needs the odometer, and
+	// the vehicle shows it (D-167).
+	repair := create(t, boss, ws, "work_orders", map[string]any{"name": "Brake noise", "assetId": assetID, "contactId": karthik})
+	refused("completing a repair with no odometer", edit(t, boss, ws, "work_orders", repair, map[string]any{"status": "completed"}), "odometer")
+	refused("a repair odometer lower than the last", edit(t, boss, ws, "work_orders", repair, map[string]any{"status": "completed", "odometer": 7000}), "odometer")
+	want(t, edit(t, boss, ws, "work_orders", repair, map[string]any{"status": "completed", "odometer": 7250}), 200, "complete the repair")
+	if b := get(t, boss, ws, "assets", assetID); num2(b["odometer"]) != 7250 {
+		t.Fatalf("a completed repair brings the vehicle's odometer up to date: %v", b["odometer"])
+	}
+
 	// Test ride: the checks come first; a completed ride leaves a follow-up.
 	refused("a ride on an expired licence", post("test_rides", map[string]any{"contactId": meena, "itemId": activa, "scheduledAt": time.Now().Format(time.RFC3339), "licenceValidUntil": "2020-01-01"}), "licenceValidUntil")
 	ride := create(t, boss, ws, "test_rides", map[string]any{"contactId": meena, "itemId": activa, "vehicleId": v3, "scheduledAt": time.Now().Format(time.RFC3339)})
