@@ -1614,6 +1614,16 @@ change. A business waiting for approval keeps the code made at sign-up: start-up
 (`MigrateBusinessAddresses`) used to give pending businesses a new one, so the URL changed
 between sign-up and approval.
 
+## D-166 — Giving a case to someone marks it Assigned
+
+When a case still New gets an owner (an Admin assigns it, or someone takes it), it moves to
+Assigned and `assignedAt` records when, with or without an SLA policy (before, `assignedAt`
+was set only when the policy had an assignment clock, and the status stayed New). As with
+setting Assigned by hand, leaving New also records the first response. A case already being
+worked keeps its status and its first assignment time when it changes hands. Billing: after
+a payment the page picks who to pay for again only from the refreshed list, so the people
+just paid for are no longer ticked.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

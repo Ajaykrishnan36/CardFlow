@@ -102,13 +102,14 @@ export function BillingPanel({
       const res = await payWithRazorpay(order);
       return billingApi(code).verify(res);
     },
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       toast.success(
         `Paid for ${res.members} ${res.members === 1 ? "person" : "people"}`,
         { description: "Their access is open now." },
       );
+      // Pick again only from the fresh list: the old one still shows them unpaid.
+      await qc.invalidateQueries({ queryKey: billingKey(code) });
       setPicked(null);
-      void qc.invalidateQueries({ queryKey: billingKey(code) });
       void qc.invalidateQueries({ queryKey: workspaceContextKey(code) });
       void qc.invalidateQueries({ queryKey: ["workspace", code] });
       onPaid?.();

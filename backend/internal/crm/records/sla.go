@@ -321,15 +321,18 @@ func (h *Handler) caseSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a acto
 				}
 			}
 		}
-		// Assignment: the case got another owner, or was picked up.
-		if (before.text("ownerId") != after.text("ownerId") || (was == "new" && status != "new")) && after.text("assignedAt") == "" {
-			tag, err := tx.Exec(ctx, `UPDATE crm.sla_timers SET completed_at = $3 WHERE case_id = $1 AND workspace_id = $2 AND milestone = 'assignment' AND completed_at IS NULL`, id, ws, now)
-			if err != nil {
+		// Assignment: the case got another owner, or was picked up. Giving a new case to
+		// someone picks it up for them: it moves to Assigned (D-166).
+		ownerChanged := before.text("ownerId") != after.text("ownerId") && after.text("ownerId") != ""
+		if ownerChanged && status == "new" {
+			status = "assigned"
+			set["status"] = status
+		}
+		if (ownerChanged || (was == "new" && status != "new")) && after.text("assignedAt") == "" {
+			if _, err := tx.Exec(ctx, `UPDATE crm.sla_timers SET completed_at = $3 WHERE case_id = $1 AND workspace_id = $2 AND milestone = 'assignment' AND completed_at IS NULL`, id, ws, now); err != nil {
 				return nil, err
 			}
-			if tag.RowsAffected() > 0 {
-				set["assignedAt"] = now.UTC().Format(time.RFC3339)
-			}
+			set["assignedAt"] = now.UTC().Format(time.RFC3339)
 		}
 		// Customer update: each update starts the clock for the next one.
 		if before.text("lastCustomerUpdateAt") != after.text("lastCustomerUpdateAt") && after.text("lastCustomerUpdateAt") != "" {
