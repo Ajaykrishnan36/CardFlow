@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -31,6 +32,10 @@ type AdminScope struct {
 }
 
 func exceedsErr(list []string) error {
+	// A few examples read better than every permission at once.
+	if len(list) > 3 {
+		list = append(list[:3:3], fmt.Sprintf("and %d more", len(list)-3))
+	}
 	return shared.Forbidden("exceeds_your_access", "You can't grant more than you have yourself: "+strings.Join(list, ", ")+".")
 }
 
@@ -762,15 +767,8 @@ func (h *Handler) adminMembers(w http.ResponseWriter, r *http.Request, sc *Admin
 // checkGrant verifies a role + permission sets + products are all within the admin's access.
 func (h *Handler) checkGrant(ctx context.Context, sc *AdminScope, roleKey *string, setIDs *[]uuid.UUID, productIDs *[]uuid.UUID) error {
 	if roleKey != nil {
-		rules, err := h.roleRules(ctx, h.store.Pool, sc.WS, *roleKey)
-		if err != nil {
-			return err
-		}
-		if list := access.Exceeds(rules, sc.Limit); len(list) > 0 {
-			return exceedsErr(list)
-		}
 		// Nobody hands out a role that ranks above their own (a Staff member who may manage
-		// users can't make an Admin).
+		// users can't make an Admin). Checked first: it says plainly why.
 		if sc.Limit != nil && !sc.IsPlatform && sc.Limit.RoleKey != "" && sc.Limit.RoleKey != "PLATFORM_OWNER" {
 			var mine, theirs int
 			if err := h.store.Pool.QueryRow(ctx, `
@@ -781,6 +779,13 @@ func (h *Handler) checkGrant(ctx context.Context, sc *AdminScope, roleKey *strin
 			if theirs > mine {
 				return shared.Forbidden("exceeds_your_access", "You can't give a role that ranks above your own.")
 			}
+		}
+		rules, err := h.roleRules(ctx, h.store.Pool, sc.WS, *roleKey)
+		if err != nil {
+			return err
+		}
+		if list := access.Exceeds(rules, sc.Limit); len(list) > 0 {
+			return exceedsErr(list)
 		}
 	}
 	if setIDs != nil {

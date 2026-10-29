@@ -1632,6 +1632,14 @@ registration number, e.g. a repair raised from a case — needs it, refuses a re
 than the last, and stores it as an odometer reading (source Service), so the vehicle shows the
 latest km. Assets that aren't vehicles are not affected.
 
+## D-168 — Plain refusals for roles; "New branch"
+
+An Admin (or anyone allowed to manage users) giving a role above their own is told "You can't
+give a role that ranks above your own." — the rank is checked before the permissions, which
+used to answer with every permission the role had. When a permission list is shown it names
+three and "and N more". The dashboard's "New …" buttons make the singular properly
+("Branches" → "branch", "Cases" → "case", "Addresses" → "address").
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

@@ -269,11 +269,12 @@ function NoModulesState() {
   );
 }
 
-/** "Opportunities" → "opportunity", "Calendar events" → "calendar event" (for "New …" buttons). */
+/** "Opportunities" → "opportunity", "Branches" → "branch", "Calendar events" → "calendar event" (for "New …" buttons). */
 function singular(plural: string): string {
   const w = plural.trim().toLowerCase().replace(/^recent /, '');
   if (w.endsWith('ies')) return `${w.slice(0, -3)}y`;
-  if (w.endsWith('ses') || w.endsWith('xes')) return w.slice(0, -2);
+  // "addresses", "boxes", "branches", "dishes" drop "es"; "cases", "expenses" only the "s".
+  if (w.endsWith('sses') || w.endsWith('xes') || w.endsWith('ches') || w.endsWith('shes')) return w.slice(0, -2);
   return w.endsWith('s') ? w.slice(0, -1) : w;
 }
 
