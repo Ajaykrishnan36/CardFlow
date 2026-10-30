@@ -171,6 +171,7 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 	r.Delete(prefix+"/favorites/{favId}", h.handleRemoveFavorite)
 	r.Get(prefix+"/notifications", h.handleListNotifications)
 	r.Post(prefix+"/notifications/read", h.handleReadNotifications)
+	r.Post(prefix+"/notifications/clear", h.handleClearNotifications)
 	r.Get(prefix+"/stream", h.handleStream)
 }
 

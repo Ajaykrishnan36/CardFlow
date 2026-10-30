@@ -1,7 +1,7 @@
 import { api, API_BASE, ApiError, ensureCsrf, IS_NATIVE, sessionToken } from './client';
 import { signInTenant } from '@crm/lib/tenant';
 import type {
-  ApiKey, ApiKeysResponse, AppNotification, BulkResult, Campaign, CampaignRecipient, Favorite, FileInfo, FilterNode, ImportResult, MailboxesResponse,
+  ApiKey, ApiKeysResponse, NotificationFilter, NotificationInbox, BulkResult, Campaign, CampaignRecipient, Favorite, FileInfo, FilterNode, ImportResult, MailboxesResponse,
   EmailThread, InviteLinkSettings, RecordGroup, SavedView, SearchGroup, SSOSettings, Team, TimelineItem, Webhook, WebhookDelivery, Workflow, WorkflowDef, WorkflowRun
 } from './types-features';
 import type {
@@ -438,10 +438,12 @@ export function recordsApiFor(prefix: string) {
   addFavorite: (body: { kind: 'record' | 'view'; object: ObjectKey; targetId: string }) =>
     api<{ data: Favorite[] }>(`${prefix}/favorites`, { method: 'POST', body }).then((r) => r.data),
   removeFavorite: (idOrTarget: string) => api<{ data: Favorite[] }>(`${prefix}/favorites/${enc(idOrTarget)}`, { method: 'DELETE' }).then((r) => r.data),
-  notifications: (params: { unread?: '1'; before?: number } = {}) =>
-    api<{ data: AppNotification[]; unread: number }>(`${prefix}/notifications${qs(params)}`),
-  readNotifications: (body: { ids?: number[]; all?: boolean }) =>
-    api<{ data: AppNotification[]; unread: number }>(`${prefix}/notifications/read`, { method: 'POST', body }),
+  notifications: (params: NotificationFilter = {}) => api<NotificationInbox>(`${prefix}/notifications${qs(params)}`),
+  // Read and clear answer with the list for the same filter, so the open tab stays put.
+  readNotifications: (body: { ids?: number[]; all?: boolean }, params: NotificationFilter = {}) =>
+    api<NotificationInbox>(`${prefix}/notifications/read${qs(params)}`, { method: 'POST', body }),
+  clearNotifications: (body: { ids?: number[]; all?: boolean }, params: NotificationFilter = {}) =>
+    api<NotificationInbox>(`${prefix}/notifications/clear${qs(params)}`, { method: 'POST', body }),
   streamUrl: () => `${API_BASE}${prefix}/stream`
   };
 }
@@ -828,6 +830,8 @@ export interface BusinessDashboardSummary {
   lists: Array<{ key?: string; object: string; label: string; rows: Array<{ id: string; code?: string; title: string; subtitle?: string; status?: string }> }>;
   currency: string;
   can: Record<string, boolean>;
+  /** Open work assigned to the viewer (owner, or booked as the service person). */
+  mine?: Array<{ object: string; label: string; count: number }>;
 }
 
 export interface CardFields {

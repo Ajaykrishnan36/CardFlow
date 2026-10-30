@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -103,6 +104,9 @@ func TestMembersArePaidForWithRazorpay(t *testing.T) {
 	v := call(t, "POST", crmAPI+"/w/"+ws+"/billing/verify", boss, map[string]any{"razorpay_order_id": order, "razorpay_payment_id": "pay_e2e1", "razorpay_signature": sign("e2e-secret", order+"|pay_e2e1")})
 	want(t, v, 200, "a signed payment is accepted")
 	want(t, call(t, "GET", crmAPI+"/w/"+ws+"/crm/leads", boss, nil), 200, "paid: the business opens")
+	if r := inbox(t, boss, ws, "", titled("Payment received: ₹499")); findNote(r, "Payment received: ₹499") == nil {
+		t.Fatalf("the payer is told the payment went through (D-169): %s", truncate(r.Raw, 300))
+	}
 	// Reporting it twice changes nothing.
 	want(t, call(t, "POST", crmAPI+"/w/"+ws+"/billing/verify", boss, map[string]any{"razorpay_order_id": order, "razorpay_payment_id": "pay_e2e1", "razorpay_signature": sign("e2e-secret", order+"|pay_e2e1")}), 200, "verify again")
 	var until time.Time
@@ -172,6 +176,12 @@ func TestMembersArePaidForWithRazorpay(t *testing.T) {
 	}
 	want(t, call(t, "GET", crmAPI+"/w/"+ws+"/crm/leads", staff, nil), 200, "staff opens the business after the bulk payment")
 	want(t, call(t, "GET", crmAPI+"/w/"+ws+"/crm/leads", admin, nil), 200, "admin too")
+	if r := inbox(t, staff, ws, "", titled("Your access is paid until")); findNote(r, "Your access is paid until") == nil || !strings.Contains(findNote(r, "Your access is paid until")["body"].(string), "Billing Boss paid for 3 months") {
+		t.Fatalf("each person paid for hears it, with who paid (D-169): %s", truncate(r.Raw, 300))
+	}
+	if r := inbox(t, boss, ws, "", titled("Payment received: ₹4,197")); findNote(r, "Payment received: ₹4,197") == nil {
+		t.Fatalf("the payer is told when the webhook settles it: %s", truncate(r.Raw, 300))
+	}
 
 	// Time runs out: locked again.
 	if _, err := testDB.Pool.Exec(ctx, `UPDATE crm.memberships SET paid_until = now() - interval '1 minute' WHERE id = $1`, ids["Pay Staff"]); err != nil {

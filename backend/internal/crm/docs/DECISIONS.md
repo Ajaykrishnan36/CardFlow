@@ -1640,6 +1640,29 @@ used to answer with every permission the role had. When a permission list is sho
 three and "and N more". The dashboard's "New …" buttons make the singular properly
 ("Branches" → "branch", "Cases" → "case", "Addresses" → "address").
 
+## D-169 — Paid status everywhere; the bell tells the business what happened
+
+- **Paid status** (Ajay, 2026-10-30): Users & access has a Billing column — "Not paid",
+  "Expired <date>", "N days to expire" (a week or less; 1 day in red) or "Paid until <date>" —
+  and each badge opens Billing. Billing uses the same badges.
+- **Home** starts with two cards: *Assigned to me* (open leads, cases, job cards, appointments,
+  tasks and opportunities the person owns, plus job cards and appointments booked on them as
+  the service person) and *Billing* (your own paid status; for whoever pays for others, how
+  many are not paid, run out within 7 days or are paid, and who needs paying).
+- **Notifications**, besides "assigned you a …": a member added (the new person is welcomed,
+  the other Admins and Super Admins are told); a member's first sign-in ever (to who added them
+  and the leaders); a payment (the payer, each person paid for, the other Super Admins — a
+  webhook-settled payment names the person who started it); paid time running out 7, 5, 3 and
+  1 day before and when it ends (the person and the Super Admins, each step once:
+  `crm.billing_reminders`, checked by the hourly sweep); a sale — deal won, invoice paid, new
+  vehicle booking, vehicle delivered, policy in force — to the Admins, Super Admins and the
+  record's owner (not whoever did it); work booked on a service person (a job card or
+  appointment given their resource, or an appointment assigned to them).
+- **The bell** shows only the open business's notifications, with Today / Unread / All tabs and
+  counts, Mark all read, Clear all, and per item mark-as-read and clear (clear deletes it).
+- The top bar finds the business from the memberships right after sign-in, so the bell is
+  there before the first reload.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

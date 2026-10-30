@@ -34,6 +34,8 @@ type Service struct {
 	resetIdentLimiter *limiter
 	otpLimiter        *limiter // sign-in code requests, per email
 
+	onFirstSignIn func(ctx context.Context, identityID uuid.UUID)
+
 	// Phone sign-in (D-93).
 	sms             sms.Sender
 	phoneLimiter    *limiter // code requests per phone, short window
@@ -706,7 +708,7 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 		sessionAudience = "owner"
 	}
 
-	var newDevice bool
+	var newDevice, firstSignIn bool
 	var out loginOutcome
 	err = s.store.WithTx(ctx, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(ctx, `
@@ -732,6 +734,9 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 		if err != nil {
 			return err
 		}
+		if err := tx.QueryRow(ctx, `SELECT last_login_at IS NULL FROM crm.identities WHERE id = $1`, row.identityID).Scan(&firstSignIn); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, `UPDATE crm.identities SET last_login_at = now() WHERE id = $1`, row.identityID); err != nil {
 			return err
 		}
@@ -746,6 +751,9 @@ func (s *Service) finishSignIn(ctx context.Context, row credentialRow, audience,
 		return nil, err
 	}
 	s.identLimiter.clear(identKey)
+	if firstSignIn && !row.isOwner {
+		s.firstSignIn(ctx, row.identityID)
+	}
 
 	if newDevice {
 		s.sendNewDeviceAlert(row.identityID, row.displayName, meta)

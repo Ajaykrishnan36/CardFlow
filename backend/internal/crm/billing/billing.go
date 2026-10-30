@@ -68,6 +68,8 @@ type Service struct {
 	mu       sync.Mutex
 	cached   Settings
 	cachedAt time.Time
+
+	onPaid func(ctx context.Context, p Paid)
 }
 
 func New(pool *pgxpool.Pool, cfg Config) *Service {
@@ -425,8 +427,9 @@ func (s *Service) markPaid(ctx context.Context, orderID, paymentID string, ws *u
 	var months int
 	var ids []uuid.UUID
 	var amount int64
-	err = tx.QueryRow(ctx, `SELECT id, workspace_id, status, months, membership_ids, amount_paise FROM crm.billing_orders
-		WHERE razorpay_order_id = $1 FOR UPDATE`, orderID).Scan(&id, &wsID, &status, &months, &ids, &amount)
+	var startedBy *uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id, workspace_id, status, months, membership_ids, amount_paise, paid_by FROM crm.billing_orders
+		WHERE razorpay_order_id = $1 FOR UPDATE`, orderID).Scan(&id, &wsID, &status, &months, &ids, &amount, &startedBy)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, errOrderNotFound
 	}
@@ -456,8 +459,30 @@ func (s *Service) markPaid(ctx context.Context, orderID, paymentID string, ws *u
 		After: map[string]any{"members": len(ids), "months": months, "amountPaise": amount, "paymentId": paymentID}}); err != nil {
 		return 0, err
 	}
-	return len(ids), tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return 0, err
+	}
+	if s.onPaid != nil {
+		payer := actor
+		if payer == nil {
+			payer = startedBy // settled by Razorpay's webhook: the person who started the payment
+		}
+		s.onPaid(context.WithoutCancel(ctx), Paid{Workspace: wsID, Memberships: ids, PaidBy: payer, AmountPaise: amount, Months: months})
+	}
+	return len(ids), nil
 }
+
+// Paid is one payment that went through: who it covered and who paid.
+type Paid struct {
+	Workspace   uuid.UUID
+	Memberships []uuid.UUID
+	PaidBy      *uuid.UUID
+	AmountPaise int64
+	Months      int
+}
+
+// OnPaid is told after each payment is counted (D-169), to send the notifications.
+func (s *Service) OnPaid(fn func(ctx context.Context, p Paid)) { s.onPaid = fn }
 
 // ---- Razorpay's webhook: POST /public/billing/razorpay ----
 

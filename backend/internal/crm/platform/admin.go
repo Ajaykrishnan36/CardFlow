@@ -938,6 +938,7 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 			return
 		}
 		res.LoginURL = h.BusinessLoginURL(ctx, sc.WS)
+		h.memberAdded(ctx, sc.WS, res.MembershipID, actorID(r))
 		shared.WriteJSON(w, http.StatusCreated, res)
 		return
 	}
@@ -969,6 +970,7 @@ func (h *Handler) adminInvite(w http.ResponseWriter, r *http.Request, sc *AdminS
 	} else if email, ok := normalizeEmail(in.Email); ok {
 		res.URLEmailed = h.SendBusinessURL(ctx, sc.WS, email, strings.TrimSpace(in.DisplayName))
 	}
+	h.memberAdded(ctx, sc.WS, res.MembershipID, actorID(r))
 	shared.WriteJSON(w, http.StatusCreated, res)
 }
 

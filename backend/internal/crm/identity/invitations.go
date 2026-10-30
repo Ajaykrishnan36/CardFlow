@@ -173,7 +173,8 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 	}
 
 	var out loginOutcome
-	var isOwner, mfaEnrolled, mustChange bool
+	var isOwner, mfaEnrolled, mustChange, firstSignIn bool
+	var signedIn uuid.UUID
 	var mfaRequired bool
 	err = s.store.WithTx(ctx, func(tx pgx.Tx) error {
 		inv, err := scanInvitation(tx.QueryRow(ctx, invitationSelect+` FOR UPDATE OF inv`, shared.HashToken(token)))
@@ -240,6 +241,10 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 		if err != nil {
 			return err
 		}
+		if err := tx.QueryRow(ctx, `SELECT last_login_at IS NULL FROM crm.identities WHERE id = $1`, inv.identityID).Scan(&firstSignIn); err != nil {
+			return err
+		}
+		signedIn = inv.identityID
 		if _, err := tx.Exec(ctx, `UPDATE crm.identities SET last_login_at = now() WHERE id = $1`, inv.identityID); err != nil {
 			return err
 		}
@@ -253,6 +258,9 @@ func (s *Service) AcceptInvitation(ctx context.Context, in AcceptInput, meta Req
 	})
 	if err != nil {
 		return nil, err
+	}
+	if firstSignIn && !isOwner {
+		s.firstSignIn(ctx, signedIn)
 	}
 	enrollRequired := mfaRequired && !mfaEnrolled
 	out.step = AuthStep{

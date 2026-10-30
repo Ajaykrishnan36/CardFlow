@@ -32,7 +32,13 @@ export function AppShell() {
   const loc = useLocation();
   // Under a tenant's address the open business is the tenant's current one (D-156).
   const slug = tenantFromPath(loc.pathname);
-  const wsCode = wsMatch?.params.ws ?? (me && slug && loc.pathname.split('/')[2] !== 'login' ? currentBusinessFor(slug) : undefined);
+  // Right after sign-in the tenant list may not be learned yet: fall back to the memberships,
+  // as the page itself does (TenantWorkspace), so the top bar (and its bell) has the business.
+  const wsCode =
+    wsMatch?.params.ws ??
+    (me && slug && loc.pathname.split('/')[2] !== 'login'
+      ? currentBusinessFor(slug) ?? me.memberships?.find((m) => m.status === 'active' && m.tenantSlug === slug)?.workspaceCode
+      : undefined);
   const { data: caps } = useCapabilities(Boolean(me) && !wsCode);
   const wsQ = useWorkspaceContextQuery(me ? wsCode : undefined);
   const workspace = wsCode ? wsQ.data : undefined;

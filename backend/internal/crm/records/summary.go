@@ -1,6 +1,8 @@
 package records
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,6 +42,14 @@ type dashboardSummary struct {
 	Currency string             `json:"currency"`
 	// Can tells the client which quick actions to offer (the server still checks each one).
 	Can map[string]bool `json:"can"`
+	// Mine: open work assigned to the viewer, whatever the range (D-169).
+	Mine []mineCount `json:"mine"`
+}
+
+type mineCount struct {
+	Object string `json:"object"`
+	Label  string `json:"label"`
+	Count  int    `json:"count"`
 }
 
 // rangeBounds turns a range key into [from, to) in the business time zone.
@@ -330,7 +340,44 @@ func (h *Handler) handleDashboardSummary(w http.ResponseWriter, r *http.Request)
 			return
 		}
 	}
+	out.Mine = h.assignedToMe(ctx, sc, me, today)
 	shared.WriteJSON(w, http.StatusOK, out)
+}
+
+// assignedToMe counts the viewer's open work: what they own, plus job cards and
+// appointments booked on them as the service person.
+func (h *Handler) assignedToMe(ctx context.Context, sc *Scope, me uuid.UUID, today string) []mineCount {
+	byResource := `OR t.custom->>'resourceId' IN (SELECT r.id::text FROM crm.object_records r
+		WHERE r.workspace_id = $1 AND r.object_key = 'service_resources' AND r.custom->>'userId' = $2::text)`
+	list := []struct{ object, label, open, extra string }{
+		{"cases", "Cases", `COALESCE(t.status, '') NOT IN ('resolved', 'closed')`, ""},
+		{"work_orders", "Job cards", `COALESCE(t.status, '') NOT IN ('completed', 'cancelled')`, byResource},
+		{"appointments", "Appointments", `COALESCE(t.status, '') IN ('scheduled', 'confirmed', 'in_progress') AND left(COALESCE(t.custom->>'startsAt', ''), 10) >= $3`,
+			byResource + ` OR t.custom->>'assignedTo' = $2::text`},
+		{"tasks", "Tasks", `COALESCE(t.status, '') NOT IN ('completed', 'deferred')`, ""},
+		{"opportunities", "Opportunities", `COALESCE(t.status, '') NOT IN ('closed_won', 'closed_lost')`, ""},
+	}
+	out := []mineCount{}
+	if specFor("leads") != nil && sc.Enabled("leads") && sc.Can("leads", "read") {
+		var n int
+		_ = h.store.Pool.QueryRow(ctx, `SELECT count(*) FROM crm.leads t WHERE t.workspace_id = $1 AND t.deleted_at IS NULL
+			AND t.owner_id = $2 AND COALESCE(t.status, '') NOT IN ('converted', 'lost')`, sc.WS, me).Scan(&n)
+		out = append(out, mineCount{"leads", "Leads", n})
+	}
+	for _, o := range list {
+		if specFor(o.object) == nil || !sc.Enabled(o.object) || !sc.Can(o.object, "read") {
+			continue
+		}
+		var n int
+		if err := h.store.Pool.QueryRow(ctx, `SELECT count(*) FROM crm.object_records t
+			WHERE t.workspace_id = $1 AND t.object_key = '`+o.object+`' AND t.deleted_at IS NULL AND `+o.open+`
+			  AND (t.owner_id = $2 `+o.extra+`) AND $3::text IS NOT NULL`, sc.WS, me, today).Scan(&n); err != nil {
+			slog.Warn("crm: assigned to me", "object", o.object, "error", err)
+			continue
+		}
+		out = append(out, mineCount{o.object, o.label, n})
+	}
+	return out
 }
 
 // summaryList runs one short list query with the tenant and owner filters applied.

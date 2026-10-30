@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { PayForNewMember } from "@crm/features/billing/billing-panel";
+import {
+  PaidBadge,
+  PayForNewMember,
+  useBillingOverview,
+} from "@crm/features/billing/billing-panel";
+import { workspaceBase } from "@crm/features/workspace/workspace-context";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -135,6 +140,13 @@ export function MembersTab({
   const [selected, setSelected] = useState<WorkspaceAdminMember | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const members = q.data?.data;
+  // Paid status per member, when members are charged in this business (D-169).
+  const billing = useBillingOverview(code);
+  const charged = !!billing.data?.status.enforced && !billing.data.exempt;
+  const paidUntil = new Map(
+    (billing.data?.members ?? []).map((b) => [b.membershipId, b.paidUntil]),
+  );
+  const billingPath = `${workspaceBase(code)}/settings/billing`;
   const invitations = (q.data?.invitations ?? []).filter(
     (i) =>
       i.status === "pending" ||
@@ -204,6 +216,11 @@ export function MembersTab({
                     <th scope="col" className="px-3 py-2 font-medium">
                       {t("workspaceApp.admin.users.colStatus")}
                     </th>
+                    {charged ? (
+                      <th scope="col" className="px-3 py-2 font-medium">
+                        Billing
+                      </th>
+                    ) : null}
                     <th
                       scope="col"
                       className="px-3 py-2 pr-4 text-right font-medium"
@@ -276,6 +293,14 @@ export function MembersTab({
                       <td className="px-3 py-2">
                         <StatusBadge status={m.status} />
                       </td>
+                      {charged ? (
+                        <td className="px-3 py-2">
+                          <PaidBadge
+                            paidUntil={paidUntil.get(m.membershipId)}
+                            to={billingPath}
+                          />
+                        </td>
+                      ) : null}
                       <td className="px-3 py-2 pr-4 text-right text-muted-foreground">
                         {m.lastLoginAt ? (
                           <time dateTime={m.lastLoginAt}>
@@ -326,7 +351,12 @@ export function MembersTab({
                           : ""}
                       </p>
                     </div>
-                    <StatusBadge status={m.status} />
+                    <span className="flex shrink-0 flex-col items-end gap-1">
+                      <StatusBadge status={m.status} />
+                      {charged ? (
+                        <PaidBadge paidUntil={paidUntil.get(m.membershipId)} />
+                      ) : null}
+                    </span>
                   </button>
                 </li>
               ))}

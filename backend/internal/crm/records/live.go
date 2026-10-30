@@ -55,6 +55,7 @@ func (h *Handler) notifyForEvent(ctx context.Context, tx pgx.Tx, ev Event) error
 	if ev.Type != "record.updated" && ev.Type != "record.created" {
 		return nil
 	}
+	h.notifyBusinessEvent(ctx, tx, ev)
 	assigned := ev.Type == "record.created"
 	for _, c := range ev.Changed {
 		if c == "ownerId" {
@@ -105,17 +106,25 @@ func articleFor(word string) string {
 	return "a"
 }
 
-// GET /notifications?unread=1&before=<id>
+// GET /notifications?unread=1&today=1&before=<id> — the viewer's notifications in this
+// business (newest first, 30 at a time), with the unread and today counts.
 func (h *Handler) handleListNotifications(w http.ResponseWriter, r *http.Request) {
 	me := actor(r)
+	ws := scopeFrom(r.Context()).WS
 	before := int64(1 << 62)
 	if b, err := strconv.ParseInt(r.URL.Query().Get("before"), 10, 64); err == nil {
 		before = b
 	}
 	onlyUnread := r.URL.Query().Get("unread") == "1"
+	dayStart := h.todayStart(r.Context(), ws, me)
+	since := time.Time{}
+	if r.URL.Query().Get("today") == "1" {
+		since = dayStart
+	}
 	rows, err := h.store.Pool.Query(r.Context(), `SELECT n.id, n.kind, n.title, n.body, n.link, COALESCE(i.display_name, ''), n.read_at, n.created_at
 		FROM crm.notifications n LEFT JOIN crm.identities i ON i.id = n.actor_id
-		WHERE n.identity_id = $1 AND n.id < $2 AND ($3 = false OR n.read_at IS NULL) ORDER BY n.id DESC LIMIT 30`, me, before, onlyUnread)
+		WHERE n.identity_id = $1 AND n.workspace_id IS NOT DISTINCT FROM $2 AND n.id < $3 AND ($4 = false OR n.read_at IS NULL) AND n.created_at >= $5
+		ORDER BY n.id DESC LIMIT 30`, me, nullUUID(ws), before, onlyUnread, since)
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
@@ -130,13 +139,33 @@ func (h *Handler) handleListNotifications(w http.ResponseWriter, r *http.Request
 		}
 		out = append(out, n)
 	}
-	var unread int
-	_ = h.store.Pool.QueryRow(r.Context(), `SELECT count(*) FROM crm.notifications WHERE identity_id = $1 AND read_at IS NULL`, me).Scan(&unread)
-	respond(w, r, http.StatusOK, map[string]any{"data": out, "unread": unread}, rows.Err())
+	var unread, today, total int
+	_ = h.store.Pool.QueryRow(r.Context(), `SELECT count(*) FILTER (WHERE read_at IS NULL), count(*) FILTER (WHERE created_at >= $3), count(*)
+		FROM crm.notifications WHERE identity_id = $1 AND workspace_id IS NOT DISTINCT FROM $2`, me, nullUUID(ws), dayStart).Scan(&unread, &today, &total)
+	respond(w, r, http.StatusOK, map[string]any{"data": out, "unread": unread, "today": today, "total": total}, rows.Err())
+}
+
+// todayStart is midnight today in the business's (or the viewer's) time zone.
+func (h *Handler) todayStart(ctx context.Context, ws, me uuid.UUID) time.Time {
+	loc := ist
+	if l, err := time.LoadLocation(h.envFor(ctx, ws, me).TZ); err == nil {
+		loc = l
+	}
+	now := time.Now().In(loc)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 }
 
 // POST /notifications/read {"ids":[…]} or {"all":true}
 func (h *Handler) handleReadNotifications(w http.ResponseWriter, r *http.Request) {
+	h.changeNotifications(w, r, `UPDATE crm.notifications SET read_at = now() WHERE read_at IS NULL AND `)
+}
+
+// POST /notifications/clear {"ids":[…]} or {"all":true} — removes them from the list.
+func (h *Handler) handleClearNotifications(w http.ResponseWriter, r *http.Request) {
+	h.changeNotifications(w, r, `DELETE FROM crm.notifications WHERE `)
+}
+
+func (h *Handler) changeNotifications(w http.ResponseWriter, r *http.Request, sql string) {
 	var in struct {
 		IDs []int64 `json:"ids"`
 		All bool    `json:"all"`
@@ -145,12 +174,12 @@ func (h *Handler) handleReadNotifications(w http.ResponseWriter, r *http.Request
 		shared.WriteError(w, r, err)
 		return
 	}
-	me := actor(r)
+	me, ws := actor(r), nullUUID(scopeFrom(r.Context()).WS)
 	var err error
 	if in.All {
-		_, err = h.store.Pool.Exec(r.Context(), `UPDATE crm.notifications SET read_at = now() WHERE identity_id = $1 AND read_at IS NULL`, me)
+		_, err = h.store.Pool.Exec(r.Context(), sql+`identity_id = $1 AND workspace_id IS NOT DISTINCT FROM $2`, me, ws)
 	} else {
-		_, err = h.store.Pool.Exec(r.Context(), `UPDATE crm.notifications SET read_at = now() WHERE identity_id = $1 AND id = ANY($2) AND read_at IS NULL`, me, in.IDs)
+		_, err = h.store.Pool.Exec(r.Context(), sql+`identity_id = $1 AND workspace_id IS NOT DISTINCT FROM $2 AND id = ANY($3)`, me, ws, in.IDs)
 	}
 	if err != nil {
 		shared.WriteError(w, r, err)

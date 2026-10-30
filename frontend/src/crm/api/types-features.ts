@@ -145,6 +145,20 @@ export interface AppNotification {
   createdAt: string;
 }
 
+export interface NotificationFilter {
+  unread?: '1';
+  today?: '1';
+  before?: number;
+}
+
+/** One page of the bell: the list for the filter, and counts across this business. */
+export interface NotificationInbox {
+  data: AppNotification[];
+  unread: number;
+  today: number;
+  total: number;
+}
+
 // ---- developer: API keys & webhooks ----
 
 export interface ApiKey {

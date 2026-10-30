@@ -22,7 +22,15 @@ const strings = {
     open_one: 'Notifications ({{count}} unread)',
     open_other: 'Notifications ({{count}} unread)',
     readAll: 'Mark all read',
-    empty: 'You’re all caught up. Mentions, assignments and workflow messages appear here.'
+    clearAll: 'Clear all',
+    markRead: 'Mark as read',
+    clear: 'Clear',
+    today: 'Today',
+    unread: 'Unread',
+    all: 'All',
+    empty: 'You’re all caught up. New members, payments, sales and work assigned to you appear here.',
+    emptyToday: 'Nothing new today.',
+    emptyUnread: 'No unread notifications.'
   },
   timeline: {
     filter: { all: 'All', notes: 'Notes', emails: 'Emails', tasks: 'Tasks', events: 'Meetings', files: 'Files', history: 'Changes' },

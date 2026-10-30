@@ -39,18 +39,54 @@ function formatDate(iso?: string) {
     : "";
 }
 
-function MemberStatus({ m }: { m: BillingMember }) {
-  if (!m.paidUntil) return <Badge tone="danger">Not paid</Badge>;
-  if (m.locked)
-    return <Badge tone="danger">Ended {formatDate(m.paidUntil)}</Badge>;
-  const days = Math.ceil(
-    (new Date(m.paidUntil).getTime() - Date.now()) / 86_400_000,
-  );
+/** Where a member's paid time stands: Not paid, Expired, "N days to expire" (a week or
+ * less left) or Paid until a date. */
+export function paidState(paidUntil?: string): {
+  tone: "danger" | "warning" | "success";
+  label: string;
+  days?: number;
+} {
+  if (!paidUntil) return { tone: "danger", label: "Not paid" };
+  const days = Math.ceil((new Date(paidUntil).getTime() - Date.now()) / 86_400_000);
+  if (days <= 0) return { tone: "danger", label: `Expired ${formatDate(paidUntil)}`, days };
+  if (days <= 7)
+    return {
+      tone: days <= 1 ? "danger" : "warning",
+      label: days === 1 ? "1 day to expire" : `${days} days to expire`,
+      days,
+    };
+  return { tone: "success", label: `Paid until ${formatDate(paidUntil)}`, days };
+}
+
+/** The paid-status badge; with `to` it is a link to the Billing page. */
+export function PaidBadge({ paidUntil, to }: { paidUntil?: string; to?: string }) {
+  const st = paidState(paidUntil);
+  const badge = <Badge tone={st.tone}>{st.label}</Badge>;
+  if (!to) return badge;
   return (
-    <Badge tone={days <= 7 ? "warning" : "success"}>
-      Paid until {formatDate(m.paidUntil)}
-    </Badge>
+    <Link
+      to={to}
+      onClick={(e) => e.stopPropagation()}
+      title={st.days !== undefined && st.days > 7 ? undefined : "Open Billing to pay"}
+      className="inline-flex rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:opacity-80"
+    >
+      {badge}
+    </Link>
   );
+}
+
+function MemberStatus({ m }: { m: BillingMember }) {
+  return <PaidBadge paidUntil={m.paidUntil} />;
+}
+
+/** The Billing overview of a business, shared by every screen that shows paid status. */
+export function useBillingOverview(code: string, enabled = true) {
+  return useQuery({
+    queryKey: billingKey(code),
+    queryFn: () => billingApi(code).overview(),
+    enabled,
+    staleTime: 60_000,
+  });
 }
 
 const periodLabel: Record<BillingPeriod, string> = {

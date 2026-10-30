@@ -28,6 +28,19 @@ type Handler struct {
 	identity *identity.Service
 	sms      sms.Sender
 	wa       *whatsapp.Sender
+	// onMemberAdded is told when someone is given access to a business (D-169).
+	onMemberAdded func(ctx context.Context, ws, membership, actor uuid.UUID)
+}
+
+// OnMemberAdded registers who hears that a member was added (the records notifications).
+func (h *Handler) OnMemberAdded(fn func(ctx context.Context, ws, membership, actor uuid.UUID)) {
+	h.onMemberAdded = fn
+}
+
+func (h *Handler) memberAdded(ctx context.Context, ws, membership, actor uuid.UUID) {
+	if h.onMemberAdded != nil && membership != uuid.Nil {
+		h.onMemberAdded(context.WithoutCancel(ctx), ws, membership, actor)
+	}
 }
 
 func NewHandler(st *store.Store, cfg shared.Config, mailer mail.Mailer, idSvc *identity.Service) *Handler {
