@@ -128,7 +128,14 @@ func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 	}
 	applyDefaults(ctx, tx, ws, spec, fields, values)
 	h.autoName(ctx, tx, ws, spec, values)
+	var linkErrs map[string]string
+	if a.Kind != "system" {
+		linkErrs = h.linkCustomer(ctx, tx, ws, spec, fields, values, nil)
+	}
 	cs, fe := buildChanges(ctx, tx, ws, fields, values, true)
+	for k, v := range linkErrs {
+		fe[k] = v
+	}
 	for k, v := range objectRules(spec, values, map[string]any{}, true) {
 		fe[k] = v
 	}
@@ -211,7 +218,14 @@ func (h *Handler) updateValues(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 		return current, nil
 	}
 	applyStageDefaults(ctx, tx, ws, spec, values)
+	var linkErrs map[string]string
+	if a.Kind != "system" {
+		linkErrs = h.linkCustomer(ctx, tx, ws, spec, fields, values, current.Values)
+	}
 	cs, fe := buildChanges(ctx, tx, ws, fields, values, false)
+	for k, v := range linkErrs {
+		fe[k] = v
+	}
 	for k, v := range objectRules(spec, values, current.Values, false) {
 		fe[k] = v
 	}

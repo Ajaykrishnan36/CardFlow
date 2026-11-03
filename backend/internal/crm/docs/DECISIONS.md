@@ -1725,6 +1725,21 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   it is typed: digits for the date and week, the tax-ID part may hold letters, digits after.
   The code stays 18 characters (6-2-4-6); URLs keep it in small letters without dashes.
 
+## D-173 — One customer per record
+
+- A record about a customer's vehicle, case, job card, invoice, order, quote, booking, deal or
+  contract belongs to that record's customer: its contact and account are filled from the
+  strongest of those (vehicle first) and can't be someone else — "This asset is Senthil
+  Kumar's. Pick Senthil Kumar, or another asset." A person's vehicle (no account) can't be put
+  under an account. With none of those, a contact brings their account, and a contact of
+  another account (or a person on their own under an account) is refused. Checked on every
+  create and edit by people, for every object; the CRM's own records are made consistent.
+- On a dealer business a case needs the customer's vehicle (Vehicle / asset *).
+- The new-record form puts the vehicle (or case, quote…) before Contact and Account; once picked
+  they are filled from it and greyed out until it is cleared. Contract, Entitlement, Branch,
+  Territory, Subscription, Knowledge article and "Part of" are folded under "More details" with
+  a line on what each is.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

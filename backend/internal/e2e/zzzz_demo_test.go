@@ -257,8 +257,13 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 	}
 	// After a few weeks he raises a case; the admin assigns it to Mani (service).
 	admin := signAs("Bala Admin", "bikes")
-	caseID := create(t, admin, slug["bikes"], "cases", map[string]any{"name": "Karthik: brake noise after first service", "accountId": deals[0].account,
-		"contactId": deals[0].contact, "priority": "high", "origin": "phone", "description": "Front brake squeaks at low speed."})
+	// A dealer's case names the customer's vehicle (D-173): his bike, with his account and contact.
+	bike := create(t, boss, slug["bikes"], "assets", map[string]any{"name": "Honda Shine 125 · Karthik", "accountId": deals[0].account, "contactId": deals[0].contact, "status": "active"})
+	caseID := create(t, admin, slug["bikes"], "cases", map[string]any{"name": "Karthik: brake noise after first service", "assetId": bike,
+		"priority": "high", "origin": "phone", "description": "Front brake squeaks at low speed."})
+	if c := get(t, admin, slug["bikes"], "cases", caseID); c["contactId"] != deals[0].contact || c["accountId"] != deals[0].account {
+		t.Fatalf("the case takes the customer from the vehicle: %v / %v", c["contactId"], c["accountId"])
+	}
 	var mani string
 	if err := testDB.Pool.QueryRow(ctx, `SELECT identity_id::text FROM crm.verified_identifiers WHERE kind = 'phone' AND value_normalized = '+919123400004'`).Scan(&mani); err != nil {
 		t.Fatal(err)

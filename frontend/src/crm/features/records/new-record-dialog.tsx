@@ -61,6 +61,10 @@ export function NewRecordDialog({
   const [values, setValues] = useState<Record<string, unknown>>({});
   // Labels of lookups the form filled in by itself (the picker only knows what was picked in it).
   const [labels, setLabels] = useState<Record<string, string>>({});
+  // Contact and account filled from a vehicle, case, quote… are that record's and can't be
+  // changed here (D-173): field → what they came from.
+  const [showMore, setShowMore] = useState(false);
+  const [locked, setLocked] = useState<Record<string, { by: string; label: string }>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const Icon = objectIcon(object, meta?.icon);
@@ -69,6 +73,8 @@ export function NewRecordDialog({
     if (!open) return;
     setValues({ ...initialValues(object, meta), ...(defaults ?? {}) });
     setLabels(defaultLabels ?? {});
+    setLocked({});
+    setShowMore(false);
     setErrors({});
     setFormError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,7 +94,30 @@ export function NewRecordDialog({
     const selfNamed = (meta.createHidden ?? []).includes('name');
     const missing = meta.fields.filter((f) => f.required && !f.readOnly && !used.has(f.key) && !(selfNamed && f.key === 'name'));
     if (missing.length) out.push({ id: '__required', title: t('records.new.otherRequired'), columns: 2, fields: missing });
-    return out;
+    // What decides the customer (the vehicle, the case, the quote…) comes before the
+    // customer; links most businesses don't use are folded under "More details" (D-173).
+    const more: FieldDef[] = [];
+    for (const sec of out) {
+      sec.fields = sec.fields.filter((f) => {
+        if (ADVANCED_LINKS[f.key] && !f.required) {
+          more.push(f);
+          return false;
+        }
+        return true;
+      });
+      const firstPerson = sec.fields.findIndex((f) => f.key === 'contactId' || f.key === 'accountId');
+      if (firstPerson >= 0) {
+        const anchors = sec.fields.filter((f, i) => i > firstPerson && ANCHOR_KEYS.includes(f.key));
+        if (anchors.length) {
+          const rest = sec.fields.filter((f) => !anchors.includes(f));
+          rest.splice(firstPerson, 0, ...anchors);
+          sec.fields = rest;
+        }
+      }
+    }
+    const kept = out.filter((sec) => sec.fields.length);
+    if (more.length) kept.push({ id: '__more', title: 'More details', columns: 2, fields: more });
+    return kept;
   }, [meta, t]);
 
   const create = useMutation({
@@ -113,6 +142,10 @@ export function NewRecordDialog({
   });
 
   const set = (key: string, v: unknown) => {
+    // Clearing the vehicle (or case, quote…) frees the customer fields it had filled.
+    if (isEmptyValue(v) && Object.values(locked).some((l) => l.by === key)) {
+      setLocked((prev) => Object.fromEntries(Object.entries(prev).filter(([, l]) => l.by !== key)));
+    }
     setValues((prev) => ({ ...prev, [key]: v }));
     // A hand-picked value carries its own label; forget the one the form filled in.
     if (labels[key] !== undefined) setLabels(({ [key]: _old, ...rest }) => rest);
@@ -145,6 +178,28 @@ export function NewRecordDialog({
       if (field.key === 'accountId' && !set.contactId && !isEmptyValue(current.contactId) && byKey.get('contactId')?.lookup === 'contacts') {
         const theirs = await scope.api.lookupRelated('contacts', String(current.contactId));
         if (theirs.accountId?.id !== picked.id) set.contactId = null;
+      }
+      // The vehicle (or case, quote…) decides the customer: its contact and account replace
+      // what was there and stay fixed while it is picked.
+      if (ANCHOR_KEYS.includes(field.key)) {
+        const lock: Record<string, { by: string; label: string }> = {};
+        for (const k of ['contactId', 'accountId'] as const) {
+          const v = related[k];
+          if (v && usable(k, v)) {
+            set[k] = v;
+            lock[k] = { by: field.key, label: picked.label };
+          }
+        }
+        // A person's vehicle with no account: the record has no account either.
+        if (lock.contactId && !lock.accountId && byKey.get('accountId')?.lookup === 'accounts') {
+          set.accountId = null;
+          lock.accountId = { by: field.key, label: picked.label };
+        }
+        if (Object.keys(lock).length) setLocked((prev) => ({ ...Object.fromEntries(Object.entries(prev).filter(([, l]) => l.by !== field.key)), ...lock }));
+      }
+      // A person on their own (no account) can't sit under someone else's account.
+      if (field.key === 'contactId' && !related.accountId && !isEmptyValue(current.accountId) && byKey.get('accountId')?.lookup === 'accounts') {
+        set.accountId = null;
       }
       const keys = Object.keys(set);
       if (!keys.length) return;
@@ -193,18 +248,37 @@ export function NewRecordDialog({
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
             {formError ? <Alert tone="danger">{formError}</Alert> : null}
             {sections.length === 0 ? <p className="text-[13px] text-muted-foreground">{t('records.new.noFields')}</p> : null}
-            {sections.map((s) => (
+            {sections.map((s) =>
+              s.id === '__more' && !showMore && !s.fields.some((f) => errors[f.key]) ? (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setShowMore(true)}
+                  className="w-full rounded-lg border border-dashed px-3 py-2 text-left text-[13px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                >
+                  + More details: {s.fields.map((f) => f.label).join(', ')} <span className="text-xs">(only if you use them)</span>
+                </button>
+              ) : (
               <fieldset key={s.id} className="min-w-0">
                 <legend className="mb-3 w-full border-b pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{s.title}</legend>
+                {s.id === '__more' ? (
+                  <ul className="mb-3 space-y-0.5 text-xs text-muted-foreground">
+                    {s.fields.map((f) => (
+                      <li key={f.key}>
+                        <b className="font-medium text-foreground">{f.label}</b> — {ADVANCED_LINKS[f.key]}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <div className={cn('grid gap-x-5 gap-y-4', s.columns === 2 && 'sm:grid-cols-2')}>
                   {s.fields.map((f) => (
                     <FieldEditor
                       key={f.key}
-                      field={f}
+                      field={locked[f.key] ? { ...f, helpText: `Comes from ${locked[f.key].label}. Clear that to pick someone else.` } : f}
                       value={values[f.key]}
                       onChange={(v) => set(f.key, v)}
                       error={errors[f.key]}
-                      disabled={create.isPending}
+                      disabled={create.isPending || Boolean(locked[f.key])}
                       lookupLabel={labels[f.key]}
                       lookupContext={{ accountId: values.accountId as string | undefined, contactId: values.contactId as string | undefined }}
                       onPick={(v) => void fillFrom(f, v)}
@@ -212,7 +286,8 @@ export function NewRecordDialog({
                   ))}
                 </div>
               </fieldset>
-            ))}
+              )
+            )}
             {/* Room for an open lookup list at the bottom of the scroll area. */}
             <div className="h-24" aria-hidden />
           </div>
@@ -229,3 +304,17 @@ export function NewRecordDialog({
     </Dialog>
   );
 }
+
+/** Fields that decide who a record is for (strongest first, as the server checks, D-173). */
+const ANCHOR_KEYS = ['assetId', 'vehicleId', 'caseId', 'workOrderId', 'invoiceId', 'orderId', 'salesOrderId', 'quoteId', 'bookingId', 'opportunityId', 'contractId'];
+
+/** Links most businesses don't use, folded under "More details", with what each one is. */
+const ADVANCED_LINKS: Record<string, string> = {
+  contractId: 'a service or AMC contract this falls under (only if you sell contracts).',
+  entitlementId: 'the free services or warranty cover it uses up (e.g. 4 free services).',
+  branchId: 'which of your showrooms or branches handles it (only with more than one).',
+  territoryId: 'the sales area it belongs to.',
+  subscriptionId: 'a subscription it is billed under.',
+  solutionId: 'the knowledge-base answer that solved it.',
+  parentAssetId: 'a bigger asset this one is part of.'
+};

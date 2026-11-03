@@ -103,6 +103,19 @@ func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSp
 	if err := addedOptions(ctx, q, wsID, spec, fields); err != nil {
 		return nil, err
 	}
+	// A dealer's case is about a customer's vehicle (D-173): pick the vehicle and the
+	// customer comes with it.
+	if spec.Key == "cases" {
+		if mods, err := access.WorkspaceModules(ctx, q, wsID); err == nil && mods["dealership"] {
+			for i := range fields {
+				if fields[i].Key == "assetId" {
+					fields[i].Required = true
+					fields[i].Label = "Vehicle / asset"
+					fields[i].HelpText = "Pick the customer's vehicle first: the customer and account are filled from it."
+				}
+			}
+		}
+	}
 	return append(fields, custom...), nil
 }
 
