@@ -215,7 +215,12 @@ function Payments({ data }: { data: OwnerBilling }) {
                     </Badge>
                   </td>
                   <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                    {o.paymentId || o.orderId}
+                    {o.method && o.method !== "razorpay" ? (
+                      <span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 font-sans font-medium text-foreground">
+                        Offline · {{ upi: "UPI", cash: "Cash", bank: "Bank", cheque: "Cheque" }[o.method] ?? o.method}
+                      </span>
+                    ) : null}
+                    {o.method && o.method !== "razorpay" ? o.reference || "" : o.paymentId || o.orderId}
                   </td>
                   <td className="px-4 py-2.5 text-right text-muted-foreground">
                     {relativeTime(o.paidAt ?? o.createdAt)}

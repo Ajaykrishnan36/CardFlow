@@ -1709,6 +1709,22 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   the quote pays the instalments in date order (Paid / Part paid); paying it all off makes the
   invoice as in D-170.
 
+## D-172 — A plan on the application; the owner approves paid offline or to pay online
+
+- The first-time "Set up your business" form shows the plans (the owner's prices per person
+  for 1, 3, 6 and 12 months, from `GET /public/billing/plans`). Picking one is optional and
+  nothing is paid there; it is kept on the business (`profile.plan`).
+- The owner's list shows when they asked and the plan they are interested in. **Approve** opens
+  a dialog: the plan (the requested one first), then either **Paid to us offline** — how (UPI,
+  cash, bank, cheque), amount (the plan's price unless changed) and a reference; the applicant
+  is paid for that period at once, so they open the business with no payment screen, and the
+  payment is on the owner's Billing list as Offline — or **They pay online**, where the plan is
+  what their payment screen starts on. The approval message says which.
+- Business codes are shown in capitals with dashes everywhere in the owner console and the
+  approval message (301026-44-K1Z4-182114). "Already have a business?" formats the code while
+  it is typed: digits for the date and week, the tax-ID part may hold letters, digits after.
+  The code stays 18 characters (6-2-4-6); URLs keep it in small letters without dashes.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

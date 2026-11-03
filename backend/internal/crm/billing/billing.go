@@ -291,7 +291,18 @@ func (s *Service) handleOverview(w http.ResponseWriter, r *http.Request, sc Scop
 		"prices":   s.priceList(ctx),
 		"members":  members,
 		"business": sc.Name,
+		// The plan the business asked for or was approved on (D-172), to start the period picker on.
+		"suggestedPeriod": s.suggestedPeriod(ctx, sc.WS),
 	})
+}
+
+func (s *Service) suggestedPeriod(ctx context.Context, ws uuid.UUID) string {
+	var plan string
+	_ = s.pool.QueryRow(ctx, `SELECT COALESCE(profile->>'plan', '') FROM crm.workspaces WHERE id = $1`, ws).Scan(&plan)
+	if monthsOf(plan) == 0 {
+		return ""
+	}
+	return plan
 }
 
 func (s *Service) handleCreateOrder(w http.ResponseWriter, r *http.Request, sc Scope) {
@@ -488,6 +499,72 @@ func (s *Service) OnPaid(fn func(ctx context.Context, p Paid)) { s.onPaid = fn }
 
 func (s *Service) PublicRoutes(r chi.Router) {
 	r.Post("/public/billing/razorpay", s.handleWebhook)
+	// The plans a new business can ask for on the sign-up form (D-172): nothing is paid there.
+	r.Get("/public/billing/plans", func(w http.ResponseWriter, r *http.Request) {
+		shared.WriteJSON(w, http.StatusOK, map[string]any{"enabled": s.Enforced(r.Context()), "currency": "INR", "prices": s.priceList(r.Context())})
+	})
+}
+
+// Offline is a payment the owner took outside Razorpay when approving a business (D-172).
+type Offline struct {
+	Workspace   uuid.UUID
+	Identity    uuid.UUID // the person it pays for (the applicant, the business's Super Admin)
+	Period      string    // 1m, 3m, 6m, 12m
+	AmountPaise int64     // what was received; 0 means the plan's price
+	Method      string    // cash, upi, bank, cheque
+	Reference   string
+	By          uuid.UUID // the owner
+}
+
+// RecordOffline counts a payment taken outside Razorpay: the person's paid time grows by the
+// plan's period, the order is kept with how it was paid, and the usual notices go out.
+func (s *Service) RecordOffline(ctx context.Context, p Offline) (time.Time, error) {
+	months := monthsOf(p.Period)
+	if months == 0 {
+		return time.Time{}, shared.Validation(map[string]string{"plan": "Choose the plan they paid for."})
+	}
+	switch p.Method {
+	case "cash", "upi", "bank", "cheque":
+	default:
+		return time.Time{}, shared.Validation(map[string]string{"method": "Say how they paid: cash, UPI, bank transfer or cheque."})
+	}
+	price := s.Settings(ctx).Prices[p.Period]
+	amount := p.AmountPaise
+	if amount <= 0 {
+		amount = int64(price) * 100
+	}
+	if amount <= 0 {
+		return time.Time{}, shared.Validation(map[string]string{"amount": "Enter the amount received."})
+	}
+	var membership uuid.UUID
+	if err := s.pool.QueryRow(ctx, `SELECT id FROM crm.memberships WHERE workspace_id = $1 AND identity_id = $2`, p.Workspace, p.Identity).Scan(&membership); err != nil {
+		return time.Time{}, shared.Validation(map[string]string{"plan": "The applicant isn't a member of this business."})
+	}
+	unit := price
+	if unit <= 0 {
+		unit = int(amount / 100)
+	}
+	order := "offline_" + uuid.NewString()
+	if _, err := s.pool.Exec(ctx, `INSERT INTO crm.billing_orders (workspace_id, razorpay_order_id, period, months, unit_price, amount_paise, membership_ids, paid_by, method, reference)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, ''))`, p.Workspace, order, p.Period, months, unit, amount, []uuid.UUID{membership}, p.By, p.Method, strings.TrimSpace(p.Reference)); err != nil {
+		return time.Time{}, err
+	}
+	by := p.By
+	if _, err := s.markPaid(ctx, order, firstNonEmpty(strings.TrimSpace(p.Reference), p.Method), &p.Workspace, &by); err != nil {
+		return time.Time{}, err
+	}
+	var until time.Time
+	err := s.pool.QueryRow(ctx, `SELECT paid_until FROM crm.memberships WHERE id = $1`, membership).Scan(&until)
+	return until, err
+}
+
+func firstNonEmpty(v ...string) string {
+	for _, x := range v {
+		if x != "" {
+			return x
+		}
+	}
+	return ""
 }
 
 func (s *Service) handleWebhook(w http.ResponseWriter, r *http.Request) {
@@ -557,13 +634,16 @@ type ownerOrder struct {
 	PaymentID   string     `json:"paymentId"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	PaidAt      *time.Time `json:"paidAt,omitempty"`
+	// Method: razorpay, or how the owner was paid outside it (cash, upi, bank) (D-172).
+	Method    string `json:"method"`
+	Reference string `json:"reference,omitempty"`
 }
 
 func (s *Service) handleOwnerGet(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	rows, err := s.pool.Query(ctx, `
 		SELECT o.id, w.name, w.code, COALESCE(i.display_name, ''), o.period, cardinality(o.membership_ids), o.amount_paise, o.status,
-		       o.razorpay_order_id, COALESCE(o.razorpay_payment_id, ''), o.created_at, o.paid_at
+		       o.razorpay_order_id, COALESCE(o.razorpay_payment_id, ''), o.created_at, o.paid_at, o.method, COALESCE(o.reference, '')
 		FROM crm.billing_orders o JOIN crm.workspaces w ON w.id = o.workspace_id
 		LEFT JOIN crm.identities i ON i.id = o.paid_by
 		ORDER BY o.created_at DESC LIMIT 200`)
@@ -576,7 +656,7 @@ func (s *Service) handleOwnerGet(w http.ResponseWriter, r *http.Request) {
 	var collected int64
 	for rows.Next() {
 		var o ownerOrder
-		if err := rows.Scan(&o.ID, &o.Business, &o.Code, &o.PaidBy, &o.Period, &o.Members, &o.AmountPaise, &o.Status, &o.OrderID, &o.PaymentID, &o.CreatedAt, &o.PaidAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.Business, &o.Code, &o.PaidBy, &o.Period, &o.Members, &o.AmountPaise, &o.Status, &o.OrderID, &o.PaymentID, &o.CreatedAt, &o.PaidAt, &o.Method, &o.Reference); err != nil {
 			shared.WriteError(w, r, err)
 			return
 		}

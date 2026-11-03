@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { displayCode } from '@crm/lib/tenant';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -144,7 +145,7 @@ export function WorkspacesPage() {
                             >
                               {w.name}
                             </Link>
-                            <p className="truncate font-mono text-xs text-muted-foreground">{w.code}</p>
+                            <p className="truncate font-mono text-xs text-muted-foreground">{displayCode(w.code)}</p>
                           </div>
                         </div>
                       </td>
@@ -183,7 +184,7 @@ export function WorkspacesPage() {
                         <p className="truncate font-medium text-foreground">{w.name}</p>
                         <WorkspaceStatusBadge status={w.status} />
                       </div>
-                      <p className="truncate font-mono text-xs text-muted-foreground">{w.code}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{displayCode(w.code)}</p>
                       {w.status === 'pending' ? (
                         <div className="mt-1.5" onClick={(e) => e.preventDefault()}>
                           <ApproveButton workspaceId={w.id} name={w.name} />

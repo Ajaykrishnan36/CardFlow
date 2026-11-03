@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { displayCode } from '@crm/lib/tenant';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -539,7 +540,7 @@ function WorkspacesTab({ product }: { product: ProductDetail }) {
                       <Link to={`/crm/owner/workspaces/${w.id}`} className="font-medium text-foreground hover:underline">
                         {w.name}
                       </Link>
-                      <p className="font-mono text-xs text-muted-foreground">{w.code}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{displayCode(w.code)}</p>
                     </td>
                     <td className="px-3 py-3">
                       <span className="inline-flex flex-wrap gap-1.5">
@@ -561,7 +562,7 @@ function WorkspacesTab({ product }: { product: ProductDetail }) {
                 <Link to={`/crm/owner/workspaces/${w.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/50">
                   <div className="min-w-0">
                     <p className="truncate font-medium text-foreground">{w.name}</p>
-                    <p className="font-mono text-xs text-muted-foreground">{w.code}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{displayCode(w.code)}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <Badge tone={statusTone(w.status)}>{t(`status.${w.status}`, { defaultValue: w.status })}</Badge>

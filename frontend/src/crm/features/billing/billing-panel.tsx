@@ -111,6 +111,15 @@ export function BillingPanel({
     queryFn: () => billingApi(code).overview(),
   });
   const [period, setPeriod] = useState<BillingPeriod>("1m");
+  // Start on the plan the business asked for or was approved on (D-172).
+  const suggested = q.data?.suggestedPeriod;
+  const [startedOn, setStartedOn] = useState(false);
+  useEffect(() => {
+    if (suggested && !startedOn) {
+      setPeriod(suggested);
+      setStartedOn(true);
+    }
+  }, [suggested, startedOn]);
   const [picked, setPicked] = useState<Set<string> | null>(null);
 
   // Start with: the people asked for; else everyone you can pay for who isn't paid up; else yourself.

@@ -16,6 +16,7 @@ import {
   businessApi,
   onboardingApi,
   registerApi,
+  type BillingPeriod,
   type BusinessSummary,
 } from "@crm/api/endpoints";
 import { isApiError } from "@crm/api/client";
@@ -41,6 +42,7 @@ import {
 import { ErrorState } from "@crm/components/states";
 import { useDocumentTitle } from "@crm/features/auth/login-pages";
 import { businessLoginUrl, displayCode } from "@crm/lib/tenant";
+import { cn } from "@crm/lib/utils";
 
 export const businessesKey = ["businesses"] as const;
 
@@ -373,6 +375,14 @@ export function CreateBusinessDialog({
     email: "",
     taxIdType: "gstin" as TaxKind,
     taxId: "",
+    plan: "" as "" | BillingPeriod,
+  });
+  // The plans (D-172): only on the first-time form, which the owner reviews. Nothing is paid here.
+  const plans = useQuery({
+    queryKey: ["public", "plans"],
+    queryFn: registerApi.plans,
+    enabled: open && mode !== "add",
+    staleTime: 5 * 60_000,
   });
   const [samePhone, setSamePhone] = useState(true);
   const [sameEmail, setSameEmail] = useState(true);
@@ -422,6 +432,7 @@ export function CreateBusinessDialog({
         email: sameEmail ? you.personalEmail.trim() : biz.email.trim(),
         taxIdType: biz.taxIdType,
         taxId: biz.taxId.trim(),
+        plan: adding || !biz.plan ? undefined : biz.plan,
         displayName: adding ? undefined : you.displayName.trim(),
         personalEmail: adding ? undefined : you.personalEmail.trim(),
       };
@@ -749,6 +760,36 @@ export function CreateBusinessDialog({
                     </div>
                   </Field>
                 </div>
+                {!adding && plans.data?.prices.length ? (
+                  <fieldset className="mt-4">
+                    <legend className="text-[13px] font-medium text-foreground">Plan you are interested in</legend>
+                    <p className="text-xs text-muted-foreground">
+                      Price per person. You don’t pay now: we call you, and you pay once your business is approved.
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {plans.data.prices.map((p) => (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => setBiz({ ...biz, plan: biz.plan === p.key ? "" : p.key })}
+                          aria-pressed={biz.plan === p.key}
+                          className={cn(
+                            "rounded-lg border px-3 py-2 text-left transition-colors hover:bg-muted/60",
+                            biz.plan === p.key && "border-primary bg-primary-soft/50 ring-1 ring-primary/30",
+                          )}
+                        >
+                          <span className="block text-[13px] font-semibold text-foreground">
+                            {p.months === 1 ? "1 month" : `${p.months} months`}
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            ₹{p.price.toLocaleString("en-IN")} per person
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {errors.plan ? <p className="mt-1 text-[13px] text-danger">{errors.plan}</p> : null}
+                  </fieldset>
+                ) : null}
               </div>
               <div className="flex justify-end gap-2 border-t bg-muted/30 px-5 py-3">
                 <Button

@@ -145,10 +145,10 @@ export const platformApi = {
   /** Self-serve businesses with their applicant (D-161); `leadId` finds the one a lead is for. */
   applications: (params: { status?: string; leadId?: string } = {}) =>
     api<{ data: Application[] }>(`/platform/applications${qs(params)}`).then((r) => r.data),
-  approve: (workspaceId: string) =>
+  approve: (workspaceId: string, body: ApproveBody = {}) =>
     api<{ approved: boolean; application?: Application; notified: Record<'email' | 'sms' | 'whatsapp', string> }>(
       `/platform/applications/${enc(workspaceId)}/approve`,
-      { method: 'POST', body: {} }
+      { method: 'POST', body }
     ),
   /** Products: one per person who created businesses, with how many apps they run. */
   customers: () => api<{ data: Customer[] }>('/platform/customers').then((r) => r.data),
@@ -161,6 +161,15 @@ export const platformApi = {
       memberOf: Array<{ name: string; slug: string; display: string; role: string; members: number; loginUrl: string }>;
     }>(`/platform/records/${enc(object)}/${enc(id)}/businesses`)
 };
+
+/** Approving on a plan (D-172): paid to the owner offline, or to be paid online by them. */
+export interface ApproveBody {
+  plan?: BillingPeriod;
+  payment?: 'offline' | 'online';
+  method?: 'cash' | 'upi' | 'bank' | 'cheque';
+  amount?: number;
+  reference?: string;
+}
 
 export interface Application {
   workspaceId: string;
@@ -179,6 +188,9 @@ export interface Application {
   ownerId: string | null;
   ownerName: string;
   ownerPhone: string;
+  /** The plan asked for (or approved on), and how long the applicant is paid for (D-172). */
+  plan: string;
+  paidUntil?: string;
 }
 
 export interface Customer {
@@ -730,6 +742,8 @@ export interface CreateBusinessBody {
   taxIdType?: 'gstin' | 'pan' | 'tan';
   taxId?: string;
   teamSize?: string;
+  /** The plan they are interested in (D-172): nothing is paid at sign-up. */
+  plan?: BillingPeriod;
   industry?: string;
   phone?: string;
   whatsapp?: string;
@@ -926,6 +940,8 @@ export interface RegisterCheck {
   canCreate: boolean;
 }
 export const registerApi = {
+  /** The plans a new business can ask for, with the owner's prices (D-172). */
+  plans: () => api<{ enabled: boolean; currency: string; prices: BillingPrice[] }>('/public/billing/plans'),
   request: (phone: string) =>
     api<{ sent: boolean; expiresIn: number; channel: string; devCode?: string }>('/public/register/request', { method: 'POST', body: { phone } }),
   verify: (body: { phone: string; code: string }) => api<RegisterCheck>('/public/register/verify', { method: 'POST', body }),
@@ -1525,6 +1541,8 @@ export interface BillingOverview {
   prices: BillingPrice[];
   members: BillingMember[];
   business: string;
+  /** The plan asked for or approved on (D-172). */
+  suggestedPeriod?: BillingPeriod;
 }
 export interface BillingOrder {
   orderId: string;
@@ -1565,6 +1583,9 @@ export interface OwnerBillingOrder {
   paymentId: string;
   createdAt: string;
   paidAt?: string;
+  /** razorpay, or how the owner was paid offline (D-172). */
+  method?: string;
+  reference?: string;
 }
 export interface OwnerBilling {
   enabled: boolean;

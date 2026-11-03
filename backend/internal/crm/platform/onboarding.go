@@ -194,8 +194,15 @@ func (in *CreateBusinessInput) normalizeOnboarding() map[string]string {
 	if in.TeamSize != "" && !TeamSizes[in.TeamSize] {
 		fe["teamSize"] = "Choose the size of your team."
 	}
+	in.Plan = strings.TrimSpace(in.Plan)
+	if in.Plan != "" && !Plans[in.Plan] {
+		fe["plan"] = "Choose a plan."
+	}
 	return fe
 }
+
+// Plans are the billing periods a business can ask for (the prices are the owner's, D-164).
+var Plans = map[string]bool{"1m": true, "3m": true, "6m": true, "12m": true}
 
 // businessProfileFrom is what the create form puts in the business's profile.
 func businessProfileFrom(in CreateBusinessInput) map[string]string {
@@ -209,7 +216,7 @@ func businessProfileFrom(in CreateBusinessInput) map[string]string {
 		}
 	}
 	for k, v := range map[string]string{"industry": in.Industry, "phone": in.Phone, "whatsapp": in.Whatsapp, "email": in.Email, "website": in.Website,
-		"gstin": in.GSTIN, "city": in.City, "state": in.State, "country": in.Country, "teamSize": in.TeamSize, "taxIdType": in.TaxIDType, "taxId": in.TaxID} {
+		"gstin": in.GSTIN, "city": in.City, "state": in.State, "country": in.Country, "teamSize": in.TeamSize, "taxIdType": in.TaxIDType, "taxId": in.TaxID, "plan": in.Plan} {
 		add(k, v)
 	}
 	if in.TaxIDType == "pan" || in.TaxIDType == "tan" {

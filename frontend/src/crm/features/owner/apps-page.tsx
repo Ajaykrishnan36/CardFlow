@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { displayCode } from '@crm/lib/tenant';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -70,7 +71,7 @@ export function AppsPage() {
                       <Link to={`/crm/owner/workspaces/${encodeURIComponent(a.workspaceId)}`} className="font-medium text-foreground hover:text-primary hover:underline">
                         {a.workspaceName}
                       </Link>
-                      <p className="font-mono text-xs text-muted-foreground">{a.workspaceCode}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{displayCode(a.workspaceCode)}</p>
                     </td>
                     <td className="px-4 py-3">
                       v{a.version}

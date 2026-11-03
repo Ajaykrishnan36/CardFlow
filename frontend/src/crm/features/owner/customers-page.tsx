@@ -207,6 +207,17 @@ export function AppsTable({ apps }: { apps: Application[] }) {
                   {a.members} {a.members === 1 ? "person" : "people"}
                 </span>
                 {a.taxId ? <span>ID {a.taxId}</span> : null}
+                <span>
+                  Asked {new Date(a.createdAt).toLocaleDateString("en-IN", { month: "short", year: "numeric" })}
+                </span>
+                {a.plan ? (
+                  <span className="font-medium text-primary">
+                    {a.status === "pending" ? "Interested in" : "Plan"} {{ "1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "12 months" }[a.plan] ?? a.plan}
+                  </span>
+                ) : null}
+                {a.paidUntil ? (
+                  <span className="text-success">Paid until {new Date(a.paidUntil).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                ) : null}
               </p>
             </div>
             <WorkspaceStatusBadge status={a.status as WorkspaceStatus} />

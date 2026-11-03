@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { displayCode } from '@crm/lib/tenant';
 import { EditLayoutButton, useLayout, type Device } from '@crm/features/shell/ui-layout';
 import { arrange, isHidden, OWNER_SECTIONS } from '../../../navigation/layout-items';
 import { navIcon } from '@crm/features/shell/nav-icons';
@@ -293,7 +294,7 @@ function RecentWorkspaces({ rows }: { rows?: RecentWorkspace[] }) {
                       >
                         {w.name}
                       </Link>
-                      <p className="font-mono text-xs text-muted-foreground">{w.code}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{displayCode(w.code)}</p>
                     </td>
                     <td className="px-3 py-3">
                       <Badge tone={statusTone[w.status] ?? 'neutral'}>{t(`status.${w.status}`, { defaultValue: w.status })}</Badge>

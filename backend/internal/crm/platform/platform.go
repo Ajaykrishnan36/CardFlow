@@ -3,6 +3,7 @@
 package platform
 
 import (
+	"cardflow-backend/internal/crm/billing"
 	"context"
 	"errors"
 	"net/http"
@@ -28,9 +29,14 @@ type Handler struct {
 	identity *identity.Service
 	sms      sms.Sender
 	wa       *whatsapp.Sender
+	// billing records payments the owner takes outside Razorpay when approving (D-172).
+	billing *billing.Service
 	// onMemberAdded is told when someone is given access to a business (D-169).
 	onMemberAdded func(ctx context.Context, ws, membership, actor uuid.UUID)
 }
+
+// SetBilling lets approval record an offline payment (D-172).
+func (h *Handler) SetBilling(b *billing.Service) { h.billing = b }
 
 // OnMemberAdded registers who hears that a member was added (the records notifications).
 func (h *Handler) OnMemberAdded(fn func(ctx context.Context, ws, membership, actor uuid.UUID)) {

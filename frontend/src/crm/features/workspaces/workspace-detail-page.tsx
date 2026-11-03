@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { displayCode } from '@crm/lib/tenant';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -106,7 +107,7 @@ function WorkspaceDetailView({ workspace }: { workspace: WorkspaceDetail }) {
         crumbs={[{ label: t('workspaces.list.title'), to: '/crm/owner/workspaces' }, { label: workspace.name }]}
         icon={<WorkspaceTile name={workspace.name} size="lg" />}
         title={workspace.name}
-        description={<span className="font-mono text-xs">{workspace.code}</span>}
+        description={<span className="font-mono text-xs">{displayCode(workspace.code)}</span>}
         badges={
           <>
             <WorkspaceStatusBadge status={workspace.status} />
@@ -226,7 +227,7 @@ function OverviewTab({ workspace, openInvites, onTab }: { workspace: WorkspaceDe
         <Card className="min-w-0">
           <CardHeader title={t('workspaces.overview.details')} />
           <dl className="grid gap-4 px-5 py-5 sm:grid-cols-2">
-            {row(t('workspaces.provision.code'), <span className="font-mono text-[13px]">{workspace.code}</span>)}
+            {row(t('workspaces.provision.code'), <span className="font-mono text-[13px]">{displayCode(workspace.code)}</span>)}
             {row(t('workspaces.fields.timezone'), workspace.timezone.replace(/_/g, ' '))}
             {row(t('workspaces.fields.locale'), t(`workspaces.locales.${workspace.locale}`, { defaultValue: workspace.locale }))}
             {row(t('workspaces.fields.currency'), workspace.currency)}

@@ -110,6 +110,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	// Members are paid for with Razorpay (D-164).
 	m.billing = billing.New(st.Pool, billing.LoadConfig())
 	m.records.SetBilling(m.billing)
+	m.platform.SetBilling(m.billing)
 	// The bell hears about members, first sign-ins and payments too (D-169).
 	m.billing.OnPaid(m.records.NotifyPaid)
 	m.platform.OnMemberAdded(m.records.NotifyMemberAdded)

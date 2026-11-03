@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { displayCode } from '@crm/lib/tenant';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
@@ -269,7 +270,7 @@ function MembershipCard({ user, m, catalog, wsOption }: { user: UserDetail; m: U
             ) : null}
           </div>
           <p className="text-xs text-muted-foreground">
-            <span className="font-mono">{m.workspaceCode}</span> · {t('users.access.joined', { time: relativeTime(m.createdAt) })}
+            <span className="font-mono">{displayCode(m.workspaceCode)}</span> · {t('users.access.joined', { time: relativeTime(m.createdAt) })}
           </p>
         </div>
         {statusControl}

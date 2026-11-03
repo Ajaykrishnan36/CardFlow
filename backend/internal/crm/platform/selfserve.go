@@ -232,6 +232,9 @@ type CreateBusinessInput struct {
 	TaxIDType string `json:"taxIdType"`
 	TaxID     string `json:"taxId"`
 	TeamSize  string `json:"teamSize"`
+	// Plan (D-172): the billing period the applicant is interested in (1m, 3m, 6m, 12m).
+	// Nothing is paid at sign-up; the owner settles it when approving.
+	Plan string `json:"plan"`
 	// Onboarding (D-155): the person, their address, and the business's own details.
 	DisplayName   string   `json:"displayName"`
 	DateOfBirth   string   `json:"dateOfBirth"`

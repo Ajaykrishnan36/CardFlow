@@ -14,7 +14,7 @@ import { AuthHeading, AuthLayout } from "./auth-layout";
 import { LoginForm } from "./login-form";
 import { RegisterFlow } from "./register-flow";
 import { RequestUrlDialog } from "./request-url-dialog";
-import { normalizeCode, setSignInTenant } from "@crm/lib/tenant";
+import { formatCodeInput, normalizeCode, setSignInTenant } from "@crm/lib/tenant";
 import { Button } from "@crm/components/ui/button";
 import { Input } from "@crm/components/ui/input";
 
@@ -123,7 +123,7 @@ function OpenBusinessUrl() {
           <Input
             value={value}
             onChange={(e) => {
-              setValue(e.target.value);
+              setValue(formatCodeInput(e.target.value));
               setError("");
             }}
             placeholder="271026-44-234F-000501"

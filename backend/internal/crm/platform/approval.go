@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cardflow-backend/internal/crm/billing"
 	"context"
 	"encoding/json"
 	"errors"
@@ -111,6 +112,10 @@ type Application struct {
 	OwnerID     *string    `json:"ownerId"`
 	OwnerName   string     `json:"ownerName"`
 	OwnerPhone  string     `json:"ownerPhone"`
+	// Plan (D-172): what the applicant asked for (or was approved on), and how long the
+	// applicant is paid for in it.
+	Plan      string     `json:"plan"`
+	PaidUntil *time.Time `json:"paidUntil,omitempty"`
 }
 
 // The card app's own workspace (business-card-snap) holds synced data, not a customer.
@@ -119,7 +124,8 @@ const applicationSelect = `
 	       (SELECT count(*) FROM crm.memberships m WHERE m.workspace_id = w.id AND m.status = 'active'),
 	       COALESCE(w.profile->>'industry', ''), COALESCE(w.profile->>'teamSize', ''), COALESCE(w.profile->>'taxId', w.profile->>'gstin', ''),
 	       w.created_by_identity::text, COALESCE(i.display_name, ''),
-	       COALESCE((SELECT value_normalized FROM crm.verified_identifiers v WHERE v.identity_id = i.id AND v.kind = 'phone' ORDER BY verified_at DESC NULLS LAST LIMIT 1), '')
+	       COALESCE((SELECT value_normalized FROM crm.verified_identifiers v WHERE v.identity_id = i.id AND v.kind = 'phone' ORDER BY verified_at DESC NULLS LAST LIMIT 1), ''),
+	       COALESCE(w.profile->>'plan', ''), (SELECT m.paid_until FROM crm.memberships m WHERE m.workspace_id = w.id AND m.identity_id = w.created_by_identity)
 	FROM crm.workspaces w
 	LEFT JOIN crm.tenants t ON t.id = w.tenant_id
 	LEFT JOIN crm.identities i ON i.id = w.created_by_identity
@@ -135,7 +141,7 @@ func (h *Handler) queryApplications(ctx context.Context, where string, args ...a
 	for rows.Next() {
 		var a Application
 		if err := rows.Scan(&a.WorkspaceID, &a.Name, &a.Code, &a.Status, &a.LeadID, &a.CreatedAt, &a.ApprovedAt, &a.Members,
-			&a.Industry, &a.TeamSize, &a.TaxID, &a.OwnerID, &a.OwnerName, &a.OwnerPhone); err != nil {
+			&a.Industry, &a.TeamSize, &a.TaxID, &a.OwnerID, &a.OwnerName, &a.OwnerPhone, &a.Plan, &a.PaidUntil); err != nil {
 			return nil, err
 		}
 		a.Display = DisplayCode(a.Code)
@@ -297,6 +303,67 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	me := actorID(r)
+	// The plan (D-172): approve on a plan, either paid to the owner outside the CRM (cash,
+	// UPI, bank) — then the applicant is paid for at once — or to be paid online by them.
+	var in struct {
+		Plan      string  `json:"plan"`
+		Payment   string  `json:"payment"` // offline | online | "" (decide later)
+		Method    string  `json:"method"`  // offline: cash | upi | bank | cheque
+		Amount    float64 `json:"amount"`  // offline: rupees received (0 = the plan's price)
+		Reference string  `json:"reference"`
+	}
+	if r.ContentLength != 0 {
+		if err := shared.DecodeJSON(w, r, &in); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+	}
+	fe := map[string]string{}
+	if in.Plan != "" && !Plans[in.Plan] {
+		fe["plan"] = "Choose a plan."
+	}
+	switch in.Payment {
+	case "", "online":
+	case "offline":
+		if in.Plan == "" {
+			fe["plan"] = "Choose the plan they paid for."
+		}
+		switch in.Method {
+		case "cash", "upi", "bank", "cheque":
+		default:
+			fe["method"] = "Say how they paid: cash, UPI, bank transfer or cheque."
+		}
+		if in.Amount < 0 {
+			fe["amount"] = "Enter the amount received."
+		}
+	default:
+		fe["payment"] = "Choose paid offline or pay online."
+	}
+	if len(fe) > 0 {
+		shared.WriteError(w, r, shared.Validation(fe))
+		return
+	}
+	if in.Payment == "offline" {
+		if h.billing == nil {
+			shared.WriteError(w, r, shared.NewError(http.StatusConflict, "billing_off", "Payments aren't set up on this server."))
+			return
+		}
+		var status string
+		var by *uuid.UUID
+		if err := h.store.Pool.QueryRow(ctx, `SELECT status, created_by_identity FROM crm.workspaces WHERE id = $1 AND NOT is_platform`, wsID).Scan(&status, &by); err != nil {
+			shared.WriteError(w, r, shared.NotFound("business_not_found"))
+			return
+		}
+		if status != "pending" || by == nil {
+			shared.WriteError(w, r, shared.NewError(http.StatusConflict, "not_pending", "This business isn't waiting for approval."))
+			return
+		}
+		if _, err := h.billing.RecordOffline(ctx, billing.Offline{Workspace: wsID, Identity: *by, Period: in.Plan,
+			AmountPaise: int64(in.Amount*100 + 0.5), Method: in.Method, Reference: in.Reference, By: me}); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+	}
 	var creator uuid.UUID
 	var name, slug string
 	var profile []byte
@@ -319,7 +386,8 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 			return shared.NewError(http.StatusConflict, "no_applicant", "This business has no applicant to send its URL to.")
 		}
 		creator = *by
-		if _, err := tx.Exec(ctx, `UPDATE crm.workspaces SET status = 'active', approved_at = now(), approved_by = $2, updated_at = now() WHERE id = $1`, wsID, me); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE crm.workspaces SET status = 'active', approved_at = now(), approved_by = $2, updated_at = now(),
+			profile = CASE WHEN $3 = '' THEN profile ELSE COALESCE(profile, '{}'::jsonb) || jsonb_build_object('plan', $3::text) END WHERE id = $1`, wsID, me, in.Plan); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE crm.tenants SET status = 'active', updated_at = now() WHERE id = (SELECT tenant_id FROM crm.workspaces WHERE id = $1) AND status = 'pending'`, wsID); err != nil {
@@ -331,7 +399,8 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 			WHERE id = (SELECT application_lead_id FROM crm.workspaces WHERE id = $1) AND converted_at IS NULL AND status IN ('new', 'contacted')`, wsID, me); err != nil {
 			return err
 		}
-		return shared.WriteAudit(ctx, tx, auditEvent(r, "business.approved", "workspace", &wsID, &wsID, map[string]any{"status": "pending"}, map[string]any{"status": "active", "code": slug}))
+		return shared.WriteAudit(ctx, tx, auditEvent(r, "business.approved", "workspace", &wsID, &wsID, map[string]any{"status": "pending"},
+			map[string]any{"status": "active", "code": slug, "plan": in.Plan, "payment": in.Payment, "method": in.Method, "amount": in.Amount}))
 	})
 	if err != nil {
 		shared.WriteError(w, r, err)
@@ -348,11 +417,11 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	sent := h.notifyPerson(ctx, creator, notice{
 		Subject: name + " is approved: your CRM URL",
 		Heading: name + " is ready",
-		Lines: []string{
+		Lines: append([]string{
 			fmt.Sprintf("Your business %s is approved on %s.", name, h.cfg.AppName),
 			"Sign in with your mobile number at your business URL: " + url,
-			"Then add your team (admins, staff) from Users inside.",
-		},
+			"Your business code: " + DisplayCode(slug),
+		}, planLine(in.Plan, in.Payment), "Then add your team (admins, staff) from Users inside."),
 		Footer: "Only the people you add can sign in at this URL.",
 	})
 	list, err := h.queryApplications(ctx, " AND w.id = $1", wsID)
@@ -361,6 +430,20 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"approved": true, "application": list[0], "notified": sent})
+}
+
+// planNames are the plans as people say them.
+var planNames = map[string]string{"1m": "1 month", "3m": "3 months", "6m": "6 months", "12m": "12 months"}
+
+// planLine tells the applicant where they stand on their plan.
+func planLine(plan, payment string) string {
+	switch {
+	case plan != "" && payment == "offline":
+		return "Your " + planNames[plan] + " plan is paid: you can start straight away."
+	case plan != "":
+		return "Your plan: " + planNames[plan] + ". Pay for it online when you first sign in."
+	}
+	return "Choose your plan and pay online when you first sign in."
 }
 
 // Customer (shown as a Product in the owner console): one person, one mobile number, who

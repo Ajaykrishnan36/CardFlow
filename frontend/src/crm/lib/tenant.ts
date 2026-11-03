@@ -101,6 +101,20 @@ export function businessLoginUrl(slug: string): string {
   return `${window.location.origin}/${slug}/login`;
 }
 
+/** Formats a business code while it is typed: capitals, with dashes after the date, the
+ * week and the tax-ID letters — 301026-44-K1Z4-182114. A pasted URL is left as it is. */
+export function formatCodeInput(raw: string): string {
+  if (/[./:]/.test(raw)) return raw;
+  // DDMMYY and the week are digits, then 4 characters of the tax ID, then 6 digits.
+  let out = "";
+  for (const ch of raw.toUpperCase().replace(/[^0-9A-Z]/g, "")) {
+    if (out.length >= 18) break;
+    const letterOK = out.length >= 8 && out.length < 12;
+    if (/[0-9]/.test(ch) || (letterOK && /[A-Z]/.test(ch))) out += ch;
+  }
+  return [out.slice(0, 6), out.slice(6, 8), out.slice(8, 12), out.slice(12)].filter(Boolean).join("-");
+}
+
 /** The address as typed: any case, with dashes or spaces (the server accepts the same). */
 export function normalizeCode(raw: string): string {
   return raw.trim().toLowerCase().replace(/[-\s]/g, "");
