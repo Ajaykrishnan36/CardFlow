@@ -43,28 +43,10 @@ import { ErrorState } from "@crm/components/states";
 import { useDocumentTitle } from "@crm/features/auth/login-pages";
 import { businessLoginUrl, displayCode } from "@crm/lib/tenant";
 import { cn } from "@crm/lib/utils";
+import { emptyTrade, TradeFields, tradeErrors, useIndustries } from "./trade-fields";
 
 export const businessesKey = ["businesses"] as const;
 
-const industries = [
-  "Retail",
-  "Wholesale & distribution",
-  "Automotive",
-  "Manufacturing",
-  "Agriculture",
-  "Transport & logistics",
-  "Services",
-  "Real estate",
-  "Construction",
-  "Education",
-  "Healthcare",
-  "Hospitality",
-  "Technology",
-  "Finance",
-  "Insurance",
-  "Beauty & salon",
-  "Other",
-];
 
 /**
  * /crm/businesses — every business the person belongs to, and "create a business".
@@ -370,7 +352,7 @@ export function CreateBusinessDialog({
   const [biz, setBiz] = useState({
     name: "",
     teamSize: "",
-    industry: "",
+    ...emptyTrade,
     phone: "",
     email: "",
     taxIdType: "gstin" as TaxKind,
@@ -384,6 +366,7 @@ export function CreateBusinessDialog({
     enabled: open && mode !== "add",
     staleTime: 5 * 60_000,
   });
+  const industries = useIndustries();
   const [samePhone, setSamePhone] = useState(true);
   const [sameEmail, setSameEmail] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -428,6 +411,9 @@ export function CreateBusinessDialog({
         name: biz.name.trim(),
         teamSize: biz.teamSize,
         industry: biz.industry,
+        industryOther: biz.industryOther || undefined,
+        businessType: biz.businessType || undefined,
+        businessTypeOther: biz.businessTypeOther || undefined,
         phone: samePhone ? myPhone : biz.phone.trim(),
         email: sameEmail ? you.personalEmail.trim() : biz.email.trim(),
         taxIdType: biz.taxIdType,
@@ -600,6 +586,7 @@ export function CreateBusinessDialog({
                     "Enter the business phone, or tick “same as my mobile”.";
                 if (!biz.taxId.trim())
                   fe.taxId = "Enter your GSTIN, PAN or TAN.";
+                Object.assign(fe, tradeErrors(biz, industries.data?.data));
                 if (Object.keys(fe).length) {
                   setErrors(fe);
                   setAlert("Please fix the highlighted fields.");
@@ -670,16 +657,11 @@ export function CreateBusinessDialog({
                       }))}
                     />
                   </Field>
-                  <Field label="Industry type" error={errors.industry}>
-                    <Select
-                      value={biz.industry}
-                      onChange={(e) =>
-                        setBiz({ ...biz, industry: e.target.value })
-                      }
-                      placeholder="Choose…"
-                      options={industries.map((i) => ({ value: i, label: i }))}
-                    />
-                  </Field>
+                  <TradeFields
+                    value={biz}
+                    onChange={(t) => setBiz({ ...biz, ...t })}
+                    errors={errors}
+                  />
                   <div>
                     <Field label="Business phone" error={errors.phone}>
                       <Input

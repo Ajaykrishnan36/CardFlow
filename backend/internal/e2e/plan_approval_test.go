@@ -27,7 +27,7 @@ func TestApproveOnAPlan(t *testing.T) {
 	phone := freshPhone()
 	reg := register(t, phone)
 	want(t, call(t, "POST", crmAPI+"/public/register/business", "", map[string]any{"registrationToken": reg.str("registrationToken"), "mode": "first",
-		"name": "Offline Plan Motors", "displayName": "Mani", "teamSize": "2-10", "industry": "Automotive", "plan": "3m", "taxIdType": "pan", "taxId": testPAN()}), 202, "apply on 3 months")
+		"name": "Offline Plan Motors", "displayName": "Mani", "teamSize": "2-10", "industry": "Automotive", "businessType": "Bike", "plan": "3m", "taxIdType": "pan", "taxId": testPAN()}), 202, "apply on 3 months")
 	slug := slugOf(t, phone, "Offline Plan Motors")
 	var app map[string]any
 	for _, x := range call(t, "GET", crmAPI+"/platform/applications?status=pending", owner, nil).list("data") {
@@ -56,7 +56,7 @@ func TestApproveOnAPlan(t *testing.T) {
 	phone2 := freshPhone()
 	reg2 := register(t, phone2)
 	want(t, call(t, "POST", crmAPI+"/public/register/business", "", map[string]any{"registrationToken": reg2.str("registrationToken"), "mode": "first",
-		"name": "Online Plan Motors", "displayName": "Kavya", "teamSize": "2-10", "industry": "Automotive", "plan": "1m", "taxIdType": "pan", "taxId": testPAN()}), 202, "apply on 1 month")
+		"name": "Online Plan Motors", "displayName": "Kavya", "teamSize": "2-10", "industry": "Automotive", "businessType": "Bike", "plan": "1m", "taxIdType": "pan", "taxId": testPAN()}), 202, "apply on 1 month")
 	slug2 := slugOf(t, phone2, "Online Plan Motors")
 	want(t, call(t, "POST", crmAPI+"/platform/applications/"+workspaceID(t, slug2)+"/approve", owner, map[string]any{"plan": "6m", "payment": "online"}), 200, "approve to pay online")
 	tok2 := signInAt(t, phone2, slug2).str("token")

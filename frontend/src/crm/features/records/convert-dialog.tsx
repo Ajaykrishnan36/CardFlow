@@ -264,7 +264,7 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
                     name="account-mode"
                     label="A person"
                   >
-                    <p className="mt-1.5 text-xs text-muted-foreground">{fullName} becomes a contact. Most showroom buyers.</p>
+                    <p className="mt-1.5 text-xs text-muted-foreground">{fullName} becomes a contact. Most people buying for themselves.</p>
                   </RadioCard>
                   <RadioCard checked={d.mode === 'new'} onSelect={() => patch({ mode: 'new', kind: 'business', createContact: true })} name="account-mode" label="A business">
                     {d.mode === 'new' ? (

@@ -111,6 +111,7 @@ var ModuleCatalog = []ModuleInfo{
 	{Key: "dealership", Label: "Dealership", Description: "For bike and car dealers: vehicle stock by VIN, bookings, test rides, registrations and the service schedule.", Group: "Industry packs"},
 	{Key: "insurance", Label: "Insurance", Description: "For insurance agents: policies, the premium schedule, renewals and commission expected against received.", Group: "Industry packs"},
 	{Key: "salon", Label: "Salon", Description: "For beauty parlours: product stock with batch and expiry, kits and their bookings, client packages.", Group: "Industry packs"},
+	{Key: "legal", Label: "Legal", Description: "For advocates, lawyers and law firms: client matters with court and case number, hearings with the next date, and reminders the day before.", Group: "Industry packs"},
 	{Key: "real_estate", Label: "Real estate", Description: "For developers and brokers: units and listings, holds and bookings, site visits.", Group: "Industry packs"},
 	{Key: "forms", Label: "Forms", Description: "Multi-step public and internal forms.", Group: "Engagement"},
 	{Key: "submissions", Label: "Submissions", Description: "Form submissions with review and approvals.", Group: "Engagement"},

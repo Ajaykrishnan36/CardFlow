@@ -16,7 +16,7 @@ import (
 var customerAnchors = []struct{ field, object string }{
 	{"assetId", "assets"}, {"caseId", "cases"}, {"workOrderId", "work_orders"}, {"invoiceId", "invoices"},
 	{"orderId", "sales_orders"}, {"salesOrderId", "sales_orders"}, {"quoteId", "quotes"}, {"bookingId", "vehicle_bookings"},
-	{"opportunityId", "opportunities"}, {"contractId", "contracts"},
+	{"opportunityId", "opportunities"}, {"contractId", "contracts"}, {"matterId", "legal_matters"},
 }
 
 // linkCustomer fills contactId / accountId from what decides them and reports a mismatch.

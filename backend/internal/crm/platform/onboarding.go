@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"cardflow-backend/internal/crm/access"
 	"cardflow-backend/internal/crm/identity"
 	"cardflow-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
@@ -198,7 +199,66 @@ func (in *CreateBusinessInput) normalizeOnboarding() map[string]string {
 	if in.Plan != "" && !Plans[in.Plan] {
 		fe["plan"] = "Choose a plan."
 	}
+	in.normalizeTrade(fe)
 	return fe
+}
+
+// normalizeTrade checks the industry and business type against the list (D-174) and stores
+// them as the list writes them.
+func (in *CreateBusinessInput) normalizeTrade(fe map[string]string) {
+	in.Industry = strings.TrimSpace(in.Industry)
+	in.IndustryOther = strings.Join(strings.Fields(in.IndustryOther), " ")
+	in.BusinessType = strings.TrimSpace(in.BusinessType)
+	in.BusinessTypeOther = strings.Join(strings.Fields(in.BusinessTypeOther), " ")
+	if in.Industry == "" {
+		in.IndustryOther, in.BusinessType, in.BusinessTypeOther = "", "", ""
+		return
+	}
+	ind := access.FindIndustry(in.Industry)
+	if ind == nil {
+		fe["industry"] = "Choose your industry from the list, or Other."
+		return
+	}
+	in.Industry = ind.Label
+	if ind.Label == access.OtherIndustry {
+		if n := len(in.IndustryOther); n < 2 || n > 80 {
+			fe["industryOther"] = "Enter your business industry."
+		}
+		// An unknown trade gets the common CRM: its own words for the type are kept as typed.
+		in.BusinessType, in.BusinessTypeOther = in.BusinessTypeOther, ""
+		if len(in.BusinessType) > 80 {
+			in.BusinessType = in.BusinessType[:80]
+		}
+		return
+	}
+	in.IndustryOther = ""
+	if in.BusinessType == "" {
+		in.BusinessTypeOther = ""
+		return
+	}
+	bt := ind.FindType(in.BusinessType)
+	if bt == nil {
+		fe["businessType"] = "Choose the type of business from the list, or Other."
+		return
+	}
+	in.BusinessType = bt.Label
+	if bt.Key != "other" {
+		in.BusinessTypeOther = ""
+	} else if n := len(in.BusinessTypeOther); n < 2 || n > 80 {
+		fe["businessTypeOther"] = "Enter your type of business."
+	}
+}
+
+// requireTrade: the sign-up form must say which industry, and which type of business when
+// the industry has types (D-174).
+func (in *CreateBusinessInput) requireTrade(fe map[string]string) {
+	if in.Industry == "" {
+		fe["industry"] = "Choose your industry."
+		return
+	}
+	if ind := access.FindIndustry(in.Industry); ind != nil && len(ind.Types) > 0 && in.BusinessType == "" && fe["businessType"] == "" {
+		fe["businessType"] = "Choose the type of business."
+	}
 }
 
 // Plans are the billing periods a business can ask for (the prices are the owner's, D-164).
@@ -215,7 +275,8 @@ func businessProfileFrom(in CreateBusinessInput) map[string]string {
 			profile[k] = v
 		}
 	}
-	for k, v := range map[string]string{"industry": in.Industry, "phone": in.Phone, "whatsapp": in.Whatsapp, "email": in.Email, "website": in.Website,
+	for k, v := range map[string]string{"industry": in.Industry, "industryOther": in.IndustryOther, "businessType": in.BusinessType,
+		"businessTypeOther": in.BusinessTypeOther, "phone": in.Phone, "whatsapp": in.Whatsapp, "email": in.Email, "website": in.Website,
 		"gstin": in.GSTIN, "city": in.City, "state": in.State, "country": in.Country, "teamSize": in.TeamSize, "taxIdType": in.TaxIDType, "taxId": in.TaxID, "plan": in.Plan} {
 		add(k, v)
 	}
@@ -345,6 +406,10 @@ func (h *Handler) onboardingRoutes(r chi.Router) {
 
 // PublicTenantRoutes need no sign-in: a business's login page finds its name (D-156, D-158).
 func (h *Handler) PublicTenantRoutes(r chi.Router) {
+	// The industries and their business types for the sign-up form (D-174).
+	r.Get("/public/industries", func(w http.ResponseWriter, r *http.Request) {
+		shared.WriteJSON(w, http.StatusOK, map[string]any{"data": access.Industries})
+	})
 	r.Get("/public/tenants/by-host", func(w http.ResponseWriter, r *http.Request) {
 		host := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("host")))
 		if i := strings.IndexByte(host, ':'); i >= 0 {
@@ -529,4 +594,13 @@ func (h *Handler) handleReverseGeocode(w http.ResponseWriter, r *http.Request) {
 		"state": state, "postalCode": strings.ReplaceAll(first("postcode"), " ", ""), "country": first("country"), "latitude": lat, "longitude": lng}
 	revCache.put(key, val)
 	shared.WriteJSON(w, http.StatusOK, val)
+}
+
+// NormalizeTrade checks an industry and business type typed on the business profile page,
+// like the sign-up form does: industry, industryOther, businessType, businessTypeOther.
+func NormalizeTrade(v [4]string) ([4]string, map[string]string) {
+	in := CreateBusinessInput{Industry: v[0], IndustryOther: v[1], BusinessType: v[2], BusinessTypeOther: v[3]}
+	fe := map[string]string{}
+	in.normalizeTrade(fe)
+	return [4]string{in.Industry, in.IndustryOther, in.BusinessType, in.BusinessTypeOther}, fe
 }

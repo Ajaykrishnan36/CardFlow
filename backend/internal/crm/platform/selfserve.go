@@ -29,7 +29,7 @@ const StandardSetupKey = "standard_crm"
 var StandardModules = []string{
 	"leads", "accounts", "contacts", "opportunities", "tasks", "calendar", "notes", "files",
 	"communications", "tickets", "catalog", "subscriptions", "workflows", "reports",
-	"finance", "sales_docs", "knowledge", "cards", "dealership", "insurance", "salon", "real_estate",
+	"finance", "sales_docs", "knowledge", "cards", "dealership", "insurance", "salon", "real_estate", "legal",
 	"care", "memberships", "inventory", "reservations", "checklists",
 }
 
@@ -212,7 +212,12 @@ func ListBusinesses(ctx context.Context, pool *pgxpool.Pool, identityID uuid.UUI
 type CreateBusinessInput struct {
 	Name     string `json:"name"`
 	Industry string `json:"industry"`
-	Phone    string `json:"phone"`
+	// D-174: a trade that isn't listed (Industry "Other"), and the kind of business inside
+	// the industry (a Bike dealer, a Law firm), with its own words when that is "Other".
+	IndustryOther     string `json:"industryOther"`
+	BusinessType      string `json:"businessType"`
+	BusinessTypeOther string `json:"businessTypeOther"`
+	Phone             string `json:"phone"`
 	Email    string `json:"email"`
 	Website  string `json:"website"`
 	City     string `json:"city"`
@@ -370,6 +375,14 @@ func (h *Handler) handleCreateBusiness(w http.ResponseWriter, r *http.Request) {
 	if in.Mode == "first" {
 		if err := h.refuseExistingOwner(ctx, me); err != nil {
 			shared.WriteError(w, r, err)
+			return
+		}
+		// The first-time form asks for the industry (D-174); Add business may leave it for later.
+		check, fe := in, map[string]string{}
+		check.normalizeTrade(fe)
+		check.requireTrade(fe)
+		if len(fe) > 0 {
+			shared.WriteError(w, r, shared.Validation(fe))
 			return
 		}
 	}

@@ -153,7 +153,8 @@ var autoNamed = map[string]bool{"vehicle_stock": true, "vehicle_bookings": true,
 	"commission_rules": true, "insurance_claims": true, "product_usage": true, "kit_bookings": true, "client_packages": true,
 	"property_bookings": true, "property_visits": true, "privacy_requests": true,
 	"care_schedules": true, "due_items": true, "call_logs": true, "stock_lots": true, "stock_moves": true, "item_reservations": true,
-	"memberships": true, "checklist_items": true, "instalments": true, "payout_entries": true}
+	"memberships": true, "checklist_items": true, "instalments": true, "payout_entries": true,
+	"legal_matters": true, "court_hearings": true}
 
 // genericName names a record from the customer and the product or record it is about:
 // "Quote — Senthil Kumar · Hero Splendor+", "Payment ₹96,722.08 — Senthil Kumar".
@@ -306,6 +307,14 @@ func (h *Handler) autoName(ctx context.Context, q querier, ws uuid.UUID, spec *o
 	case "premium_dues":
 		n, _ := asNumber(values["instalmentNumber"])
 		name = joinNonEmpty(" — ", fmt.Sprintf("Premium %d", int(n)), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]))
+	case "legal_matters":
+		name = joinNonEmpty(" — ", who, joinNonEmpty(" · ", labelOf(optionLabels(legalCategories), asString(values["matterCategory"])), asString(values["courtCaseNumber"])))
+	case "court_hearings":
+		when := ""
+		if t, ok := parseWhen(asString(values["hearingAt"])); ok {
+			when = t.In(ist).Format("2 Jan 2006")
+		}
+		name = joinNonEmpty(" — ", joinNonEmpty(" ", "Hearing", when), h.labelOf(ctx, q, ws, "legal_matters", values["matterId"]))
 	case "commissions":
 		y, _ := asNumber(values["policyYear"])
 		name = joinNonEmpty(" — ", fmt.Sprintf("Commission year %d", int(y)), h.labelOf(ctx, q, ws, "insurance_policies", values["policyId"]))

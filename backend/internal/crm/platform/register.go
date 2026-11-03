@@ -185,6 +185,7 @@ func (h *Handler) handleRegisterBusiness(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	fe := in.normalizeOnboarding()
+	in.requireTrade(fe)
 	if len(strings.TrimSpace(in.Name)) < 2 {
 		fe["name"] = "Enter your business or brand name."
 	}

@@ -312,7 +312,7 @@ const ANCHOR_KEYS = ['assetId', 'vehicleId', 'caseId', 'workOrderId', 'invoiceId
 const ADVANCED_LINKS: Record<string, string> = {
   contractId: 'a service or AMC contract this falls under (only if you sell contracts).',
   entitlementId: 'the free services or warranty cover it uses up (e.g. 4 free services).',
-  branchId: 'which of your showrooms or branches handles it (only with more than one).',
+  branchId: 'which of your branches or locations handles it (only with more than one).',
   territoryId: 'the sales area it belongs to.',
   subscriptionId: 'a subscription it is billed under.',
   solutionId: 'the knowledge-base answer that solved it.',

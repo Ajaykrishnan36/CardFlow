@@ -207,6 +207,9 @@ type workspaceContext struct {
 		// The tenant (brand) and its permanent address, /<tenantSlug>/... (D-156).
 		TenantSlug string `json:"tenantSlug"`
 		TenantName string `json:"tenantName"`
+		// The trade it is in and the words that trade uses for some objects (D-174).
+		Trade access.Trade           `json:"trade"`
+		Terms map[string]access.Term `json:"terms"`
 	} `json:"workspace"`
 	Role *struct {
 		Key  string `json:"key"`
@@ -339,7 +342,9 @@ func (h *Handler) handleContext(w http.ResponseWriter, r *http.Request) {
 		}{sc.Eff.RoleKey, sc.Eff.RoleName}
 	}
 	out.Effective = sc.Eff
-	out.Navigation = access.WorkspaceNav(sc.Code, sc.Eff, access.HasSupport(sc.WS))
+	out.Workspace.Trade = access.WorkspaceTrade(r.Context(), h.store.Pool, sc.WS)
+	out.Workspace.Terms = out.Workspace.Trade.Terms()
+	out.Navigation = access.WithTerms(access.WorkspaceNav(sc.Code, sc.Eff, access.HasSupport(sc.WS)), out.Workspace.Terms)
 	out.CanCustomize = sc.CanCustomize()
 	out.ViewerIsOwner = sc.Owner
 	if h.billing != nil {

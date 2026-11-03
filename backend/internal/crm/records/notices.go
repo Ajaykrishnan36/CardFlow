@@ -356,12 +356,14 @@ var saleNotices = map[string]map[string]string{
 	"invoices":           {"paid": "Invoice paid"},
 	"vehicle_bookings":   {"delivered": "Vehicle delivered"},
 	"insurance_policies": {"in_force": "Policy in force"},
+	"legal_matters":      {"won": "Matter decided in favour", "settled": "Matter settled"},
+	"property_bookings":  {"booked": "Unit booked"},
 }
 
 // newNotices: records whose creation is news by itself.
-var newNotices = map[string]string{"vehicle_bookings": "New booking"}
+var newNotices = map[string]string{"vehicle_bookings": "New booking", "legal_matters": "New matter"}
 
-var saleAmountKeys = []string{"total", "amount", "onRoadPrice", "premium", "bookingAmount"}
+var saleAmountKeys = []string{"total", "amount", "onRoadPrice", "premium", "bookingAmount", "feeAgreed", "agreedPrice"}
 
 // notifyBusinessEvent tells the leaders (and the record's owner) about a sale, and a
 // service person about work booked for them.

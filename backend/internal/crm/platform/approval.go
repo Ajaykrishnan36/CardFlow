@@ -75,7 +75,7 @@ func holdForReview(ctx context.Context, tx pgx.Tx, wsID, creator uuid.UUID, code
 	}
 	taxType := strings.ToUpper(firstNonEmpty(in.TaxIDType, "ID"))
 	desc := fmt.Sprintf("Applied on Create your own CRM for %s (%s %s, team %s, %s). Business URL /%s/login is reserved and opens when you approve it.",
-		in.Name, taxType, in.TaxID, firstNonEmpty(in.TeamSize, "not given"), firstNonEmpty(in.Industry, "industry not given"), code)
+		in.Name, taxType, in.TaxID, firstNonEmpty(in.TeamSize, "not given"), firstNonEmpty(tradeText(in), "industry not given"), code)
 	custom, _ := json.Marshal(map[string]any{"signup_workspace_id": wsID, "business_code": code, "tax_id": in.TaxID, "tax_id_type": in.TaxIDType, "team_size": in.TeamSize})
 	var leadID uuid.UUID
 	if err := tx.QueryRow(ctx, `
@@ -122,7 +122,7 @@ type Application struct {
 const applicationSelect = `
 	SELECT w.id::text, w.name, COALESCE(t.slug, w.code), w.status, w.application_lead_id::text, w.created_at, w.approved_at,
 	       (SELECT count(*) FROM crm.memberships m WHERE m.workspace_id = w.id AND m.status = 'active'),
-	       COALESCE(w.profile->>'industry', ''), COALESCE(w.profile->>'teamSize', ''), COALESCE(w.profile->>'taxId', w.profile->>'gstin', ''),
+	       concat_ws(' · ', COALESCE(NULLIF(w.profile->>'industryOther', ''), NULLIF(w.profile->>'industry', '')), NULLIF(w.profile->>'businessType', ''), NULLIF(w.profile->>'businessTypeOther', '')), COALESCE(w.profile->>'teamSize', ''), COALESCE(w.profile->>'taxId', w.profile->>'gstin', ''),
 	       w.created_by_identity::text, COALESCE(i.display_name, ''),
 	       COALESCE((SELECT value_normalized FROM crm.verified_identifiers v WHERE v.identity_id = i.id AND v.kind = 'phone' ORDER BY verified_at DESC NULLS LAST LIMIT 1), ''),
 	       COALESCE(w.profile->>'plan', ''), (SELECT m.paid_until FROM crm.memberships m WHERE m.workspace_id = w.id AND m.identity_id = w.created_by_identity)
@@ -521,4 +521,19 @@ func (h *Handler) handleCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"customer": c, "apps": apps})
+}
+
+// tradeText is the industry and business type in one line: "Automotive · Bike".
+func tradeText(in CreateBusinessInput) string {
+	ind := in.Industry
+	if in.IndustryOther != "" {
+		ind = in.IndustryOther
+	}
+	parts := []string{}
+	for _, p := range []string{ind, in.BusinessType, in.BusinessTypeOther} {
+		if p = strings.TrimSpace(p); p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " · ")
 }

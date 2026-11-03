@@ -38,6 +38,7 @@ type ObjectField struct {
 	Lookup   string   `json:"lookup,omitempty"`
 	Unique   bool     `json:"unique,omitempty"`
 	HelpText string   `json:"helpText,omitempty"`
+	Only     string   `json:"only,omitempty"` // for some trades only (D-174)
 }
 
 type ObjectBody struct {
@@ -70,7 +71,7 @@ type ObjectDefinition struct {
 var ObjectIcons = []string{
 	"box", "handshake", "check-square", "calendar", "sticky-note", "message-square", "repeat", "package", "life-buoy",
 	"folder", "star", "flag", "clipboard", "truck", "graduation-cap", "heart", "home", "wrench", "file-text", "ticket",
-	"shopping-cart", "banknote", "building", "users", "briefcase", "map-pin", "car", "stethoscope", "book", "zap",
+	"shopping-cart", "banknote", "building", "users", "briefcase", "map-pin", "car", "stethoscope", "book", "zap", "scale",
 }
 
 var (
@@ -525,6 +526,12 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	}); err != nil {
 		return err
 	}
+	if err := applyObjectUpgrades(ctx, tx, "objects:trade-v1", tradeUpgrades()); err != nil {
+		return err
+	}
+	if err := markTradeOnly(ctx, tx); err != nil {
+		return err
+	}
 	return productsLabel(ctx, tx)
 }
 
@@ -562,6 +569,7 @@ func allStandardObjects() []ObjectDefinition {
 	all = append(all, careObjects()...)
 	all = append(all, commonOpsObjects()...)
 	all = append(all, catalogObjects()...)
+	all = append(all, legalObjects()...)
 	return append(all, consentObject())
 }
 
@@ -843,7 +851,7 @@ func buildSpec(d *ObjectDefinition) *objectSpec {
 		listCols = append(listCols, "status")
 	}
 	for _, f := range d.Fields {
-		fields = append(fields, Field{Key: f.Key, Label: f.Label, Type: f.Type, Required: f.Required, Options: f.Options, Lookup: f.Lookup, Unique: f.Unique, HelpText: f.HelpText})
+		fields = append(fields, Field{Key: f.Key, Label: f.Label, Type: f.Type, Required: f.Required, Options: f.Options, Lookup: f.Lookup, Unique: f.Unique, HelpText: f.HelpText, Only: f.Only})
 		switch f.Type {
 		case "text", "email", "phone":
 			search = append(search, "t.custom->>'"+f.Key+"'")
@@ -983,7 +991,10 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	if err := h.grantPackAccess(ctx, "access:common-v1", common); err != nil {
 		return err
 	}
-	return h.grantPackAccess(ctx, "access:catalog-v1", []string{"catalog_entries"})
+	if err := h.grantPackAccess(ctx, "access:catalog-v1", []string{"catalog_entries"}); err != nil {
+		return err
+	}
+	return h.grantPackAccess(ctx, "access:legal-v1", []string{"legal_matters", "court_hearings"})
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {

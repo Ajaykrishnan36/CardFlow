@@ -54,7 +54,8 @@ type businessProfile struct {
 
 // businessProfileKeys are the profile fields a business can fill in.
 var businessProfileKeys = []string{"industry", "phone", "email", "website", "address", "city", "state", "postalCode", "country", "gstin", "pan", "about", "packs",
-	"addressLine", "landmark", "area", "district", "latitude", "longitude", "whatsapp", "customDomain", "tan", "teamSize"}
+	"addressLine", "landmark", "area", "district", "latitude", "longitude", "whatsapp", "customDomain", "tan", "teamSize",
+	"industryOther", "businessType", "businessTypeOther"}
 
 // readOnlyProfileKeys are shown but not edited: the business's address was made from them (D-158).
 var readOnlyProfileKeys = []string{"taxIdType", "taxId"}
@@ -247,6 +248,33 @@ func (h *Handler) checkProfile(r *http.Request, p map[string]*string, fe map[str
 				fe["profile."+k] = msg
 			}
 			set(k, norm)
+		}
+	}
+	// The trade (D-174): checked against the list, the four keys together.
+	tradeKeys := [4]string{"industry", "industryOther", "businessType", "businessTypeOther"}
+	givenTrade := false
+	for _, k := range tradeKeys {
+		_, ok := p[k]
+		givenTrade = givenTrade || ok
+	}
+	if givenTrade {
+		var cur [4]string
+		_ = h.store.Pool.QueryRow(r.Context(), `SELECT COALESCE(profile->>'industry', ''), COALESCE(profile->>'industryOther', ''), COALESCE(profile->>'businessType', ''),
+			COALESCE(profile->>'businessTypeOther', '') FROM crm.workspaces WHERE id = $1`, scopeFrom(r.Context()).WS).Scan(&cur[0], &cur[1], &cur[2], &cur[3])
+		for i, k := range tradeKeys {
+			if v, ok := p[k]; ok {
+				cur[i] = ""
+				if v != nil {
+					cur[i] = *v
+				}
+			}
+		}
+		norm, errs := platform.NormalizeTrade(cur)
+		for k, msg := range errs {
+			fe["profile."+k] = msg
+		}
+		for i, k := range tradeKeys {
+			set(k, norm[i])
 		}
 	}
 	if v := val("teamSize"); v != "" && !platform.TeamSizes[v] {

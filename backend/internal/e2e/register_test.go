@@ -46,6 +46,17 @@ func registerBusiness(t *testing.T, token string, body map[string]any) resp {
 	if _, ok := body["taxId"]; !ok {
 		body["taxIdType"], body["taxId"] = "pan", testPAN()
 	}
+	if _, ok := body["industry"]; !ok {
+		body["industry"] = "Retail"
+	}
+	// The sign-up form asks for the type of business too (D-174).
+	if _, ok := body["businessType"]; !ok {
+		body["businessType"] = map[string]string{"Automotive": "Bike", "Insurance": "Insurance agent", "Technology": "SaaS"}[body["industry"].(string)]
+		if body["businessType"] == "" {
+			body["businessType"] = "Other"
+			body["businessTypeOther"] = "General"
+		}
+	}
 	r := call(t, "POST", crmAPI+"/public/register/business", "", body)
 	if r.str("token") != "" {
 		t.Fatalf("registering a business never signs in: %s", truncate(r.Raw, 300))
@@ -95,7 +106,7 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	}
 
 	traders := registerBusiness(t, first.str("registrationToken"), map[string]any{
-		"mode": "first", "name": "Ajay Traders", "displayName": "Ajay Krishnan", "personalEmail": "ajay-" + ajay + "@example.com", "teamSize": "2-10", "industry": "Retail",
+		"mode": "first", "name": "Ajay Traders", "displayName": "Ajay Krishnan", "personalEmail": "ajay-" + ajay + "@example.com", "teamSize": "2-10", "industry": "Retail", "businessType": "General retail",
 	})
 	// Step 3–5: "we will review your application"; the URL isn't shown and nobody can sign
 	// in there yet; the application is a lead in the owner console, which the owner approves.
@@ -121,7 +132,7 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	// they are told it is being reviewed.
 	waiting := register(t, ajay)
 	crmMod.Identity().ForgetCodeLimits("+91" + ajay) // ten minutes later
-	if r := registerBusiness(t, waiting.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Traders Again"}); r.Status != 202 {
+	if r := registerBusiness(t, waiting.str("registrationToken"), map[string]any{"mode": "first", "industry": "Retail", "businessType": "General retail", "name": "Ajay Traders Again"}); r.Status != 202 {
 		t.Fatalf("a second application answers the same: %d", r.Status)
 	}
 	if n := ownedBy(t, ajay); n != 1 {
@@ -157,7 +168,7 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	// 2. Step 4a: Ajay, who already has a CRM, fills the form again. The page says the
 	// same; nothing is created; his URLs go to him by SMS, WhatsApp and email.
 	again := register(t, ajay)
-	if r := registerBusiness(t, again.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Something"}); r.Status != 202 {
+	if r := registerBusiness(t, again.str("registrationToken"), map[string]any{"mode": "first", "industry": "Retail", "businessType": "General retail", "name": "Ajay Something"}); r.Status != 202 {
 		t.Fatalf("an existing account sees the same answer: %d", r.Status)
 	}
 	waitAudit(t, "register.urls_sent", ajay)
@@ -243,7 +254,7 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	// Ram on "Create your own CRM": he is in Ajay's businesses but hasn't created a CRM
 	// himself, so he goes through the same new-business flow; it is linked to him.
 	ramReg := register(t, ram)
-	own := registerBusiness(t, ramReg.str("registrationToken"), map[string]any{"mode": "first", "name": "Ram Motors"})
+	own := registerBusiness(t, ramReg.str("registrationToken"), map[string]any{"mode": "first", "industry": "Retail", "businessType": "General retail", "name": "Ram Motors"})
 	ramMotors := slugOf(t, ram, "Ram Motors")
 	// Ram owns no business himself: his first one waits for approval like any new one.
 	if own.Status != 202 {

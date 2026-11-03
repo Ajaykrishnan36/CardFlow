@@ -82,7 +82,7 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		// his existing "Ajay traders" is the traders business. (Priya shows the approval path.)
 		reg := register(t, ajay)
 		before := ownedBy(t, ajay)
-		if r := registerBusiness(t, reg.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Bikes"}); r.Status != 202 {
+		if r := registerBusiness(t, reg.str("registrationToken"), map[string]any{"mode": "first", "industry": "Retail", "businessType": "General retail", "name": "Ajay Bikes"}); r.Status != 202 {
 			t.Fatalf("an existing account sees the same answer: %d", r.Status)
 		}
 		waitAudit(t, "register.urls_sent", ajay)
@@ -127,7 +127,7 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		reg := register(t, ajay)
 		bikesApp := registerBusiness(t, reg.str("registrationToken"), map[string]any{
 			"mode": "first", "name": "Ajay Bikes", "displayName": "Ajay Kumar", "personalEmail": "ajay.kumar.demo@example.com",
-			"teamSize": "11-50", "industry": "Automotive", "taxIdType": "gstin", "taxId": "33ABCDE1234F1Z7", "state": "Tamil Nadu",
+			"teamSize": "11-50", "industry": "Automotive", "businessType": "Bike", "taxIdType": "gstin", "taxId": "33ABCDE1234F1Z7", "state": "Tamil Nadu",
 		})
 		if bikesApp.Status != 202 {
 			t.Fatalf("Ajay's first business waits for approval: %d %s", bikesApp.Status, truncate(bikesApp.Raw, 300))
@@ -152,7 +152,7 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 		// Ajay fills the form again on "/": same answer, nothing new; his URL is sent to him.
 		later(ajay)
 		back := register(t, ajay)
-		if r := registerBusiness(t, back.str("registrationToken"), map[string]any{"mode": "first", "name": "Ajay Again"}); r.Status != 202 {
+		if r := registerBusiness(t, back.str("registrationToken"), map[string]any{"mode": "first", "industry": "Retail", "businessType": "General retail", "name": "Ajay Again"}); r.Status != 202 {
 			t.Fatalf("an existing account sees the same answer: %d", r.Status)
 		}
 		waitAudit(t, "register.urls_sent", ajay)

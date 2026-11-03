@@ -28,6 +28,9 @@ type Field struct {
 	Unique   bool     `json:"unique,omitempty"` // no two records may share a value
 	// AddedOptions: values of a built-in dropdown this business added (D-154); removable.
 	AddedOptions []string `json:"addedOptions,omitempty"`
+	// Only (D-174): the field is for some trades only — a comma list of industry packs, each
+	// optionally narrowed to bikes or cars ("dealership:car"). Other businesses never see it.
+	Only string `json:"-"`
 
 	column string // standard fields stored in a column; "" = stored in custom jsonb
 	isInt  bool   // int column (numbers are rounded)
@@ -128,9 +131,10 @@ func lookup(key, label, column, target string) Field {
 	return Field{Key: key, Label: label, Type: "lookup", column: column, Lookup: target}
 }
 
-func req(f Field) Field  { f.Required = true; return f }
-func ro(f Field) Field   { f.ReadOnly = true; f.system = true; return f }
-func intf(f Field) Field { f.isInt = true; return f }
+func req(f Field) Field                 { f.Required = true; return f }
+func only(f Field, trades string) Field { f.Only = trades; return f }
+func ro(f Field) Field                  { f.ReadOnly = true; f.system = true; return f }
+func intf(f Field) Field                { f.isInt = true; return f }
 func help(f Field, h string) Field {
 	f.HelpText = h
 	return f
@@ -200,6 +204,28 @@ var leadSpec = objectSpec{
 		text("postalCode", "Postal code", "postal_code"),
 		text("country", "Country", "country"),
 		typed("description", "Description", "textarea", "description"),
+		// What the customer is looking for, in the words of their trade (D-174).
+		only(sel("vehicleType", "Looking for", "", opts("bike", "Bike", "scooter", "Scooter", "car", "Car", "ev", "Electric vehicle", "commercial", "Commercial vehicle")), "dealership"),
+		only(text("preferredBrand", "Preferred brand", ""), "dealership"),
+		only(lookup("preferredItemId", "Preferred model", "", "catalog_items"), "dealership"),
+		only(text("preferredVariant", "Preferred variant / colour", ""), "dealership"),
+		only(sel("fuelType", "Fuel", "", opts("petrol", "Petrol", "diesel", "Diesel", "cng", "CNG", "electric", "Electric", "hybrid", "Hybrid")), "dealership:car"),
+		only(sel("transmission", "Transmission", "", opts("manual", "Manual", "automatic", "Automatic")), "dealership:car"),
+		only(sel("exchange", "Has a vehicle to exchange", "", opts("yes", "Yes", "no", "No")), "dealership"),
+		only(sel("insuranceType", "Insurance type", "", opts("life", "Life", "health", "Health", "motor", "Motor", "travel", "Travel", "home", "Home", "general", "General", "corporate", "Corporate / group")), "insurance"),
+		only(sel("policyType", "Policy type", "", opts("new", "New policy", "renewal", "Renewal", "port", "Port from another insurer")), "insurance"),
+		only(typed("coverageNeeded", "Coverage needed", "currency", ""), "insurance"),
+		only(typed("expectedPremium", "Expected premium", "currency", ""), "insurance"),
+		only(typed("renewalDate", "Current policy renews on", "date", ""), "insurance"),
+		only(sel("legalServiceType", "Legal service needed", "", opts("consultation", "Consultation", "litigation", "Court case / litigation", "documentation", "Drafting & documents",
+			"registration", "Registration", "notice", "Legal notice", "advisory", "Ongoing advice")), "legal"),
+		only(sel("matterCategory", "Matter category", "", legalCategories), "legal"),
+		only(typed("consultationAt", "Consultation date", "datetime", ""), "legal"),
+		only(typed("matterDescription", "About the matter", "textarea", ""), "legal"),
+		only(sel("propertyPurpose", "Wants to", "", opts("buy", "Buy", "rent", "Rent", "sell", "Sell", "lease_out", "Lease out")), "real_estate"),
+		only(text("preferredLocality", "Preferred locality", ""), "real_estate"),
+		only(typed("budget", "Budget", "currency", ""), "dealership,real_estate"),
+		only(sel("buyingWhen", "Plans to buy", "", opts("this_week", "This week", "this_month", "This month", "three_months", "In 3 months", "later", "Later / just looking")), "dealership,real_estate"),
 		ro(typed("convertedAt", "Converted on", "datetime", "converted_at")),
 		ro(lookup("convertedAccountId", "Converted account", "converted_account_id", "accounts")),
 		ro(lookup("convertedContactId", "Converted contact", "converted_contact_id", "contacts")),
@@ -214,6 +240,11 @@ var leadSpec = objectSpec{
 			{ID: "lead_info", Title: "Lead information", Columns: 2, Fields: []string{
 				"salutation", "status", "firstName", "source", "lastName", "rating", "title", "productId",
 				"organization", "industry", "email", "website", "phone", "mobile", "lostReason"}},
+			{ID: "requirement", Title: "Requirement", Columns: 2, Fields: []string{
+				"vehicleType", "preferredBrand", "preferredItemId", "preferredVariant", "fuelType", "transmission", "exchange",
+				"insuranceType", "policyType", "coverageNeeded", "expectedPremium", "renewalDate",
+				"legalServiceType", "matterCategory", "consultationAt", "matterDescription",
+				"propertyPurpose", "preferredLocality", "budget", "buyingWhen"}},
 			{ID: "qualification", Title: "Qualification", Columns: 2, Fields: []string{
 				"annualRevenue", "employees", "score", "nextFollowUpAt", "userType", "intendedRoleKey", "tags"}},
 			{ID: "address", Title: "Address information", Columns: 2, Fields: []string{"street", "city", "state", "postalCode", "country"}},

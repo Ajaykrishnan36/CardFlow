@@ -1740,6 +1740,64 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   Territory, Subscription, Knowledge article and "Part of" are folded under "More details" with
   a line on what each is.
 
+## D-174 — One CRM for every trade: industry and business type
+
+- Creating a business asks for the **Industry type** in a searchable single-select (type to
+  narrow, arrow keys and Enter, one choice), then that industry's **business type** the same way
+  — Automotive: Bike, Car, Both bike & car, Scooter, Motorcycle, Commercial vehicles, Electric
+  vehicles; Insurance: agent, agency, broker, life, health, motor, general, corporate; Legal
+  services (new): advocate, individual lawyer, law firm, legal consultancy, corporate, property,
+  family, criminal, civil; and types for every other industry. Every list ends with Other, which
+  asks for the type in the person's words; Industry **Other** asks "Enter your business
+  industry" and gets the common CRM only. Under the boxes, one line says what the CRM will
+  include. The sign-up form requires both (industry, and the type when the industry has types);
+  Add business may leave them for later. Both are stored as the list writes them and can be
+  changed on Business profile → Your trade, checked the same way.
+- The list is data (`access/industry.go`, served at `GET /public/industries`): an industry is a
+  key, label, search words, its types and the industry pack it switches on. A new trade or type
+  is one line there; nothing else changes.
+- Underneath, every business runs the same objects and flow (lead → opportunity → quote →
+  payment → invoice → case). What the trade changes:
+  - **Packs**: Automotive → Dealership, Insurance → Insurance, Real estate → Real estate,
+    Beauty & salon → Salon, Legal services → the new **Legal** pack. Other trades get no pack
+    and no pack menus (a law firm has no Vehicle stock; a dealer has no Client matters).
+  - **Words**: a law firm's Contacts are Clients, Products are Legal services, Contracts are
+    Engagement agreements, Appointments are Consultations and Cases are Support tickets (a
+    support case is not a legal matter); an insurer's Products are Insurance plans; a clinic's
+    Contacts are Patients; a school's Products are Courses; a car dealer's Test rides are Test
+    drives (both: Test rides & drives). Only labels change — menu, list and form titles, and
+    lookup fields that carried the old name. A dealer with no type picked keeps its words.
+  - **Fields**: a field can be for some trades only. The lead form has a Requirement section
+    with the trade's questions — dealer: looking for, brand, preferred model (a product),
+    variant, exchange, budget, plans to buy, and for cars fuel and transmission; insurer:
+    insurance type, policy type, coverage, expected premium, renewal date; law firm: legal
+    service, matter category, consultation date, about the matter; real estate: buy/rent,
+    locality, budget. Catalog entries get bike category, or car body type, transmission and
+    seats, plus fuel. The vehicle fields the dealership pack had put on shared objects — VIN,
+    registration, odometer and km on assets, service-every-km on products, top speed and mileage
+    in the catalog, odometer on job cards — now show only to dealers (values are kept).
+  - **Dashboard**: "What is happening" adds the pack's numbers — insurer: policies sold, premium
+    collected, proposals waiting, renewals in 30 days, premiums late, claims open; law firm:
+    active, new and completed matters, hearings today and in 7 days, consultations; real estate:
+    units available, site visits, bookings; every business that sells: orders this month and
+    invoices waiting for payment.
+- **Legal pack**: Client matters (client required; category, legal service, client's role,
+  court, court case number, opposite party and counsel, filed on, next hearing, assisting
+  advocate, fee, engagement agreement, outcome; the owner is the advocate in charge) and
+  Hearings (matter required; date and time, stage, court hall, judge, what happened, next date).
+  A hearing's client comes from its matter and can't be another. The first hearing makes a new
+  matter Active; the matter always shows its nearest scheduled hearing. Adjourned needs the next
+  date; attended or adjourned with a next date books that hearing once. Closing a matter (decided,
+  settled, withdrawn, closed) sets its closing date, and a closed matter takes no new hearing.
+  The advocate (matter owner, and the hearing's owner) is notified the day before. New matters
+  and matters decided in favour or settled are notified like sales.
+- The sidebar's sections fold: Customer journey and the trade's own pack start open, the rest
+  start folded with their count, and the section of the page you are on is always open. What
+  someone opens or folds is remembered on that device. The whole sidebar still collapses to
+  icons.
+- Wording that assumed a showroom is gone from shared screens (branch help, convert dialog, web
+  form placeholders).
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

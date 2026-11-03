@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Building2, Check, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Plus, Search } from 'lucide-react';
+import { useState } from 'react';
+import { Building2, Check, ChevronDown, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Plus, Search } from 'lucide-react';
 import type { Me, NavItem, WorkspaceContext } from '@crm/api/types';
 import { isOwnerSession, workspaceHomePath } from '@crm/auth/session';
 import { LogoMark } from '@crm/components/brand';
@@ -14,6 +15,37 @@ import { arrange, LOCKED_NAV } from '../../../navigation/layout-items';
 import { UserMenu } from './user-menu';
 import { setSelectedApp } from '@crm/features/workspace/selected-app';
 import { FavoritesNav } from './live';
+
+/** These sections start open (the journey and the trade's own pack); the rest start folded (D-174). */
+const DEFAULT_OPEN = ['Customer journey', 'Dealership', 'Insurance', 'Legal', 'Real estate', 'Salon'];
+
+function isHere(path: string, pathname: string) {
+  const p = path.split('?')[0]!;
+  return pathname === p || pathname.startsWith(p + '/');
+}
+
+/** Which sections the person opened or folded, remembered on this device. */
+function useFolds(scope: string): [Record<string, boolean>, (name: string, open: boolean) => void] {
+  const key = `crm.nav.folds:${scope}`;
+  const [folds, setFolds] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, boolean>;
+    } catch {
+      return {};
+    }
+  });
+  const toggle = (name: string, open: boolean) =>
+    setFolds((f) => {
+      const next = { ...f, [name]: open };
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        /* private window: remembered for this visit only */
+      }
+      return next;
+    });
+  return [folds, toggle];
+}
 
 function groupNav(items: NavItem[]) {
   const groups: Array<{ name: string | null; items: NavItem[] }> = [];
@@ -57,6 +89,8 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
   const isOwner = isOwnerSession(me);
   const primaryMembership = me.memberships.find((m) => !m.isPlatformWorkspace) ?? me.memberships[0];
   const inWorkspace = Boolean(workspaceCode);
+  const location = useLocation();
+  const [folds, toggleFold] = useFolds(apiPrefix ?? 'console');
 
   return (
     <div className={cn('flex h-full flex-col bg-sidebar', className)}>
@@ -121,22 +155,40 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
             ))}
           </div>
         ) : (
-          groupNav(arranged).map((group) => (
-            <div key={group.name ?? 'root'} className="mb-4 last:mb-0">
-              {group.name && !collapsed ? (
-                <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">{group.name}</p>
-              ) : group.name && collapsed ? (
-                <div className="mx-2 mb-2 h-px bg-border" />
-              ) : null}
-              <ul className="space-y-0.5">
-                {group.items.filter((item) => item.available).map((item) => (
-                  <li key={item.key}>
-                    <SidebarLink item={item} collapsed={collapsed} onNavigate={onNavigate} filtered={filteredPaths} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
+          groupNav(arranged).map((group) => {
+            const items = group.items.filter((item) => item.available);
+            if (!items.length) return null;
+            const here = items.some((item) => isHere(item.path, location.pathname));
+            // Sections fold (D-174): the one you are in and the customer journey start open.
+            const open = collapsed || !group.name || here || (folds[group.name] ?? DEFAULT_OPEN.includes(group.name));
+            return (
+              <div key={group.name ?? 'root'} className={cn(open ? 'mb-4' : 'mb-1', 'last:mb-0')}>
+                {group.name && !collapsed ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleFold(group.name!, !open)}
+                    aria-expanded={open}
+                    className="group/fold mb-1 flex w-full items-center gap-1 rounded px-2 py-0.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{group.name}</span>
+                    {!open ? <span className="text-[10px] font-medium normal-case tracking-normal text-muted-foreground/70">{items.length}</span> : null}
+                    <ChevronDown className={cn('size-3.5 shrink-0 transition-transform', !open && '-rotate-90')} aria-hidden />
+                  </button>
+                ) : group.name && collapsed ? (
+                  <div className="mx-2 mb-2 h-px bg-border" />
+                ) : null}
+                {open ? (
+                  <ul className="space-y-0.5">
+                    {items.map((item) => (
+                      <li key={item.key}>
+                        <SidebarLink item={item} collapsed={collapsed} onNavigate={onNavigate} filtered={filteredPaths} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            );
+          })
         )}
       </nav>
 

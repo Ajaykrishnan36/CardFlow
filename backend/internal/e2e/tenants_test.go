@@ -17,7 +17,7 @@ var codeShape = regexp.MustCompile(`^[0-9]{8}[0-9a-z]{4}[0-9]{6}$`)
 func TestEachBusinessItsOwnAddressAndOnlyItsPeopleSignIn(t *testing.T) {
 	ownerPhone := freshPhone()
 	owner := signIn(t, ownerPhone, "PSG Owner")
-	r := call(t, "POST", crmAPI+"/businesses", owner, map[string]any{"name": "PSG School", "mode": "first", "taxIdType": "pan", "taxId": "abcde1234f", "teamSize": "11-50"})
+	r := call(t, "POST", crmAPI+"/businesses", owner, map[string]any{"name": "PSG School", "mode": "first", "industry": "Retail", "businessType": "General retail", "taxIdType": "pan", "taxId": "abcde1234f", "teamSize": "11-50"})
 	want(t, r, 201, "first business")
 	school := r.str("business", "tenantSlug")
 	day := time.Now().In(time.FixedZone("IST", 5*3600+1800))
@@ -37,7 +37,7 @@ func TestEachBusinessItsOwnAddressAndOnlyItsPeopleSignIn(t *testing.T) {
 		t.Fatalf("every business gets its own address, even with the old tenant field: %s", r.Raw)
 	}
 	// The first-time form is refused to someone who is already a Super Admin; it lists their addresses.
-	x := call(t, "POST", crmAPI+"/businesses", owner, map[string]any{"name": "Third", "mode": "first", "taxIdType": "pan", "taxId": "ABCDE1234F"})
+	x := call(t, "POST", crmAPI+"/businesses", owner, map[string]any{"name": "Third", "mode": "first", "industry": "Retail", "businessType": "General retail", "taxIdType": "pan", "taxId": "ABCDE1234F"})
 	if x.Status != 409 || x.str("code") != "already_registered" || !strings.Contains(x.Raw, school) || !strings.Contains(x.Raw, college) {
 		t.Fatalf("already registered: %d %s", x.Status, x.Raw)
 	}
@@ -46,7 +46,7 @@ func TestEachBusinessItsOwnAddressAndOnlyItsPeopleSignIn(t *testing.T) {
 	mustRefuse(t, "no tax ID", call(t, "POST", crmAPI+"/businesses", stranger, map[string]any{"name": "No ID", "taxId": ""}), "taxId")
 	mustRefuse(t, "a bad PAN", call(t, "POST", crmAPI+"/businesses", stranger, map[string]any{"name": "Bad ID", "taxIdType": "pan", "taxId": "ABCD1234F"}), "taxId")
 	mustRefuse(t, "a bad TAN", call(t, "POST", crmAPI+"/businesses", stranger, map[string]any{"name": "Bad TAN", "taxIdType": "tan", "taxId": "ABCDE1234F"}), "taxId")
-	tan := call(t, "POST", crmAPI+"/businesses", stranger, map[string]any{"name": "TAN Traders", "taxIdType": "tan", "taxId": "MUMA12345B", "mode": "first"})
+	tan := call(t, "POST", crmAPI+"/businesses", stranger, map[string]any{"name": "TAN Traders", "taxIdType": "tan", "taxId": "MUMA12345B", "mode": "first", "industry": "Retail", "businessType": "General retail"})
 	want(t, tan, 201, "a TAN works, and staff-only or new people may use the first-time form")
 	if s := tan.str("business", "tenantSlug"); s[8:12] != "345b" {
 		t.Fatalf("last 4 of the TAN: %s", s)

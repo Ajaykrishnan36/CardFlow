@@ -103,6 +103,7 @@ func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSp
 	if err := addedOptions(ctx, q, wsID, spec, fields); err != nil {
 		return nil, err
 	}
+	fields = forTrade(ctx, q, wsID, fields)
 	// A dealer's case is about a customer's vehicle (D-173): pick the vehicle and the
 	// customer comes with it.
 	if spec.Key == "cases" {
@@ -117,6 +118,40 @@ func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSp
 		}
 	}
 	return append(fields, custom...), nil
+}
+
+// forTrade drops the fields meant for other trades (D-174): a law firm's lead form has no
+// "Preferred model", a bike dealer's has no "Transmission".
+func forTrade(ctx context.Context, q querier, wsID uuid.UUID, fields []Field) []Field {
+	need := false
+	for _, f := range fields {
+		need = need || f.Only != ""
+	}
+	if !need {
+		return fields
+	}
+	mods, err := access.WorkspaceModules(ctx, q, wsID)
+	if err != nil {
+		mods = map[string]bool{}
+	}
+	bike, car := access.WorkspaceTrade(ctx, q, wsID).Vehicles()
+	out := fields[:0:0]
+	for _, f := range fields {
+		if f.Only == "" || tradeFits(f.Only, mods, bike, car) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func tradeFits(only string, mods map[string]bool, bike, car bool) bool {
+	for _, part := range strings.Split(only, ",") {
+		pack, kind, _ := strings.Cut(strings.TrimSpace(part), ":")
+		if mods[pack] && (kind == "" || (kind == "bike" && bike) || (kind == "car" && car)) {
+			return true
+		}
+	}
+	return false
 }
 
 // allFields returns the fields the requester may use (D-46): hidden fields are left out
@@ -259,9 +294,33 @@ func (h *Handler) meta(ctx context.Context, wsID uuid.UUID, spec *objectSpec) (*
 			delete(defaults, k)
 		}
 	}
+	// The business's own words for objects (D-174): a law firm's contacts are Clients, and
+	// so is a "Contact" field that points at them.
+	singular, plural := spec.Singular, spec.Plural
+	if terms := access.WorkspaceTerms(ctx, h.store.Pool, wsID); len(terms) > 0 {
+		if t, ok := terms[spec.Key]; ok {
+			singular, plural = t.Singular, t.Plural
+		}
+		for i, f := range fields {
+			if t, ok := terms[f.Lookup]; ok && f.Type == "lookup" {
+				if ls := specFor(f.Lookup); ls != nil && strings.EqualFold(f.Label, ls.Singular) {
+					fields[i].Label = t.Singular
+				}
+			}
+		}
+	}
+	if len(layout.Sections) > 0 {
+		kept := layout.Sections[:0:0]
+		for _, s := range layout.Sections {
+			if s.ID != "requirement" || len(s.Fields) > 0 {
+				kept = append(kept, s)
+			}
+		}
+		layout.Sections = kept
+	}
 	return &Meta{
 		Defaults: defaults, CreateHidden: laterFields[spec.Key],
-		Object: spec.Key, LabelSingular: spec.Singular, LabelPlural: spec.Plural, CodePrefix: spec.Prefix,
+		Object: spec.Key, LabelSingular: singular, LabelPlural: plural, CodePrefix: spec.Prefix,
 		Fields: fields, Layout: layout, DefaultLayout: sanitizeLayout(cloneLayout(spec.Layout), fields),
 		ListColumns: spec.ListColumns, StatusField: spec.StatusField, Statuses: statusesFor(ctx, h.store.Pool, wsID, spec), Icon: spec.Icon, Custom: spec.Custom,
 		LookupTargets: h.lookupTargets(),

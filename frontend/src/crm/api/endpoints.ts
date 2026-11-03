@@ -868,6 +868,8 @@ export interface OfficeView {
   testRidesByModel: Array<{ model: string; rides: number; bought: number }>;
   stockByModel: Array<{ model: string; inStock: number; allocated: number; low: boolean }>;
   testRideToPurchase?: number;
+  /** The business's word for a test ride (a car dealer's is Test drive, D-174). */
+  rideWord?: string;
 }
 
 export interface CardFields {
@@ -939,9 +941,21 @@ export interface RegisterCheck {
   expiresIn: number;
   canCreate: boolean;
 }
+/** One industry on the sign-up form and its business types (D-174). */
+export interface IndustryOption {
+  key: string;
+  label: string;
+  keywords?: string;
+  typeLabel: string;
+  types: Array<{ key: string; label: string }>;
+  packs?: string[];
+}
+
 export const registerApi = {
   /** The plans a new business can ask for, with the owner's prices (D-172). */
   plans: () => api<{ enabled: boolean; currency: string; prices: BillingPrice[] }>('/public/billing/plans'),
+  /** The industries and their business types for the sign-up form (D-174). */
+  industries: () => api<{ data: IndustryOption[] }>('/public/industries'),
   request: (phone: string) =>
     api<{ sent: boolean; expiresIn: number; channel: string; devCode?: string }>('/public/register/request', { method: 'POST', body: { phone } }),
   verify: (body: { phone: string; code: string }) => api<RegisterCheck>('/public/register/verify', { method: 'POST', body }),

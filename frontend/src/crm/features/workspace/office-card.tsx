@@ -35,7 +35,7 @@ export function OfficeCard({ code }: { code: string }) {
               <Tile key={r.key} r={r} />
             ))}
             {d.testRideToPurchase !== undefined ? (
-              <Tile r={{ key: 'ratio', label: 'Test ride → purchase', value: Math.round(d.testRideToPurchase) }} suffix="%" />
+              <Tile r={{ key: 'ratio', label: `${d.rideWord ?? 'Test ride'} → purchase`, value: Math.round(d.testRideToPurchase) }} suffix="%" />
             ) : null}
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
@@ -61,12 +61,12 @@ export function OfficeCard({ code }: { code: string }) {
               ) : null}
               {d.testRidesByModel.length ? (
                 <>
-                  <p className="mb-1.5 mt-4 text-[13px] font-semibold text-foreground">Test ride → purchase, by model</p>
+                  <p className="mb-1.5 mt-4 text-[13px] font-semibold text-foreground">{d.rideWord ?? 'Test ride'} → purchase, by model</p>
                   <table className="w-full text-[13px]">
                     <thead className="text-xs text-muted-foreground">
                       <tr>
                         <th className="py-1 text-left font-medium">Model</th>
-                        <th className="py-1 text-right font-medium">Test rides</th>
+                        <th className="py-1 text-right font-medium">Done</th>
                         <th className="py-1 text-right font-medium">Bought</th>
                         <th className="py-1 text-right font-medium">Conv.</th>
                       </tr>

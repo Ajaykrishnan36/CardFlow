@@ -67,7 +67,7 @@ export function WebFormsPage() {
       ) : q.data.data.length === 0 ? (
         <Card className="px-5 py-10 text-center">
           <p className="text-sm font-medium">No forms yet</p>
-          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">Make one for your website's "Contact us" or "Book a test ride" page. You get a link and a snippet to paste.</p>
+          <p className="mx-auto mt-1 max-w-md text-[13px] text-muted-foreground">Make one for your website's "Contact us" or "Book an appointment" page. You get a link and a snippet to paste.</p>
           <Button className="mt-4" onClick={() => setEditing('new')}>
             <Plus /> New form
           </Button>
@@ -170,7 +170,7 @@ function FormDialog({ form, offered, onClose, onSaved }: { form: WebForm | null;
             <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} autoFocus placeholder="Website enquiry" />
           </Field>
           <Field label="Heading on the form" error={fe.heading}>
-            <Input value={heading} onChange={(e) => setHeading(e.target.value)} maxLength={120} placeholder="Book a test ride" />
+            <Input value={heading} onChange={(e) => setHeading(e.target.value)} maxLength={120} placeholder="Request a callback" />
           </Field>
           <Field label="Line under the heading">
             <Input value={intro} onChange={(e) => setIntro(e.target.value)} maxLength={500} placeholder="Leave your number and we'll call you back today." />

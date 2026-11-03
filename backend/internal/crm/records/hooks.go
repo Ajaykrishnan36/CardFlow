@@ -169,7 +169,7 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 	case "commission_rules", "insurance_claims", "salon_products", "product_usage", "makeup_kits", "kit_bookings", "client_packages",
 		"property_units", "property_bookings", "property_visits", "privacy_requests", "insurance_policies", "premium_dues", "commissions",
 		"vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings",
-		"vehicle_exchanges", "finance_applications", "stock_transfers":
+		"vehicle_exchanges", "finance_applications", "stock_transfers", "legal_matters", "court_hearings":
 		// A business that made its own object under one of these names before the pack
 		// existed keeps it as it is: the pack's rules are for the built-in object only.
 		if !standardObject(spec.Key) || op == "delete" {
@@ -200,6 +200,11 @@ func (h *Handler) packRouter(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec 
 			return after, nil
 		}
 		return h.dealerSaved(ctx, tx, ws, spec, a, op, before, after)
+	case "legal_matters", "court_hearings":
+		if op == "delete" {
+			return after, nil
+		}
+		return h.legalSaved(ctx, tx, ws, spec, a, op, before, after)
 	}
 	return after, nil
 }

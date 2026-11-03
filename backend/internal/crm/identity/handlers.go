@@ -492,7 +492,7 @@ func (s *Service) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 			shared.WriteError(w, r, err)
 			return
 		}
-		caps.Navigation = access.WorkspaceNav(m.WorkspaceCode, eff, access.HasSupport(m.WorkspaceID))
+		caps.Navigation = access.WithTerms(access.WorkspaceNav(m.WorkspaceCode, eff, access.HasSupport(m.WorkspaceID)), access.WorkspaceTerms(r.Context(), s.store.Pool, m.WorkspaceID))
 	}
 	shared.WriteJSON(w, http.StatusOK, caps)
 }

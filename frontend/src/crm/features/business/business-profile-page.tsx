@@ -20,6 +20,7 @@ import { ErrorState } from "@crm/components/states";
 import { PageContainer, PageHeader } from "@crm/components/page";
 import { useDocumentTitle } from "@crm/features/auth/login-pages";
 import { useWorkspace } from "@crm/features/workspace/workspace-context";
+import { TradeFields } from "./trade-fields";
 
 const fields: Array<{
   key: string;
@@ -29,7 +30,6 @@ const fields: Array<{
   long?: boolean;
   options?: string[];
 }> = [
-  { key: "industry", label: "Industry" },
   {
     key: "teamSize",
     label: "Size of team",
@@ -115,6 +115,8 @@ export function BusinessProfilePage() {
       for (const f of fields)
         profile[f.key] = form!.profile[f.key]?.trim() || null;
       profile.packs = form!.profile.packs?.trim() || null;
+      for (const k of ["industry", "industryOther", "businessType", "businessTypeOther"])
+        profile[k] = form!.profile[k]?.trim() || null;
       const a = addressOf(form!.profile);
       for (const k of addressKeys) profile[k] = a[k]?.trim() || null;
       profile.latitude = a.latitude != null ? String(a.latitude) : null;
@@ -233,6 +235,33 @@ export function BusinessProfilePage() {
                   disabled={!canEdit}
                 />
               </Field>
+            </div>
+          </Card>
+          <Card>
+            <CardHeader
+              title="Your trade"
+              description="What the business does. It decides the industry pack, the fields a lead asks for and a few words — a law firm's contacts are Clients, a car dealer books Test drives."
+            />
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              <TradeFields
+                value={{
+                  industry: form.profile.industry ?? "",
+                  industryOther: form.profile.industryOther ?? "",
+                  businessType: form.profile.businessType ?? "",
+                  businessTypeOther: form.profile.businessTypeOther ?? "",
+                }}
+                onChange={(t) =>
+                  setForm({ ...form, profile: { ...form.profile, ...t } })
+                }
+                errors={{
+                  industry: errors["profile.industry"],
+                  industryOther: errors["profile.industryOther"],
+                  businessType: errors["profile.businessType"],
+                  businessTypeOther: errors["profile.businessTypeOther"],
+                }}
+                requiredMark={false}
+                disabled={!canEdit}
+              />
             </div>
           </Card>
           <Card>
@@ -368,6 +397,13 @@ export function BusinessProfilePage() {
                   industry: "Beauty & salon",
                   label: "Salon and makeup kits",
                   what: "Product stock with batch and expiry, kits and their bookings, client packages.",
+                },
+                {
+                  key: "legal",
+                  trade: /legal/i,
+                  industry: "Legal services",
+                  label: "Legal practice",
+                  what: "Client matters with court and case number, hearings with the next date and a reminder the day before.",
                 },
                 {
                   key: "real_estate",
