@@ -409,7 +409,16 @@ type FileInfo struct {
 	Field       string    `json:"field,omitempty"`
 	CreatedBy   string    `json:"createdBy,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
+	// DocType says what the document is (D-170); VerifiedBy/At, who checked it.
+	DocType    string     `json:"docType,omitempty"`
+	VerifiedBy string     `json:"verifiedBy,omitempty"`
+	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
 }
+
+// docTypes are the kinds of customer document a file can be.
+var docTypes = map[string]string{"pan": "PAN card", "aadhaar": "Aadhaar", "address_proof": "Address proof", "id_proof": "ID proof",
+	"photo": "Photo", "loan_papers": "Loan papers", "signed_quote": "Signed quote / contract", "delivery_note": "Delivery note",
+	"insurance": "Insurance", "rc": "RC book", "other": "Other"}
 
 var blockedFileTypes = map[string]bool{"application/x-msdownload": true, "application/x-sh": true, "application/x-executable": true}
 
@@ -455,6 +464,11 @@ func (h *Handler) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	field := strings.TrimSpace(r.FormValue("field"))
+	docType := strings.TrimSpace(r.FormValue("docType"))
+	if _, ok := docTypes[docType]; docType != "" && !ok {
+		shared.WriteError(w, r, shared.Validation(map[string]string{"docType": "Pick what this document is."}))
+		return
+	}
 	var used int64
 	_ = h.store.Pool.QueryRow(r.Context(), `SELECT COALESCE(sum(size_bytes), 0) FROM crm.files WHERE workspace_id = $1 AND deleted_at IS NULL`, ws).Scan(&used)
 	if used+int64(len(data)) > maxWorkspaceFileBytes {
@@ -474,8 +488,8 @@ func (h *Handler) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 				return shared.Validation(map[string]string{"field": "That field doesn't take files."})
 			}
 		}
-		if err := tx.QueryRow(r.Context(), `INSERT INTO crm.files (workspace_id, object_key, record_id, field_key, name, content_type, size_bytes, data, created_by)
-			VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9) RETURNING id`, ws, spec.Key, id, field, name, ct, len(data), data, a.ID).Scan(&fid); err != nil {
+		if err := tx.QueryRow(r.Context(), `INSERT INTO crm.files (workspace_id, object_key, record_id, field_key, name, content_type, size_bytes, data, created_by, doc_type)
+			VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, NULLIF($10, '')) RETURNING id`, ws, spec.Key, id, field, name, ct, len(data), data, a.ID, docType).Scan(&fid); err != nil {
 			return err
 		}
 		if field != "" {
@@ -489,14 +503,18 @@ func (h *Handler) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		return insertActivity(r.Context(), tx, ws, spec.Key, id, "file.uploaded", "Attached "+name, map[string]any{"fileId": fid.String(), "size": len(data)}, a.ID)
+		what := name
+		if l := docTypes[docType]; l != "" {
+			what = l + " (" + name + ")"
+		}
+		return insertActivity(r.Context(), tx, ws, spec.Key, id, "file.uploaded", "Attached "+what, map[string]any{"fileId": fid.String(), "size": len(data), "docType": docType}, a.ID)
 	})
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
 	}
 	h.bus.Kick()
-	shared.WriteJSON(w, http.StatusCreated, FileInfo{ID: fid.String(), Name: name, ContentType: ct, Size: len(data), Field: field, CreatedAt: time.Now()})
+	shared.WriteJSON(w, http.StatusCreated, FileInfo{ID: fid.String(), Name: name, ContentType: ct, Size: len(data), Field: field, CreatedAt: time.Now(), DocType: docType})
 }
 
 func (h *Handler) handleListFiles(w http.ResponseWriter, r *http.Request) {
@@ -504,8 +522,9 @@ func (h *Handler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := h.store.Pool.Query(r.Context(), `SELECT f.id::text, f.name, f.content_type, f.size_bytes, COALESCE(f.field_key, ''), COALESCE(i.display_name, ''), f.created_at
-		FROM crm.files f LEFT JOIN crm.identities i ON i.id = f.created_by
+	rows, err := h.store.Pool.Query(r.Context(), `SELECT f.id::text, f.name, f.content_type, f.size_bytes, COALESCE(f.field_key, ''), COALESCE(i.display_name, ''), f.created_at,
+		       COALESCE(f.doc_type, ''), COALESCE(v.display_name, ''), f.verified_at
+		FROM crm.files f LEFT JOIN crm.identities i ON i.id = f.created_by LEFT JOIN crm.identities v ON v.id = f.verified_by
 		WHERE f.workspace_id = $1 AND f.object_key = $2 AND f.record_id = $3 AND f.deleted_at IS NULL ORDER BY f.created_at DESC`, ws, spec.Key, id)
 	if err != nil {
 		shared.WriteError(w, r, err)
@@ -515,7 +534,7 @@ func (h *Handler) handleListFiles(w http.ResponseWriter, r *http.Request) {
 	out := []FileInfo{}
 	for rows.Next() {
 		var f FileInfo
-		if err := rows.Scan(&f.ID, &f.Name, &f.ContentType, &f.Size, &f.Field, &f.CreatedBy, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.ContentType, &f.Size, &f.Field, &f.CreatedBy, &f.CreatedAt, &f.DocType, &f.VerifiedBy, &f.VerifiedAt); err != nil {
 			shared.WriteError(w, r, err)
 			return
 		}
@@ -613,4 +632,56 @@ func (h *Handler) recordTitle(ctx context.Context, spec *objectSpec, id uuid.UUI
 	var t string
 	_ = h.store.Pool.QueryRow(ctx, `SELECT `+spec.TitleSQL+` FROM crm.`+spec.Table+` t WHERE t.id = $1`, id).Scan(&t)
 	return t
+}
+
+// PATCH /files/{fileId} {"docType": "pan", "verified": true} — what a document is, and
+// marking it checked (or not). Both are written on the record's timeline.
+func (h *Handler) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
+	f, _, spec, recordID, err := h.fileAccess(r, "update")
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	var in struct {
+		DocType  *string `json:"docType"`
+		Verified *bool   `json:"verified"`
+	}
+	if err := shared.DecodeJSON(w, r, &in); err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	if in.DocType != nil {
+		if _, ok := docTypes[*in.DocType]; *in.DocType != "" && !ok {
+			shared.WriteError(w, r, shared.Validation(map[string]string{"docType": "Pick what this document is."}))
+			return
+		}
+	}
+	sc := scopeFrom(r.Context())
+	a := actorFromRequest(r, "ui")
+	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
+		if in.DocType != nil {
+			if _, err := tx.Exec(r.Context(), `UPDATE crm.files SET doc_type = NULLIF($2, '') WHERE id = $1`, f.ID, *in.DocType); err != nil {
+				return err
+			}
+		}
+		if in.Verified != nil {
+			title := "Marked " + f.Name + " as not checked"
+			if *in.Verified {
+				title = "Verified " + f.Name
+				_, err = tx.Exec(r.Context(), `UPDATE crm.files SET verified_at = now(), verified_by = $2 WHERE id = $1`, f.ID, a.ID)
+			} else {
+				_, err = tx.Exec(r.Context(), `UPDATE crm.files SET verified_at = NULL, verified_by = NULL WHERE id = $1`, f.ID)
+			}
+			if err != nil {
+				return err
+			}
+			return insertActivity(r.Context(), tx, sc.WS, spec.Key, recordID, "file.verified", title, map[string]any{"fileId": f.ID, "verified": *in.Verified}, a.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -122,6 +122,10 @@ export interface FileInfo {
   field?: string;
   createdBy?: string;
   createdAt: string;
+  /** What the document is (pan, aadhaar, address_proof…) and who checked it. */
+  docType?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
 }
 
 export interface Favorite {

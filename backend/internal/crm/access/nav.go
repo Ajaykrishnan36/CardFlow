@@ -1,6 +1,7 @@
 package access
 
 import (
+	"sort"
 	"sync"
 
 	"github.com/google/uuid"
@@ -125,7 +126,45 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 		nav = append(nav, NavItem{Key: "developer", Label: "API & webhooks", Path: base + "/settings/developer", Icon: "code", Group: "Settings", Available: true})
 	}
 	nav = append(nav, NavItem{Key: "settings", Label: "Profile & security", Path: "/crm/me", Icon: "settings", Group: "Account", Available: true})
-	return nav
+	return flowFirst(nav)
+}
+
+// The sidebar starts with the customer journey in the order it happens (D-170), then the
+// products and stock it sells from, then the follow-ups; everything else keeps its place.
+var flowGroups = []struct {
+	name string
+	keys []string
+}{
+	{"Customer journey", []string{"leads", "contacts", "accounts", "opportunities", "test_rides", "quotes", "finance_applications", "payments",
+		"invoices", "vehicle_bookings", "assets", "cases", "service_dues"}},
+	{"Products & stock", []string{"catalog_items", "services", "price_books", "vehicle_stock", "stock_lots", "stock_moves"}},
+	{"Follow-ups", []string{"tasks", "appointments", "events", "upcoming", "notes", "communications", "cards"}},
+}
+
+func flowFirst(nav []NavItem) []NavItem {
+	rank := map[string]int{}
+	group := map[string]string{}
+	n := 0
+	for _, g := range flowGroups {
+		for _, k := range g.keys {
+			n++
+			rank[k], group[k] = n, g.name
+		}
+	}
+	var head, flow, rest []NavItem
+	for _, it := range nav {
+		switch {
+		case it.Group == "" && len(flow) == 0 && len(rest) == 0:
+			head = append(head, it) // the dashboard stays on top
+		case rank[it.Key] > 0:
+			it.Group = group[it.Key]
+			flow = append(flow, it)
+		default:
+			rest = append(rest, it)
+		}
+	}
+	sort.SliceStable(flow, func(i, j int) bool { return rank[flow[i].Key] < rank[flow[j].Key] })
+	return append(append(head, flow...), rest...)
 }
 
 // navGroups: the sidebar section of each object (D-117). Anything not listed (a
@@ -167,7 +206,7 @@ func navGroup(key string) string {
 // may hide those; settings and analytics always stay).
 func IsRecordGroup(g string) bool {
 	switch g {
-	case "CRM", "App", "Sales", "Customer care", "Operations", "Dealership", "Insurance", "Salon", "Real estate", "Products", "Sales operations", "Service", "Purchasing", "Finance":
+	case "CRM", "App", "Sales", "Customer journey", "Products & stock", "Follow-ups", "Customer care", "Operations", "Dealership", "Insurance", "Salon", "Real estate", "Products", "Sales operations", "Service", "Purchasing", "Finance":
 		return true
 	}
 	return false

@@ -563,7 +563,9 @@ func (s *Service) StartBearerSession(ctx context.Context, proof *PhoneProof, met
 
 // OnFirstSignIn is told when someone signs in for the very first time (D-169), so the
 // people who added them hear about it.
-func (s *Service) OnFirstSignIn(fn func(ctx context.Context, identityID uuid.UUID)) { s.onFirstSignIn = fn }
+func (s *Service) OnFirstSignIn(fn func(ctx context.Context, identityID uuid.UUID)) {
+	s.onFirstSignIn = fn
+}
 
 func (s *Service) firstSignIn(ctx context.Context, identityID uuid.UUID) {
 	if s.onFirstSignIn != nil {

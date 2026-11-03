@@ -125,7 +125,7 @@ const strings = {
     position: '{{n}} of {{total}}',
     previous: 'Previous record',
     next: 'Next record',
-    tabFiles: 'Files',
+    tabFiles: 'Documents',
     sendEmail: 'Send email',
     merge: 'Merge duplicates',
     favorite: 'Add to favorites',
@@ -183,7 +183,7 @@ const strings = {
   },
   convert: {
     title: 'Convert lead',
-    subtitle: '{{name}} ({{code}}) becomes a contact — with an account and a deal if you choose. The lead is kept, marked Converted.',
+    subtitle: '{{name}} ({{code}}) becomes your customer, with an opportunity for what they want to buy. The lead is kept, marked Converted.',
     account: 'Account',
     createNew: 'Create new account',
     chooseExisting: 'Choose existing account',

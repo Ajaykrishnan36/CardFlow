@@ -423,7 +423,8 @@ export function recordsApiFor(prefix: string) {
     api<{ ok: boolean }>(`${prefix}/crm/${object}/${enc(id)}/notes`, { method: 'POST', body }),
   deleteTimelineItem: (itemId: string) => api<void>(`${prefix}/timeline/${enc(itemId)}`, { method: 'DELETE' }),
   files: (object: ObjectKey, id: string) => api<{ data: FileInfo[] }>(`${prefix}/crm/${object}/${enc(id)}/files`).then((r) => r.data),
-  uploadFile: (object: ObjectKey, id: string, file: File, field?: string) => uploadForm<FileInfo>(`${prefix}/crm/${object}/${enc(id)}/files`, file, field),
+  uploadFile: (object: ObjectKey, id: string, file: File, field?: string, docType?: string) => uploadForm<FileInfo>(`${prefix}/crm/${object}/${enc(id)}/files`, file, field, docType),
+  updateFile: (fileId: string, body: { docType?: string; verified?: boolean }) => api<void>(`${prefix}/files/${enc(fileId)}`, { method: 'PATCH', body }),
   fileUrl: (fileId: string, inline = false) => `${API_BASE}${prefix}/files/${enc(fileId)}${inline ? '?inline=1' : ''}`,
   deleteFile: (fileId: string) => api<void>(`${prefix}/files/${enc(fileId)}`, { method: 'DELETE' }),
   sendEmail: (object: ObjectKey, id: string, body: { to: string[]; cc?: string[]; subject?: string; body?: string; html?: string; mailboxId?: string; replyTo?: string }) =>
@@ -458,10 +459,11 @@ export interface BulkQuery {
 }
 
 /** multipart upload with the CSRF header (fetch; the JSON client can't send files). */
-async function uploadForm<T>(path: string, file: File, field?: string): Promise<T> {
+async function uploadForm<T>(path: string, file: File, field?: string, docType?: string): Promise<T> {
   const fd = new FormData();
   fd.append('file', file);
   if (field) fd.append('field', field);
+  if (docType) fd.append('docType', docType);
   const token = document.cookie.split('; ').find((c) => c.startsWith('crm_csrf='))?.split('=')[1] ?? '';
   const res = await fetch(API_BASE + path, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': decodeURIComponent(token), Accept: 'application/json' } });
   const data = await res.json().catch(() => null);
@@ -834,6 +836,26 @@ export interface BusinessDashboardSummary {
   mine?: Array<{ object: string; label: string; count: number }>;
 }
 
+export interface OfficeRow {
+  key: string;
+  label: string;
+  value: number;
+  money?: boolean;
+  alert?: boolean;
+  path?: string;
+  note?: string;
+}
+/** The owner's "what is happening" view, counted from the records (D-170). */
+export interface OfficeView {
+  period: string;
+  tiles: OfficeRow[];
+  today: OfficeRow[];
+  funnel: OfficeRow[];
+  testRidesByModel: Array<{ model: string; rides: number; bought: number }>;
+  stockByModel: Array<{ model: string; inStock: number; allocated: number; low: boolean }>;
+  testRideToPurchase?: number;
+}
+
 export interface CardFields {
   personName?: string;
   designation?: string;
@@ -938,6 +960,7 @@ export const businessApi = {
   update: (code: string, body: { name?: string; currency?: string; timezone?: string; profile?: Record<string, string | null> }) =>
     api<BusinessProfile>(`/w/${enc(code)}/business`, { method: 'PATCH', body }),
   summary: (code: string, params: { range: string; from?: string; to?: string }) => api<BusinessDashboardSummary>(`/w/${enc(code)}/dashboard/summary${qs(params)}`),
+  office: (code: string) => api<OfficeView>(`/w/${enc(code)}/dashboard/office`),
   /** Who added and converted what (D-137). 403 for people who only see their own records. */
   team: (code: string, params: { range: string; from?: string; to?: string }) => api<TeamPerformance>(`/w/${enc(code)}/dashboard/team${qs(params)}`)
 };

@@ -64,6 +64,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   useDocumentTitle(record?.title ?? meta?.labelSingular ?? t('records.common.loading'));
 
   const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') as Tab) || 'details');
+  const [showEmpty, setShowEmpty] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const favQ = useQuery({ queryKey: ['favorites', prefix], queryFn: () => scope.api.favorites(), staleTime: 60_000 });
@@ -304,9 +305,14 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   // The activity list lives in the Activity tab now (timeline); the rest stays under Related.
   // Links made in the Relationships panel have their own card (add / remove) on workspace pages.
   const inWorkspace = scope.audience === 'member';
-  const relatedLists = detail.related.filter(
-    (r) => r.object !== 'activities' && !(inWorkspace && (r.key.startsWith('rel:') || (object === 'invoices' && r.object === 'payments') || (hasLines(object) && r.object === 'line_items')))
+  const relatedLists = sortRelated(
+    detail.related.filter(
+      (r) => r.object !== 'activities' && !(inWorkspace && (r.key.startsWith('rel:') || (object === 'invoices' && r.object === 'payments') || (hasLines(object) && r.object === 'line_items')))
+    )
   );
+  // The customer's journey first; empty lists only on demand (D-170).
+  const filledLists = relatedLists.filter((r) => r.rows.length > 0);
+  const emptyLists = relatedLists.filter((r) => r.rows.length === 0);
   const relatedCount = relatedLists.reduce((n, r) => n + r.rows.length, 0);
   const canEmail = Boolean(email) && scope.hasCapability('email.send');
 
@@ -576,7 +582,20 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                 {relatedLists.length === 0 ? (
                   <EmptyState icon={Icon} title={t('records.detail.noRelatedTitle')} body={t('records.detail.noRelatedBody')} />
                 ) : (
-                  relatedLists.map((r) => <RelatedCard key={r.key} list={r} />)
+                  <>
+                    {filledLists.map((r) => (
+                      <RelatedCard key={r.key} list={r} />
+                    ))}
+                    {emptyLists.length ? (
+                      showEmpty ? (
+                        emptyLists.map((r) => <RelatedCard key={r.key} list={r} />)
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => setShowEmpty(true)}>
+                          Show {emptyLists.length} empty lists ({emptyLists.slice(0, 3).map((r) => r.label).join(', ')}…)
+                        </Button>
+                      )
+                    ) : null}
+                  </>
                 )}
               </div>
             )}
@@ -598,7 +617,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
           {inWorkspace && object === 'accounts' ? <AccountTerritoryCard record={record} /> : null}
           {inWorkspace && (object === 'leads' || object === 'contacts' || object === 'opportunities') ? <RecordCampaignsCard object={object} record={record} /> : null}
           {inWorkspace ? <RelationshipsCard object={object} record={record} canEdit={canEdit} /> : null}
-          {relatedLists.map((r) => (
+          {(filledLists.length ? filledLists : relatedLists.slice(0, 4)).map((r) => (
             <RelatedCard key={r.key} list={r} compact onViewAll={() => setTab('related')} />
           ))}
           <RecordInfoCard record={record} meta={meta} />
@@ -1011,4 +1030,16 @@ function DuplicatesBanner({ object, id, enabled, onReview }: { object: ObjectKey
       </Button>
     </div>
   );
+}
+
+/** The order a customer's records are read in: the journey from deal to service first. */
+const RELATED_ORDER = ['opportunities', 'test_rides', 'quotes', 'finance_applications', 'payments', 'invoices', 'sales_orders', 'vehicle_bookings', 'assets',
+  'vehicle_registrations', 'cases', 'service_dues', 'work_orders', 'tasks', 'appointments', 'contracts', 'contacts', 'accounts'];
+
+function sortRelated<T extends { object: string }>(lists: T[]): T[] {
+  const rank = (o: string) => {
+    const i = RELATED_ORDER.indexOf(o);
+    return i < 0 ? RELATED_ORDER.length : i;
+  };
+  return [...lists].sort((a, b) => rank(a.object) - rank(b.object));
 }

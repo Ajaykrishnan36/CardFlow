@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CalendarClock, FileDown, FileOutput, GitBranch, MapPin, Megaphone, Package, Pencil, Plus, Receipt, ShieldCheck, Tag, UserCheck, Users, Wrench, X } from 'lucide-react';
+import { Banknote, CalendarClock, FileDown, FileOutput, GitBranch, MapPin, Megaphone, Package, Pencil, Plus, Receipt, ShieldCheck, Tag, UserCheck, Users, Wrench, X } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import { businessApi, commerceApi, type BundleComponent, type PriceLineInput, type PriceResult } from '@crm/api/endpoints';
 import type { LookupTarget, LookupValue, ObjectKey, RecordRow } from '@crm/api/types';
@@ -16,7 +16,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/comp
 import { Skeleton } from '@crm/components/ui/spinner';
 import { formatMoney } from '@crm/lib/money';
 import { cn } from '@crm/lib/utils';
-import { humanize, recordKeys } from './use-object-meta';
+import { humanize, recordKeys, useObjectMeta } from './use-object-meta';
+import { NewRecordDialog } from './new-record-dialog';
 import { recordHref, useRecordScope } from './record-scope';
 import { documentHtml, printInto, type PrintableObject } from './print-document';
 
@@ -172,7 +173,23 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
     },
     onError: (e) => toast.error(firstError(e))
   });
+  // The quote is made from the opportunity's products (they are copied, priced as agreed).
+  const makeQuote = useMutation({
+    mutationFn: () => {
+      const v: Record<string, unknown> = { opportunityId: record.id, status: 'draft' };
+      for (const k of ['contactId', 'accountId', 'priceBookId']) if (record.values[k]) v[k] = record.values[k];
+      return scope.api.create('quotes', v);
+    },
+    onSuccess: (r) => {
+      toast.success(`Quote ${r.code} made from this opportunity`);
+      refresh();
+      navigate(recordHref(scope, 'quotes', r.id));
+    },
+    onError: (e) => toast.error(firstError(e))
+  });
   const [printing, setPrinting] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const payMeta = useObjectMeta('payments');
   if (!code) return null;
   const d = linesQ.data;
   const p = d?.pricing;
@@ -204,8 +221,42 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
   };
   const status = String(record.values.status ?? '');
   const approval = String(record.values.approvalStatus ?? '');
+  // Money is taken against the quote (D-170); paid in full, the invoice is made from it.
+  const total = Number(record.values.total ?? 0);
+  const balance = record.values.balanceDue != null ? Number(record.values.balanceDue) : total;
   return (
     <Card className="mb-4 overflow-hidden">
+      {paying && payMeta.data ? (
+        <NewRecordDialog
+          object="payments"
+          meta={payMeta.data}
+          open={paying}
+          onOpenChange={(o) => {
+            setPaying(o);
+            if (!o) {
+              refresh();
+              void qc.invalidateQueries({ queryKey: recordKeys.prefix(scope.prefix) });
+            }
+          }}
+          note={balance < total ? `Paid so far ${money(total - balance)} of ${money(total)}. Paid in full, the invoice is made and the deal is won.` : `Paid in full (${money(total)}), the invoice is made and the deal is won. A part payment leaves a task to collect the rest.`}
+          defaultLabels={{
+            quoteId: record.title,
+            ...(record.lookups?.contactId ? { contactId: record.lookups.contactId.label } : {}),
+            ...(record.lookups?.accountId ? { accountId: record.lookups.accountId.label } : {}),
+            ...(record.lookups?.opportunityId ? { opportunityId: record.lookups.opportunityId.label } : {})
+          }}
+          defaults={{
+            quoteId: record.id,
+            ...(record.values.contactId ? { contactId: record.values.contactId } : {}),
+            ...(record.values.accountId ? { accountId: record.values.accountId } : {}),
+            ...(record.values.opportunityId ? { opportunityId: record.values.opportunityId } : {}),
+            amount: Math.round(balance * 100) / 100,
+            paymentDate: new Date().toISOString().slice(0, 10),
+            status: 'paid',
+            paymentMethod: 'cash'
+          }}
+        />
+      ) : null}
       <CardHeader
         className="px-4 py-3"
         title={
@@ -232,6 +283,16 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
             {object === 'quotes' && scope.can('quotes', 'create') && p && p.lines.length > 0 ? (
               <Button size="sm" variant="ghost" loading={next.isPending && next.variables === 'revise'} onClick={() => next.mutate('revise')}>
                 <GitBranch /> New version
+              </Button>
+            ) : null}
+            {object === 'opportunities' && scope.can('quotes', 'create') && p && p.lines.length > 0 && !['closed_won', 'closed_lost'].includes(status) ? (
+              <Button size="sm" loading={makeQuote.isPending} onClick={() => makeQuote.mutate()}>
+                <FileOutput /> Make quote
+              </Button>
+            ) : null}
+            {object === 'quotes' && scope.can('payments', 'create') && p && p.lines.length > 0 && !['declined', 'expired'].includes(status) && approval !== 'pending' && approval !== 'rejected' && balance > 0 ? (
+              <Button size="sm" onClick={() => setPaying(true)}>
+                <Banknote /> Take payment
               </Button>
             ) : null}
             {object === 'quotes' && scope.can('sales_orders', 'create') && p && p.lines.length > 0 && !['declined', 'expired'].includes(status) && approval !== 'pending' && approval !== 'rejected' ? (

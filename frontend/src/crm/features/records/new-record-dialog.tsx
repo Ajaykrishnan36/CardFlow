@@ -40,7 +40,8 @@ export function NewRecordDialog({
   open,
   onOpenChange,
   note,
-  defaults
+  defaults,
+  defaultLabels
 }: {
   object: ObjectKey;
   meta: ObjectMeta;
@@ -50,6 +51,8 @@ export function NewRecordDialog({
   note?: string;
   /** Values to start with (a board column's stage, a calendar day…). */
   defaults?: Record<string, unknown>;
+  /** Labels of lookups given in `defaults` (quoteId → "Quote — Senthil Kumar"). */
+  defaultLabels?: Record<string, string>;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -65,7 +68,7 @@ export function NewRecordDialog({
   useEffect(() => {
     if (!open) return;
     setValues({ ...initialValues(object, meta), ...(defaults ?? {}) });
-    setLabels({});
+    setLabels(defaultLabels ?? {});
     setErrors({});
     setFormError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps

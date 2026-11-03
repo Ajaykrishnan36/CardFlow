@@ -2,11 +2,11 @@ import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Download, FileText, GitMerge, ImageIcon, Mail, Trash2, Upload } from 'lucide-react';
+import { CircleCheck, Download, FileText, GitMerge, ImageIcon, Mail, Trash2, Upload } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import { workspaceToolsApi } from '@crm/api/endpoints';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordRow } from '@crm/api/types';
-import { Alert } from '@crm/components/ui/card';
+import { Alert, Badge } from '@crm/components/ui/card';
 import { Button } from '@crm/components/ui/button';
 import { Input } from '@crm/components/ui/input';
 import { Field } from '@crm/components/ui/field';
@@ -21,20 +21,44 @@ import { useRecordScope } from './record-scope';
 
 const kb = (n: number) => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
+/** What a customer document is (the server keeps the same list). */
+export const DOC_TYPES: Array<{ value: string; label: string }> = [
+  { value: 'pan', label: 'PAN card' },
+  { value: 'aadhaar', label: 'Aadhaar' },
+  { value: 'address_proof', label: 'Address proof' },
+  { value: 'id_proof', label: 'ID proof' },
+  { value: 'photo', label: 'Photo' },
+  { value: 'loan_papers', label: 'Loan papers' },
+  { value: 'signed_quote', label: 'Signed quote / contract' },
+  { value: 'delivery_note', label: 'Delivery note' },
+  { value: 'insurance', label: 'Insurance' },
+  { value: 'rc', label: 'RC book' },
+  { value: 'other', label: 'Other' }
+];
+const docLabel = (v?: string) => DOC_TYPES.find((d) => d.value === v)?.label;
+
+/** A record's documents (D-170): PDFs and photos, each with what it is and whether it was checked. */
 export function RecordFiles({ object, id, canWrite }: { object: ObjectKey; id: string; canWrite: boolean }) {
   const { t } = useTranslation();
   const scope = useRecordScope();
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
+  const [docType, setDocType] = useState('pan');
   const key = [...recordKeys.detail(scope.prefix, object, id), 'files'];
   const q = useQuery({ queryKey: key, queryFn: () => scope.api.files(object, id) });
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: key });
+    void qc.invalidateQueries({ queryKey: [...recordKeys.detail(scope.prefix, object, id), 'timeline'] });
+  };
   const upload = useMutation({
-    mutationFn: (f: File) => scope.api.uploadFile(object, id, f),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: key });
-      void qc.invalidateQueries({ queryKey: [...recordKeys.detail(scope.prefix, object, id), 'timeline'] });
-    },
+    mutationFn: (f: File) => scope.api.uploadFile(object, id, f, undefined, docType),
+    onSuccess: refresh,
     onError: (e) => toast.error(isApiError(e) ? Object.values(e.fieldErrors)[0] ?? e.message : t('common.genericError'))
+  });
+  const update = useMutation({
+    mutationFn: (x: { id: string; docType?: string; verified?: boolean }) => scope.api.updateFile(x.id, { docType: x.docType, verified: x.verified }),
+    onSuccess: refresh,
+    onError: (e) => toast.error(isApiError(e) ? e.message : t('common.genericError'))
   });
   const remove = useMutation({
     mutationFn: (fid: string) => scope.api.deleteFile(fid),
@@ -46,33 +70,45 @@ export function RecordFiles({ object, id, canWrite }: { object: ObjectKey; id: s
       else upload.mutate(f);
     }
   };
+  const files = q.data ?? [];
+  const checked = files.filter((f) => f.verifiedAt).length;
   return (
     <div className="space-y-3 p-3 sm:p-4">
       {canWrite ? (
-        <button
-          type="button"
-          onClick={() => input.current?.click()}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            e.preventDefault();
-            onFiles(e.dataTransfer.files);
-          }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-5 text-[13px] text-muted-foreground hover:border-primary/40 hover:bg-primary-soft/40 hover:text-foreground"
-        >
-          <Upload className="size-4" aria-hidden /> {upload.isPending ? t('files.uploading') : t('files.drop')}
-          <input ref={input} type="file" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} />
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+          <Field label="Document" className="sm:w-52">
+            <Select value={docType} onChange={(e) => setDocType(e.target.value)} options={DOC_TYPES} />
+          </Field>
+          <button
+            type="button"
+            onClick={() => input.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              onFiles(e.dataTransfer.files);
+            }}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-4 text-[13px] text-muted-foreground hover:border-primary/40 hover:bg-primary-soft/40 hover:text-foreground"
+          >
+            <Upload className="size-4" aria-hidden /> {upload.isPending ? t('files.uploading') : t('files.drop')}
+            <input ref={input} type="file" multiple accept="application/pdf,image/*,.doc,.docx" className="hidden" onChange={(e) => onFiles(e.target.files)} />
+          </button>
+        </div>
+      ) : null}
+      {files.length ? (
+        <p className="text-xs text-muted-foreground">
+          {files.length} document{files.length === 1 ? '' : 's'} · {checked} verified{files.length - checked ? ` · ${files.length - checked} to check` : ''}
+        </p>
       ) : null}
       {q.isPending ? (
         <Skeleton className="h-16" />
-      ) : !q.data?.length ? (
+      ) : !files.length ? (
         <p className="py-6 text-center text-[13px] text-muted-foreground">{t('files.empty')}</p>
       ) : (
         <ul className="divide-y rounded-lg border">
-          {q.data.map((f) => {
+          {files.map((f) => {
             const image = f.contentType.startsWith('image/') && f.contentType !== 'image/svg+xml';
             return (
-              <li key={f.id} className="flex items-center gap-3 px-3 py-2">
+              <li key={f.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
                 {image ? (
                   <img src={scope.api.fileUrl(f.id, true)} alt="" className="size-10 shrink-0 rounded border object-cover" />
                 ) : (
@@ -81,7 +117,11 @@ export function RecordFiles({ object, id, canWrite }: { object: ObjectKey; id: s
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
-                  <a href={scope.api.fileUrl(f.id, image || f.contentType === 'application/pdf')} target="_blank" rel="noreferrer" className="block truncate text-[13px] font-medium text-primary hover:underline">
+                  <p className="flex flex-wrap items-center gap-1.5">
+                    {docLabel(f.docType) ? <Badge tone="primary">{docLabel(f.docType)}</Badge> : null}
+                    {f.verifiedAt ? <Badge tone="success">Verified{f.verifiedBy ? ` by ${f.verifiedBy}` : ''}</Badge> : <Badge tone="warning">Not checked</Badge>}
+                  </p>
+                  <a href={scope.api.fileUrl(f.id, image || f.contentType === 'application/pdf')} target="_blank" rel="noreferrer" className="mt-0.5 block truncate text-[13px] font-medium text-primary hover:underline">
                     {f.name}
                   </a>
                   <p className="text-xs text-muted-foreground">
@@ -89,6 +129,11 @@ export function RecordFiles({ object, id, canWrite }: { object: ObjectKey; id: s
                     {relativeTime(f.createdAt)}
                   </p>
                 </div>
+                {canWrite ? (
+                  <Button size="sm" variant={f.verifiedAt ? 'ghost' : 'outline'} loading={update.isPending && update.variables?.id === f.id} onClick={() => update.mutate({ id: f.id, verified: !f.verifiedAt })}>
+                    {f.verifiedAt ? 'Undo verify' : <><CircleCheck /> Verify</>}
+                  </Button>
+                ) : null}
                 <Button variant="subtle" size="icon-sm" asChild>
                   <a href={scope.api.fileUrl(f.id)} aria-label={t('files.download', { name: f.name })}>
                     <Download />

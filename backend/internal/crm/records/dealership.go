@@ -155,6 +155,45 @@ var autoNamed = map[string]bool{"vehicle_stock": true, "vehicle_bookings": true,
 	"care_schedules": true, "due_items": true, "call_logs": true, "stock_lots": true, "stock_moves": true, "item_reservations": true,
 	"memberships": true, "checklist_items": true, "instalments": true, "payout_entries": true}
 
+// genericName names a record from the customer and the product or record it is about:
+// "Quote — Senthil Kumar · Hero Splendor+", "Payment ₹96,722.08 — Senthil Kumar".
+func (h *Handler) genericName(ctx context.Context, q querier, ws uuid.UUID, spec *objectSpec, values map[string]any) string {
+	who := ""
+	for _, k := range []struct{ field, object string }{{"contactId", "contacts"}, {"accountId", "accounts"}, {"leadId", "leads"}} {
+		if who = h.labelOf(ctx, q, ws, k.object, values[k.field]); who != "" {
+			break
+		}
+	}
+	what := ""
+	for _, k := range []struct{ field, object string }{{"itemId", "catalog_items"}, {"assetId", "assets"}, {"vehicleId", "vehicle_stock"},
+		{"invoiceId", "invoices"}, {"quoteId", "quotes"}, {"orderId", "sales_orders"}, {"opportunityId", "opportunities"}, {"caseId", "cases"}} {
+		if what = h.labelOf(ctx, q, ws, k.object, values[k.field]); what != "" {
+			break
+		}
+	}
+	head := spec.Singular
+	if amt, ok := asNumber(values["amount"]); ok && amt > 0 && (spec.Key == "payments" || spec.Key == "refunds" || spec.Key == "income" || spec.Key == "expenses") {
+		head += " " + rupeesText(amt)
+		if who != "" {
+			what = "" // "Payment ₹50,000 — Arjun Nair"
+		}
+	}
+	if who != "" && what != "" && !strings.Contains(what, who) {
+		return joinNonEmpty(" — ", head, who+" · "+what)
+	}
+	if who != "" && strings.Contains(what, who) {
+		who = "" // "Quote — Arjun Nair — Hero Glamour 125", not the name twice
+	}
+	name := joinNonEmpty(" — ", head, who, what)
+	if name == head {
+		name = head + " " + time.Now().In(ist).Format("2 Jan 2006, 3:04 pm")
+	}
+	if len(name) > 200 {
+		name = name[:200]
+	}
+	return name
+}
+
 func (h *Handler) labelOf(ctx context.Context, q querier, ws uuid.UUID, object string, id any) string {
 	spec := specFor(object)
 	s := asString(id)
@@ -176,19 +215,25 @@ func joinNonEmpty(sep string, parts ...string) string {
 	return strings.Join(out, sep)
 }
 
+// namedByHand: built-in objects whose name is what they are (a product, a price list, a
+// branch): those still need one typed in. Every other built-in record names itself.
+var namedByHand = map[string]bool{"catalog_items": true, "price_books": true, "territories": true, "sla_policies": true,
+	"checklist_templates": true, "solutions": true, "business_branches": true, "service_resources": true, "salon_products": true,
+	"makeup_kits": true, "property_units": true, "tasks": true, "events": true}
+
 // autoName fills the name of a new record that was saved without one.
 func (h *Handler) autoName(ctx context.Context, q querier, ws uuid.UUID, spec *objectSpec, values map[string]any) {
-	if !autoNamed[spec.Key] && !packMoreKeys[spec.Key] {
-		return
+	if autoNamed[spec.Key] || packMoreKeys[spec.Key] {
+		// These records also start at their first status (In stock, Booked, Scheduled…).
+		if spec.StatusField != "" && len(spec.Statuses) > 0 && isEmpty(values["status"]) {
+			values["status"] = spec.Statuses[0].Value
+		}
 	}
-	// These records also start at their first status (In stock, Booked, Scheduled…).
-	if spec.StatusField != "" && len(spec.Statuses) > 0 && isEmpty(values["status"]) {
-		values["status"] = spec.Statuses[0].Value
+	if !isEmpty(values["name"]) || namedByHand[spec.Key] || !standardObject(spec.Key) {
+		return
 	}
 	if !autoNamed[spec.Key] {
-		return
-	}
-	if !isEmpty(values["name"]) {
+		values["name"] = h.genericName(ctx, q, ws, spec, values)
 		return
 	}
 	item := h.labelOf(ctx, q, ws, "catalog_items", values["itemId"])
@@ -552,6 +597,21 @@ func (h *Handler) deliverBooking(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a
 	}
 	if err := h.buildServicePlan(ctx, tx, ws, assetRow, b, delivered, odo); err != nil {
 		return nil, err
+	}
+	// The free-service ticket opens on delivery day (D-170), waiting for the service team to
+	// check the customer is due (the first-service days or km) before the SLA clock matters.
+	if cases := specFor("cases"); cases != nil {
+		p := h.planFor(ctx, tx, ws, b.id("itemId"))
+		start, _ := time.Parse("2006-01-02", delivered)
+		who := h.labelOf(ctx, tx, ws, "contacts", b.text("contactId"))
+		c := map[string]any{"name": joinNonEmpty(" — ", "Free service 1", joinNonEmpty(" · ", model, who)), "status": "new", "priority": "medium",
+			"category": "service", "ownerId": owner, "assetId": assetID, "accountId": b.text("accountId"), "contactId": b.text("contactId"),
+			"description": fmt.Sprintf("Opened on delivery (%s). Due by %s or at %d km, whichever comes first. Check the date and the odometer before the service.",
+				delivered, start.AddDate(0, 0, int(p.firstDays)).Format("2 Jan 2006"), int(odo+p.firstKm))}
+		clean(c)
+		if _, err := h.createRecord(ctx, tx, ws, cases, sys, c); err != nil {
+			return nil, err
+		}
 	}
 	// A thank-you and feedback call three days on.
 	if specFor("tasks") != nil {

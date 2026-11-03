@@ -23,6 +23,7 @@ import { SummarySection } from './summary-section';
 import { TeamSection } from './team-section';
 import { GettingStartedPanel } from './getting-started';
 import { AtAGlance } from './at-a-glance';
+import { OfficeCard } from './office-card';
 
 /** /crm/w/:ws/home — the member's dashboard (or the first module when dashboard.view isn't granted). */
 const wsPrefix = (code: string) => `/w/${encodeURIComponent(code)}`;
@@ -123,6 +124,7 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
       ) : (
         <div className="space-y-6">
           <AtAGlance code={code} />
+          <OfficeCard code={code} />
           {arrange(DASHBOARD_SECTIONS[device].filter((s) => s.key !== 'section:quick'), (s) => s.key, layout).map((s) =>
             s.key === 'section:start' ? (
               <GettingStartedPanel key={s.key} code={code} />

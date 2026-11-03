@@ -629,7 +629,7 @@ export interface ConvertBody {
   account: { mode: 'new'; name: string; kind: 'business' | 'individual' } | { mode: 'existing'; accountId: string } | { mode: 'none' };
   createContact: boolean;
   /** Create a deal too; omitted → the product's setup decides. */
-  opportunity?: { create: boolean; name?: string; amount?: number | null; closeDate?: string };
+  opportunity?: { create: boolean; name?: string; amount?: number | null; closeDate?: string; items?: Array<{ itemId: string; quantity: number }> };
   /** Give the converted person a login (preferred over `provision`). Not allowed inside customer workspaces. */
   access?: GiveLoginBody;
   /** Legacy: create a customer workspace and invite them as its Super Admin. */

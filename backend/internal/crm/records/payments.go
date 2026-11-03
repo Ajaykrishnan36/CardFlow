@@ -120,6 +120,12 @@ func (h *Handler) paymentSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a a
 	if op == "delete" {
 		return after, nil
 	}
+	// Money taken against a quote: paid in full, the invoice is made and the deal is won.
+	if q := after.id("quoteId"); q != uuid.Nil && after.id("invoiceId") == uuid.Nil {
+		if err := h.settleQuote(ctx, tx, ws, a, q); err != nil {
+			return nil, err
+		}
+	}
 	row, _, err := h.getRow(ctx, tx, ws, specFor("payments"), id, nil)
 	return row, err
 }

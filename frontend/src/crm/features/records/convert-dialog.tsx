@@ -1,16 +1,18 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { currencySymbol, defaultCurrency } from '@crm/lib/money';
+import { formatMoney } from '@crm/lib/money';
+import { commerceApi } from '@crm/api/endpoints';
+import { codeOf } from './record-commerce';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Building2, CircleCheck, Contact, Handshake, KeyRound, Info } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowRight, Building2, CircleCheck, Contact, Handshake, KeyRound, Info, Plus, X } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { ConvertBody, ConvertResult, GiveLoginBody, GiveLoginResult, LookupValue, RecordRow } from '@crm/api/types';
 import { Button } from '@crm/components/ui/button';
 import { Alert } from '@crm/components/ui/card';
 import { Field } from '@crm/components/ui/field';
 import { Input } from '@crm/components/ui/input';
-import { Checkbox, Select } from '@crm/components/ui/form-controls';
+import { Checkbox } from '@crm/components/ui/form-controls';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/components/ui/menu';
 import { DevLink } from '@crm/components/page';
 import { cn } from '@crm/lib/utils';
@@ -43,6 +45,8 @@ interface Draft {
   oppName: string;
   oppAmount: string;
   oppCloseDate: string;
+  /** What they want to buy: product + quantity, priced from the price book (D-170). */
+  items: Array<{ key: string; item: LookupValue | null; quantity: string }>;
 }
 
 function draftFor(lead: RecordRow, createOpportunity: boolean): Draft {
@@ -60,7 +64,8 @@ function draftFor(lead: RecordRow, createOpportunity: boolean): Draft {
     createOpportunity,
     oppName: `${org || fullName} — new deal`,
     oppAmount: '',
-    oppCloseDate: `${close.getFullYear()}-${String(close.getMonth() + 1).padStart(2, '0')}-${String(close.getDate()).padStart(2, '0')}`
+    oppCloseDate: `${close.getFullYear()}-${String(close.getMonth() + 1).padStart(2, '0')}-${String(close.getDate()).padStart(2, '0')}`,
+    items: [{ key: uuid(), item: null, quantity: '1' }]
   };
 }
 
@@ -72,7 +77,7 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
   // Tenants don't create tenants: logins are only given from the owner console.
   const canGiveLogin = scope.audience === 'owner';
   const canOpportunity = scope.can('opportunities', 'create');
-  const [d, setD] = useState<Draft>(() => draftFor(lead, scope.setup.createOpportunity && canOpportunity));
+  const [d, setD] = useState<Draft>(() => draftFor(lead, canOpportunity));
   const notQualified = scope.setup.requireQualified && lead.values.status !== 'qualified';
   const [idemKey, setIdemKey] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -88,7 +93,7 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
   // Fresh form + idempotency key each time the dialog opens: retries of one attempt reuse the key.
   useEffect(() => {
     if (!open) return;
-    setD(draftFor(lead, scope.setup.createOpportunity && canOpportunity));
+    setD(draftFor(lead, canOpportunity));
     setIdemKey(uuid());
     setErrors({});
     setAccessErrors({});
@@ -100,6 +105,18 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
   }, [open]);
 
   const patch = (p: Partial<Draft>) => setD((prev) => ({ ...prev, ...p }));
+  const picked = d.items.filter((x) => x.item);
+  const code = codeOf(scope.prefix);
+  const priceKey = picked.map((x) => `${x.item!.id}:${Number(x.quantity) || 1}`).join(',');
+  // Prices come from the price book, never typed in: preview what the opportunity will hold.
+  const price = useQuery({
+    queryKey: ['convert-price', code, priceKey],
+    queryFn: () => commerceApi(code).preview({ lines: picked.map((x) => ({ itemId: x.item!.id, quantity: Number(x.quantity) || 1 })) }),
+    enabled: Boolean(code && open && picked.length && d.createOpportunity),
+    staleTime: 30_000
+  });
+  const setItem = (key: string, p: Partial<Draft['items'][number]>) =>
+    setD((prev) => ({ ...prev, items: prev.items.map((x) => (x.key === key ? { ...x, ...p } : x)) }));
 
   const convert = useMutation({
     mutationFn: (body: ConvertBody) => scope.api.convertLead(lead.id, body, idemKey),
@@ -144,11 +161,19 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
       setFormError(t('records.convert.noneNeedsContact'));
       return;
     }
+    if (d.createOpportunity && canOpportunity && !picked.length) {
+      setErrors({ items: 'Pick the product they want to buy.' });
+      return;
+    }
     const body: ConvertBody = {
       account: d.mode === 'new' ? { mode: 'new', name: d.accountName.trim(), kind: d.kind } : d.mode === 'existing' ? { mode: 'existing', accountId: d.existing!.id } : { mode: 'none' },
       createContact: d.createContact,
       opportunity: canOpportunity
-        ? { create: d.createOpportunity, name: d.oppName.trim() || undefined, amount: d.oppAmount ? Number(d.oppAmount) : null, closeDate: d.oppCloseDate || undefined }
+        ? {
+            create: d.createOpportunity,
+            closeDate: d.oppCloseDate || undefined,
+            items: picked.map((x) => ({ itemId: x.item!.id, quantity: Number(x.quantity) || 1 }))
+          }
         : undefined,
       access: canGiveLogin && email && d.access ? d.access : undefined
     };
@@ -179,7 +204,7 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
               <ul className="divide-y rounded-lg border">
                 {result.accountId ? <ResultRow icon={Building2} label={t('records.convert.account')} name={accountLabel} to={accountHref} /> : null}
                 {result.contactId ? <ResultRow icon={Contact} label={t('records.convert.contact')} name={fullName} to={contactHref} /> : null}
-                {result.opportunityId ? <ResultRow icon={Handshake} label={t('records.convert.opportunity')} name={d.oppName} to={opportunityHref} /> : null}
+                {result.opportunityId ? <ResultRow icon={Handshake} label={t('records.convert.opportunity')} name={picked.length ? `${fullName} — ${picked[0].item!.label.split(' · ')[0]}${picked.length > 1 ? ` + ${picked.length - 1} more` : ''}` : d.oppName} to={opportunityHref} /> : null}
                 {showWorkspace && result.workspaceId ? (
                   <ResultRow
                     icon={Building2}
@@ -231,77 +256,102 @@ export function ConvertLeadDialog({ lead, open, onOpenChange }: { lead: RecordRo
               {formError ? <Alert tone="danger">{formError}</Alert> : null}
               {notQualified ? <Alert tone="warning" title={t('records.convert.needsQualifiedTitle')}>{t('records.convert.needsQualified')}</Alert> : null}
 
-              <Section icon={Building2} title={t('records.convert.account')}>
+              <Section icon={Contact} title="Who is buying?">
                 <div className="grid gap-3 sm:grid-cols-3">
-                  <RadioCard checked={d.mode === 'new'} onSelect={() => patch({ mode: 'new' })} name="account-mode" label={t('records.convert.createNew')}>
+                  <RadioCard
+                    checked={d.mode === 'none'}
+                    onSelect={() => patch({ mode: 'none', createContact: true })}
+                    name="account-mode"
+                    label="A person"
+                  >
+                    <p className="mt-1.5 text-xs text-muted-foreground">{fullName} becomes a contact. Most showroom buyers.</p>
+                  </RadioCard>
+                  <RadioCard checked={d.mode === 'new'} onSelect={() => patch({ mode: 'new', kind: 'business', createContact: true })} name="account-mode" label="A business">
                     {d.mode === 'new' ? (
-                      <div className="mt-3 space-y-3" onClick={(e) => e.stopPropagation()}>
-                        <Field label={t('records.convert.accountName')} error={err('accountName', 'account.name', 'name')}>
+                      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                        <Field label="Business name" error={err('accountName', 'account.name', 'name')}>
                           <Input value={d.accountName} onChange={(e) => patch({ accountName: e.target.value })} />
                         </Field>
-                        <Field label={t('records.convert.kind')}>
-                          <Select
-                            value={d.kind}
-                            onChange={(e) => patch({ kind: e.target.value as Draft['kind'] })}
-                            options={[
-                              { value: 'business', label: t('records.convert.kindBusiness') },
-                              { value: 'individual', label: t('records.convert.kindIndividual') }
-                            ]}
-                          />
-                        </Field>
+                        <p className="mt-1.5 text-xs text-muted-foreground">A fleet or company: an account, with {firstName} as its contact.</p>
                       </div>
-                    ) : null}
+                    ) : (
+                      <p className="mt-1.5 text-xs text-muted-foreground">A fleet or company buying.</p>
+                    )}
                   </RadioCard>
-                  <RadioCard checked={d.mode === 'none'} onSelect={() => patch({ mode: 'none', createContact: true })} name="account-mode" label={t('records.convert.noAccount')}>
-                    {d.mode === 'none' ? <p className="mt-2 text-xs text-muted-foreground">{t('records.convert.noAccountHint')}</p> : null}
-                  </RadioCard>
-                  <RadioCard checked={d.mode === 'existing'} onSelect={() => patch({ mode: 'existing' })} name="account-mode" label={t('records.convert.chooseExisting')}>
+                  <RadioCard checked={d.mode === 'existing'} onSelect={() => patch({ mode: 'existing', createContact: true })} name="account-mode" label="A business we know">
                     {d.mode === 'existing' ? (
-                      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                      <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                         <Field label={t('records.convert.accountSearch')} error={err('accountId', 'account.accountId', 'account')}>
                           <LookupCombobox target="accounts" value={d.existing?.id ?? null} label={d.existing?.label} onChange={(v) => patch({ existing: v })} />
                         </Field>
                       </div>
-                    ) : null}
+                    ) : (
+                      <p className="mt-1.5 text-xs text-muted-foreground">Add {firstName} to an account you already have.</p>
+                    )}
                   </RadioCard>
                 </div>
               </Section>
 
-              <Section icon={Contact} title={t('records.convert.contact')}>
-                <Checkbox
-                  checked={d.createContact}
-                  onCheckedChange={(c) => patch({ createContact: c })}
-                  label={t('records.convert.createContact')}
-                  disabled={d.mode === 'none'}
-                  description={
-                    d.createContact
-                      ? d.mode === 'none'
-                        ? t('records.convert.contactOnly', { name: fullName })
-                        : t('records.convert.contactWillBe', { name: fullName, account: accountLabel || '—' })
-                      : t('records.convert.noContact')
-                  }
-                />
-              </Section>
-
               {canOpportunity ? (
-                <Section icon={Handshake} title={t('records.convert.opportunity')}>
+                <Section icon={Handshake} title="What do they want to buy?">
                   <Checkbox
                     checked={d.createOpportunity}
                     onCheckedChange={(c) => patch({ createOpportunity: c })}
-                    label={t('records.convert.createOpportunity')}
-                    description={scope.setup.createOpportunity ? t('records.convert.opportunityDefaultOn') : t('records.convert.opportunityHint')}
+                    label="Start an opportunity with these products"
+                    description="Prices come from your price book. You can add more products to the opportunity at each follow-up, then make the quote from it."
                   />
                   {d.createOpportunity ? (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <Field label={t('records.convert.oppName')} error={err('opportunity.name')} className="sm:col-span-3">
-                        <Input value={d.oppName} onChange={(e) => patch({ oppName: e.target.value })} />
-                      </Field>
-                      <Field label={t('records.convert.oppAmount')} error={err('opportunity.amount')}>
-                        <Input type="number" inputMode="decimal" leading={<span className="text-[13px]">{currencySymbol(defaultCurrency())}</span>} value={d.oppAmount} onChange={(e) => patch({ oppAmount: e.target.value })} />
-                      </Field>
-                      <Field label={t('records.convert.oppClose')} error={err('opportunity.closeDate')}>
+                    <div className="mt-3 space-y-2">
+                      {d.items.map((x, i) => {
+                        const line = price.data?.lines.find((l) => l.itemId === x.item?.id);
+                        return (
+                          <div key={x.key} className="grid grid-cols-[1fr_88px_auto] items-end gap-2">
+                            <Field label={i === 0 ? 'Product' : undefined} error={i === 0 ? err('items', 'opportunity.items.lines', 'opportunity.items') : undefined}>
+                              <LookupCombobox target="catalog_items" value={x.item?.id ?? null} label={x.item?.label} onChange={(v) => setItem(x.key, { item: v })} placeholder="Pick a product" />
+                            </Field>
+                            <Field label={i === 0 ? 'Qty' : undefined}>
+                              <Input type="number" inputMode="numeric" min={1} value={x.quantity} onChange={(e) => setItem(x.key, { quantity: e.target.value })} />
+                            </Field>
+                            <div className="flex h-9 items-center gap-2">
+                              <span className="w-28 text-right text-[13px] tabular-nums text-foreground">{line ? formatMoney(line.total, price.data?.currency) : '—'}</span>
+                              {d.items.length > 1 ? (
+                                <Button type="button" variant="ghost" size="icon-sm" aria-label="Remove product" onClick={() => patch({ items: d.items.filter((y) => y.key !== x.key) })}>
+                                  <X />
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <Button type="button" variant="outline" size="sm" onClick={() => patch({ items: [...d.items, { key: uuid(), item: null, quantity: '1' }] })}>
+                        <Plus /> Add another product
+                      </Button>
+                      {price.data && picked.length ? (
+                        <dl className="mt-2 space-y-1 rounded-lg border bg-muted/30 px-3 py-2 text-[13px]">
+                          {price.data.priceBook ? (
+                            <div className="flex justify-between text-muted-foreground">
+                              <dt>Price book</dt>
+                              <dd>{price.data.priceBook}</dd>
+                            </div>
+                          ) : null}
+                          <div className="flex justify-between text-muted-foreground">
+                            <dt>Before tax</dt>
+                            <dd className="tabular-nums">{formatMoney(price.data.subtotal - price.data.discount, price.data.currency)}</dd>
+                          </div>
+                          <div className="flex justify-between text-muted-foreground">
+                            <dt>GST</dt>
+                            <dd className="tabular-nums">{formatMoney(price.data.tax, price.data.currency)}</dd>
+                          </div>
+                          <div className="flex justify-between font-semibold text-foreground">
+                            <dt>Opportunity amount</dt>
+                            <dd className="tabular-nums">{formatMoney(price.data.total, price.data.currency)}</dd>
+                          </div>
+                        </dl>
+                      ) : null}
+                      <Field label={t('records.convert.oppClose')} error={err('opportunity.closeDate')} className="max-w-[220px]">
                         <Input type="date" value={d.oppCloseDate} onChange={(e) => patch({ oppCloseDate: e.target.value })} />
                       </Field>
+                      <p className="text-xs text-muted-foreground">No quote or invoice is made now. The quote comes from the opportunity; the invoice only once it is paid.</p>
                     </div>
                   ) : null}
                 </Section>

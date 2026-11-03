@@ -50,9 +50,9 @@ const strings = {
     callLogged: 'Call logged.'
   },
   files: {
-    drop: 'Drop files here or click to upload (up to 10 MB each)',
+    drop: 'Drop a PDF or photo here, or click to upload (up to 10 MB each)',
     uploading: 'Uploading…',
-    empty: 'No files yet.',
+    empty: 'No documents yet. Add the customer’s PAN, Aadhaar, address proof or loan papers here.',
     tooBig: '{{name}} is larger than 10 MB.',
     download: 'Download {{name}}',
     delete: 'Delete {{name}}'

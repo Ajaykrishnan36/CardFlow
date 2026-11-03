@@ -175,9 +175,9 @@ func standardObjects() []ObjectDefinition {
 					ofSelect("billingPeriod", "Billing period", opts("monthly", "Monthly", "quarterly", "Quarterly", "yearly", "Yearly", "one_time", "One-time")),
 					of("startDate", "Start date", "date"), of("endDate", "End date", "date"), of("autoRenew", "Renews automatically", "boolean"),
 					of("description", "Notes", "textarea")}}},
-		{Key: "catalog_items", Module: "catalog", Singular: "Catalog item", Plural: "Catalog", Icon: "package", Prefix: "ITM",
-			Description: "The products and services you sell, with prices.",
-			ObjectBody: ObjectBody{NameLabel: "Item name", StatusLabel: "Status", Statuses: []StatusOption{
+		{Key: "catalog_items", Module: "catalog", Singular: "Product", Plural: "Products", Icon: "package", Prefix: "ITM",
+			Description: "The products and services you sell: each one once, with its details and price. Price books, quotes, stock and assets pick from here.",
+			ObjectBody: ObjectBody{NameLabel: "Product name", StatusLabel: "Status", Statuses: []StatusOption{
 				st("active", "Active", "success"), st("inactive", "Inactive", "neutral")},
 				Fields: []ObjectField{
 					of("sku", "SKU", "text"), of("unitPrice", "Unit price", "currency"), of("unit", "Unit", "text"), of("category", "Category", "text"),
@@ -512,7 +512,38 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:common-v1", commonOpsUpgrades()); err != nil {
 		return err
 	}
-	return applyObjectUpgrades(ctx, tx, "objects:links-v1", linkUpgrades())
+	if err := applyObjectUpgrades(ctx, tx, "objects:links-v1", linkUpgrades()); err != nil {
+		return err
+	}
+	if err := applyObjectUpgrades(ctx, tx, "objects:flow-v1", flowUpgrades()); err != nil {
+		return err
+	}
+	return productsLabel(ctx, tx)
+}
+
+// flowUpgrades (D-170): what the customer happy flow adds — money taken against a quote,
+// the balance task, and service tickets.
+func flowUpgrades() map[string]objectUpgrade {
+	return map[string]objectUpgrade{
+		"quotes":   {fields: []ObjectField{of("amountPaid", "Paid so far", "currency"), of("balanceDue", "Balance due", "currency")}},
+		"payments": {fields: []ObjectField{ofLookup("quoteId", "Quote", "quotes"), ofLookup("opportunityId", "Opportunity", "opportunities")}},
+		"tasks":    {fields: []ObjectField{ofLookup("quoteId", "Quote", "quotes")}},
+		"cases":    {options: map[string][]Option{"category": opts("service", "Service")}},
+	}
+}
+
+// productsLabel (once): the catalog is the product list, so it is called Products — unless
+// the business renamed it already.
+func productsLabel(ctx context.Context, tx pgx.Tx) error {
+	const marker = "objects:products-label-v1"
+	tag, err := tx.Exec(ctx, `INSERT INTO crm.connector_state (key, value) VALUES ($1, '{"done":true}') ON CONFLICT (key) DO NOTHING`, marker)
+	if err != nil || tag.RowsAffected() == 0 {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE crm.object_definitions SET singular = 'Product', plural = 'Products',
+		definition = jsonb_set(definition, '{nameLabel}', '"Product name"'), updated_at = now()
+		WHERE key = 'catalog_items' AND is_standard AND singular = 'Catalog item' AND plural = 'Catalog'`)
+	return err
 }
 
 // allStandardObjects is the general CRM plus the industry packs.
@@ -779,6 +810,12 @@ func buildSpec(d *ObjectDefinition) *objectSpec {
 	name := req(text("name", d.NameLabel, "name"))
 	if name.Label == "" {
 		name.Label = "Name"
+	}
+	// A built-in record that is about a customer or a product names itself (D-170): the
+	// name is filled in from what was picked, so nobody types "Quote for Senthil".
+	if d.Standard && !namedByHand[d.Key] {
+		name.Required = false
+		name.HelpText = "Leave empty: it is named from the customer and product you pick."
 	}
 	fields := []Field{name}
 	hasStatus := len(d.Statuses) > 0

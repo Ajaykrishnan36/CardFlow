@@ -1663,6 +1663,37 @@ three and "and N more". The dashboard's "New …" buttons make the singular prop
 - The top bar finds the business from the memberships right after sign-in, so the bell is
   there before the first reload.
 
+## D-170 — The customer happy flow is connected end to end
+
+From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
+
+- **No names to invent.** A built-in record that is about a customer or product names
+  itself when the name is left empty ("Quote — Arjun Nair — Hero Glamour 125", "Payment
+  ₹50,000 — Arjun Nair"). Products, price books, branches, service resources, SLA policies,
+  checklists, articles, tasks and events still take a typed name.
+- **Catalog is called Products** (one record per product or service; price books, quotes,
+  stock and assets pick from it). Renamed once on existing data unless already renamed.
+- **Converting a lead** asks who is buying (a person, a business, a business we know) and what
+  they want: products and quantities, priced from the price book with GST shown live. The
+  opportunity is always started (it can be unticked), named from the product, holding those
+  lines; its amount is their total. No quote and no invoice are made at conversion.
+- The opportunity's **Make quote** makes the quote from its products.
+- **Money is taken against the quote** (Take payment; payments get a Quote link). A part payment
+  accepts the quote, keeps Paid so far / Balance due on it and one open "Collect the balance"
+  task. Paid in full: an order and the **invoice are made only then**, every payment is
+  applied to the invoice (Paid, ₹0 due), the opportunity is Closed won for the invoice total
+  and the balance task is completed. A declined, expired or unapproved quote refuses money.
+- **Delivery** also opens the free-service ticket (a Service case on the bike: due date and km,
+  "check before the service").
+- **Documents**: a file on any record says what it is (PAN, Aadhaar, address proof, loan papers…)
+  and can be verified (who and when, on the timeline). The tab is called Documents.
+- **Customer page**: related lists in journey order, empty ones folded away.
+- **Menu**: Customer journey (leads → … → service schedule), Products & stock, Follow-ups first.
+- **Dashboard → What is happening**: this month's new leads, test rides, bought after a ride,
+  test ride → purchase %, revenue won, loans waiting; the funnel; test ride → purchase by model;
+  stock by model (low at 2 or fewer); today's follow-ups, rides, approvals, payments, balances,
+  deliveries, documents to verify, service tickets, SLA breaches, services due, sales by person.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

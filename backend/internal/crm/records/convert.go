@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -35,6 +36,9 @@ type convertInput struct {
 		Name      string   `json:"name"`
 		Amount    *float64 `json:"amount"`
 		CloseDate string   `json:"closeDate"`
+		// Items: the products the person wants (D-170). Priced from the price book;
+		// the opportunity's amount is their total.
+		Items []PriceLineIn `json:"items"`
 	} `json:"opportunity,omitempty"`
 	Access    *platform.GiveLoginInput `json:"access,omitempty"`
 	Provision *struct {
@@ -343,6 +347,20 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 						vals["closeDate"] = in.Opportunity.CloseDate
 					}
 				}
+				var items []PriceLineIn
+				if in.Opportunity != nil {
+					for _, it := range in.Opportunity.Items {
+						if strings.TrimSpace(it.ItemID) != "" {
+							items = append(items, it)
+						}
+					}
+				}
+				if name == "" && len(items) > 0 {
+					name = firstNonEmpty(l.organization, fullName) + " — " + h.labelOf(ctx, tx, ws, "catalog_items", items[0].ItemID)
+					if len(items) > 1 {
+						name += fmt.Sprintf(" + %d more", len(items)-1)
+					}
+				}
 				if name == "" {
 					name = firstNonEmpty(l.organization, fullName) + " — new deal"
 				}
@@ -373,6 +391,19 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 				}
 				if oid, err := uuid.Parse(row.ID); err == nil {
 					res.OpportunityID = &oid
+					if len(items) > 0 {
+						if _, err := h.writeLines(ctx, tx, scopeFrom(r.Context()), "opportunities", oid, PriceRequest{Lines: items}, actorFromRequest(r, "convert"), false); err != nil {
+							var se *shared.Error
+							if errors.As(err, &se) && len(se.FieldErrors) > 0 {
+								fe := map[string]string{}
+								for k, v := range se.FieldErrors {
+									fe["opportunity.items."+k] = v
+								}
+								return shared.Validation(fe)
+							}
+							return err
+						}
+					}
 				}
 			}
 		}
