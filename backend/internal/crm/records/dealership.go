@@ -171,6 +171,9 @@ func (h *Handler) genericName(ctx context.Context, q querier, ws uuid.UUID, spec
 			break
 		}
 	}
+	if spec.Key == "catalog_entries" {
+		return joinNonEmpty(" · ", what, asString(values["variant"]))
+	}
 	head := spec.Singular
 	if amt, ok := asNumber(values["amount"]); ok && amt > 0 && (spec.Key == "payments" || spec.Key == "refunds" || spec.Key == "income" || spec.Key == "expenses") {
 		head += " " + rupeesText(amt)
@@ -1073,7 +1076,9 @@ func (h *Handler) grantPackAccess(ctx context.Context, marker string, objects []
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.connector_state WHERE key = $1)`, marker).Scan(&done); err != nil || done {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT id, system_key, rules FROM crm.permission_sets WHERE system_key IN ('ADMIN', 'STAFF')`)
+		// Sales staff and Service staff sets start from Staff (D-158), so they get what Staff gets.
+		rows, err := tx.Query(ctx, `SELECT id, CASE WHEN system_key IN ('SALES_STAFF', 'SERVICE_STAFF') THEN 'STAFF' ELSE system_key END, rules
+			FROM crm.permission_sets WHERE system_key IN ('ADMIN', 'STAFF', 'SALES_STAFF', 'SERVICE_STAFF')`)
 		if err != nil {
 			return err
 		}

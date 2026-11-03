@@ -1694,6 +1694,21 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   stock by model (low at 2 or fewer); today's follow-ups, rides, approvals, payments, balances,
   deliveries, documents to verify, service tickets, SLA breaches, services due, sales by person.
 
+## D-171 — Catalog on top of Products; payment plans from the quote
+
+- **Products** holds each product once with its price. **Catalog** (`catalog_entries`, under
+  Products & stock) is what customers are shown about it, one entry per variant: brand, model
+  year, colours, engine / material, power, mileage, top speed, tank / battery, size, weight,
+  seat height, warranty, brochure link, photos, key features and full specifications — generic
+  enough for any product. An entry can't be saved without its product and is named from it
+  ("Hero Glamour 125 · Disc · Xtec"). Staff (Sales and Service staff included) read the catalog;
+  admins change it. Existing staff sets got it once (`access:catalog-v1`), and the pack grants
+  now reach the Sales staff and Service staff sets too.
+- **Payment plan** on a quote splits what is still due into 2–60 instalments (first due date,
+  days apart; the last one takes the paise left over). One plan per quote. Money taken against
+  the quote pays the instalments in date order (Paid / Part paid); paying it all off makes the
+  invoice as in D-170.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

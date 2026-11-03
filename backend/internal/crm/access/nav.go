@@ -137,7 +137,7 @@ var flowGroups = []struct {
 }{
 	{"Customer journey", []string{"leads", "contacts", "accounts", "opportunities", "test_rides", "quotes", "finance_applications", "payments",
 		"invoices", "vehicle_bookings", "assets", "cases", "service_dues"}},
-	{"Products & stock", []string{"catalog_items", "services", "price_books", "vehicle_stock", "stock_lots", "stock_moves"}},
+	{"Products & stock", []string{"catalog_items", "catalog_entries", "services", "price_books", "vehicle_stock", "stock_lots", "stock_moves"}},
 	{"Follow-ups", []string{"tasks", "appointments", "events", "upcoming", "notes", "communications", "cards"}},
 }
 
@@ -171,7 +171,7 @@ func flowFirst(nav []NavItem) []NavItem {
 // business's own objects) goes under CRM.
 var navGroups = map[string]string{
 	"opportunities": "Sales", "tasks": "Sales", "events": "Sales", "notes": "Sales", "communications": "Sales",
-	"catalog_items": "Products", "price_books": "Products", "assets": "Products",
+	"catalog_items": "Products", "catalog_entries": "Products", "price_books": "Products", "assets": "Products",
 	"quotes": "Sales operations", "sales_orders": "Sales operations", "invoices": "Sales operations", "contracts": "Sales operations",
 	"subscriptions": "Sales operations",
 	"cases":         "Service", "appointments": "Service", "entitlements": "Service", "sla_policies": "Service", "solutions": "Service",

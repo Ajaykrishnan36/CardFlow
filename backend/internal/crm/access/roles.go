@@ -276,7 +276,7 @@ func SystemRoles() []SystemRole {
 	delete(stObj, "privacy_requests")
 	delete(stRows, "privacy_requests")
 	// Shared reference records: staff see them all, admins change them (D-152).
-	for _, k := range []string{"stock_lots", "business_branches", "checklist_templates"} {
+	for _, k := range []string{"stock_lots", "business_branches", "checklist_templates", "catalog_entries"} {
 		if _, ok := stObj[k]; ok {
 			stObj[k], stRows[k] = []string{"read"}, map[string]string{"scope": "workspace"}
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 
@@ -62,6 +63,9 @@ func (h *Handler) settleQuote(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a ac
 	act := actorInfo{ID: a.ID, Kind: a.Kind, Source: sourceFlow}
 	if act.Kind == "" {
 		act = systemActor(sourceFlow)
+	}
+	if err := h.applyPlan(ctx, tx, ws, act, quoteID, paid); err != nil {
+		return err
 	}
 	opp := quote.id("opportunityId")
 	if paid+0.005 < total {
@@ -178,4 +182,166 @@ func (h *Handler) balanceTask(ctx context.Context, tx pgx.Tx, ws uuid.UUID, quot
 	}
 	_, err := h.createRecord(ctx, tx, ws, tasks, systemActor(sourceFlow), v)
 	return err
+}
+
+// POST /w/{code}/quotes/{id}/payment-plan {"instalments": 6, "firstDue": "2026-12-03", "everyDays": 30}
+// splits what is still due on a quote into instalments (D-171). Money taken against the
+// quote pays them in date order.
+func (h *Handler) handlePaymentPlan(w http.ResponseWriter, r *http.Request) {
+	sc, quote, err := h.documentScope(r, "quotes", "update")
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	spec := specFor("instalments")
+	if spec == nil || !sc.Enabled("instalments") || !sc.Can("instalments", "create") {
+		shared.WriteError(w, r, errForbidden)
+		return
+	}
+	var in struct {
+		Instalments int    `json:"instalments"`
+		FirstDue    string `json:"firstDue"`
+		EveryDays   int    `json:"everyDays"`
+	}
+	if err := shared.DecodeJSON(w, r, &in); err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	fe := map[string]string{}
+	if in.Instalments < 2 || in.Instalments > 60 {
+		fe["instalments"] = "Split it into 2 to 60 instalments."
+	}
+	first, perr := time.Parse("2006-01-02", in.FirstDue)
+	if perr != nil {
+		fe["firstDue"] = "Pick the date of the first instalment."
+	}
+	if in.EveryDays == 0 {
+		in.EveryDays = 30
+	}
+	if in.EveryDays < 1 || in.EveryDays > 366 {
+		fe["everyDays"] = "Instalments are 1 to 366 days apart."
+	}
+	switch quote.text("status") {
+	case "declined", "expired":
+		fe["quote"] = "This quote was declined or has expired."
+	}
+	if st := quote.text("approvalStatus"); st == "pending" || st == "rejected" {
+		fe["quote"] = "The discount on this quote has not been approved yet."
+	}
+	if len(fe) > 0 {
+		shared.WriteError(w, r, shared.Validation(fe))
+		return
+	}
+	ctx := r.Context()
+	a := actorFromRequest(r, "ui")
+	var made int
+	err = h.store.WithTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM crm.object_records WHERE id = $1 FOR UPDATE`, quote.uuid()); err != nil {
+			return err
+		}
+		var open int
+		_ = tx.QueryRow(ctx, `SELECT count(*) FROM crm.object_records WHERE workspace_id = $1 AND object_key = 'instalments' AND deleted_at IS NULL
+			AND custom->>'quoteId' = $2 AND COALESCE(status, '') <> 'waived'`, sc.WS, quote.ID).Scan(&open)
+		if open > 0 {
+			return shared.NewError(http.StatusConflict, "plan_exists", "This quote already has a payment plan. Open Payment plans to change it.")
+		}
+		paid, err := quotePaid(ctx, tx, sc.WS, quote.uuid())
+		if err != nil {
+			return err
+		}
+		due := math.Round((quote.num("total")-paid)*100) / 100
+		if due <= 0 {
+			return shared.Validation(map[string]string{"quote": "Nothing is left to pay on this quote."})
+		}
+		who := h.labelOf(ctx, tx, sc.WS, "contacts", quote.text("contactId"))
+		if who == "" {
+			who = h.labelOf(ctx, tx, sc.WS, "accounts", quote.text("accountId"))
+		}
+		each := math.Floor(due/float64(in.Instalments)*100) / 100
+		for k := 1; k <= in.Instalments; k++ {
+			amt := each
+			if k == in.Instalments {
+				amt = math.Round((due-each*float64(in.Instalments-1))*100) / 100
+			}
+			v := map[string]any{"name": joinNonEmpty(" — ", fmt.Sprintf("Instalment %d of %d", k, in.Instalments), who),
+				"milestone": fmt.Sprintf("%d of %d", k, in.Instalments), "dueDate": first.AddDate(0, 0, (k-1)*in.EveryDays).Format("2006-01-02"),
+				"amount": amt, "status": "due", "quoteId": quote.ID}
+			for _, f := range []string{"contactId", "accountId", "opportunityId"} {
+				if x := quote.text(f); x != "" {
+					v[f] = x
+				}
+			}
+			if o := quote.id("ownerId"); o != uuid.Nil {
+				v["ownerId"] = o.String()
+			}
+			if _, err := h.createRecord(ctx, tx, sc.WS, spec, a, v); err != nil {
+				return err
+			}
+			made++
+		}
+		return shared.WriteAudit(ctx, tx, a.audit(sc.WS, "quote.payment_plan", "quote", ptrUUID(quote.uuid()), nil,
+			map[string]any{"instalments": in.Instalments, "amount": due, "firstDue": in.FirstDue, "everyDays": in.EveryDays}))
+	})
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	h.bus.Kick()
+	shared.WriteJSON(w, http.StatusCreated, map[string]any{"instalments": made})
+}
+
+func ptrUUID(id uuid.UUID) *uuid.UUID { return &id }
+
+// applyPlan marks a quote's instalments paid, in date order, for the money taken so far.
+func (h *Handler) applyPlan(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a actorInfo, quoteID uuid.UUID, paid float64) error {
+	spec := specFor("instalments")
+	if spec == nil {
+		return nil
+	}
+	rows, err := tx.Query(ctx, `SELECT id, `+money(`custom->>'amount'`)+`::float8, COALESCE(status, ''), `+money(`custom->>'paidAmount'`)+`::float8
+		FROM crm.object_records WHERE workspace_id = $1 AND object_key = 'instalments' AND deleted_at IS NULL AND custom->>'quoteId' = $2
+		  AND COALESCE(status, '') <> 'waived' ORDER BY custom->>'dueDate', created_at`, ws, quoteID.String())
+	if err != nil {
+		return err
+	}
+	type inst struct {
+		id         uuid.UUID
+		amount     float64
+		status     string
+		paidBefore float64
+	}
+	var list []inst
+	for rows.Next() {
+		var x inst
+		if rows.Scan(&x.id, &x.amount, &x.status, &x.paidBefore) == nil {
+			list = append(list, x)
+		}
+	}
+	rows.Close()
+	today := time.Now().In(ist).Format("2006-01-02")
+	left := paid
+	for _, x := range list {
+		got := math.Min(left, x.amount)
+		left -= got
+		status := x.status
+		switch {
+		case got+0.005 >= x.amount:
+			status = "paid"
+		case got > 0:
+			status = "part_paid"
+		case x.status != "overdue":
+			status = "due"
+		}
+		if status == x.status && math.Abs(got-x.paidBefore) < 0.005 {
+			continue
+		}
+		set := map[string]any{"status": status, "paidAmount": math.Round(got*100) / 100}
+		if status == "paid" {
+			set["paidOn"] = today
+		}
+		if _, err := h.updateValues(ctx, tx, ws, spec, x.id, a, set, nil, nil); err != nil {
+			return err
+		}
+	}
+	return nil
 }

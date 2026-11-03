@@ -189,6 +189,7 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
   });
   const [printing, setPrinting] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [planning, setPlanning] = useState(false);
   const payMeta = useObjectMeta('payments');
   if (!code) return null;
   const d = linesQ.data;
@@ -226,6 +227,17 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
   const balance = record.values.balanceDue != null ? Number(record.values.balanceDue) : total;
   return (
     <Card className="mb-4 overflow-hidden">
+      <PaymentPlanDialog
+        open={planning}
+        onOpenChange={setPlanning}
+        balance={balance}
+        money={money}
+        onSave={(body) => api.paymentPlan(record.id, body)}
+        onDone={(n) => {
+          toast.success(`Payment plan made: ${n} instalments`);
+          void qc.invalidateQueries({ queryKey: recordKeys.prefix(scope.prefix) });
+        }}
+      />
       {paying && payMeta.data ? (
         <NewRecordDialog
           object="payments"
@@ -288,6 +300,11 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
             {object === 'opportunities' && scope.can('quotes', 'create') && p && p.lines.length > 0 && !['closed_won', 'closed_lost'].includes(status) ? (
               <Button size="sm" loading={makeQuote.isPending} onClick={() => makeQuote.mutate()}>
                 <FileOutput /> Make quote
+              </Button>
+            ) : null}
+            {object === 'quotes' && scope.can('instalments', 'create') && p && p.lines.length > 0 && !['declined', 'expired'].includes(status) && approval !== 'pending' && approval !== 'rejected' && balance > 0 ? (
+              <Button size="sm" variant="outline" onClick={() => setPlanning(true)}>
+                <CalendarClock /> Payment plan
               </Button>
             ) : null}
             {object === 'quotes' && scope.can('payments', 'create') && p && p.lines.length > 0 && !['declined', 'expired'].includes(status) && approval !== 'pending' && approval !== 'rejected' && balance > 0 ? (
@@ -1118,3 +1135,57 @@ export function BookAppointmentButton({ record, object, disabled }: { record: Re
   );
 }
 
+
+/** Split what is still due on a quote into instalments (D-171). */
+function PaymentPlanDialog({ open, onOpenChange, balance, money, onSave, onDone }: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  balance: number;
+  money: (n: number) => string;
+  onSave: (body: { instalments: number; firstDue: string; everyDays: number }) => Promise<{ instalments: number }>;
+  onDone: (n: number) => void;
+}) {
+  const nextMonth = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+  const [count, setCount] = useState('6');
+  const [firstDue, setFirstDue] = useState(nextMonth);
+  const [every, setEvery] = useState('30');
+  const [error, setError] = useState<string | null>(null);
+  const save = useMutation({
+    mutationFn: () => onSave({ instalments: Number(count), firstDue, everyDays: Number(every) }),
+    onSuccess: (r) => {
+      onDone(r.instalments);
+      onOpenChange(false);
+    },
+    onError: (e) => setError(firstError(e))
+  });
+  const n = Math.max(1, Number(count) || 1);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogTitle className="text-base font-semibold">Payment plan</DialogTitle>
+        <DialogDescription className="text-[13px] text-muted-foreground">
+          Split the {money(balance)} still due into instalments. Each payment you take on this quote pays them in date order; the last one makes the invoice.
+        </DialogDescription>
+        {error ? <Alert tone="danger">{error}</Alert> : null}
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <Field label="Instalments">
+            <Input type="number" min={2} max={60} value={count} onChange={(e) => setCount(e.target.value)} />
+          </Field>
+          <Field label="First due">
+            <Input type="date" value={firstDue} onChange={(e) => setFirstDue(e.target.value)} />
+          </Field>
+          <Field label="Every (days)">
+            <Input type="number" min={1} value={every} onChange={(e) => setEvery(e.target.value)} />
+          </Field>
+        </div>
+        <p className="mt-2 text-[13px] text-foreground">
+          {n} × about <b>{money(Math.floor((balance / n) * 100) / 100)}</b>
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button loading={save.isPending} onClick={() => save.mutate()}>Make plan</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

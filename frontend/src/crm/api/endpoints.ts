@@ -1422,6 +1422,8 @@ export function commerceApi(code: string) {
     putLines: (object: string, id: string, body: { priceBookId?: string; currency?: string; lines: PriceLineInput[] }) =>
       api<DocumentLines>(`${base}/${enc(object)}/${enc(id)}/lines`, { method: 'PUT', body }),
     reviseQuote: (id: string) => api<{ object: string; id: string; code: string }>(`${base}/quotes/${enc(id)}/revise`, { method: 'POST' }),
+    paymentPlan: (id: string, body: { instalments: number; firstDue: string; everyDays: number }) =>
+      api<{ instalments: number }>(`${base}/quotes/${enc(id)}/payment-plan`, { method: 'POST', body }),
     convertQuote: (id: string) => api<{ object: string; id: string; code: string }>(`${base}/quotes/${enc(id)}/convert`, { method: 'POST' }),
     invoiceOrder: (id: string) => api<{ object: string; id: string; code: string }>(`${base}/sales_orders/${enc(id)}/invoice`, { method: 'POST' }),
 

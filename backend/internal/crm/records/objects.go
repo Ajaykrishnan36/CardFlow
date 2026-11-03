@@ -100,6 +100,8 @@ func ofLookup(key, label, target string) ObjectField {
 // hide what matters: an appointment list shows who is coming and who is assigned.
 var listColumnsFor = map[string][]string{
 	"appointments":          {"status", "startsAt", "contactId", "itemId", "resourceId"},
+	"instalments":           {"status", "dueDate", "amount", "paidAmount", "contactId", "quoteId"},
+	"catalog_entries":       {"status", "itemId", "variant", "colours", "engine", "mileage"},
 	"vehicle_stock":         {"status", "itemId", "colour", "vin", "location", "bookingId"},
 	"vehicle_bookings":      {"status", "contactId", "itemId", "colour", "promisedDate", "vehicleId"},
 	"test_rides":            {"status", "scheduledAt", "contactId", "leadId", "itemId", "assignedTo"},
@@ -518,6 +520,11 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:flow-v1", flowUpgrades()); err != nil {
 		return err
 	}
+	if err := applyObjectUpgrades(ctx, tx, "objects:flow-v2", map[string]objectUpgrade{
+		"instalments": {fields: []ObjectField{ofLookup("quoteId", "Quote", "quotes")}},
+	}); err != nil {
+		return err
+	}
 	return productsLabel(ctx, tx)
 }
 
@@ -554,6 +561,7 @@ func allStandardObjects() []ObjectDefinition {
 	all = append(all, packMoreObjects()...)
 	all = append(all, careObjects()...)
 	all = append(all, commonOpsObjects()...)
+	all = append(all, catalogObjects()...)
 	return append(all, consentObject())
 }
 
@@ -972,7 +980,10 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	for _, d := range append(careObjects(), commonOpsObjects()...) {
 		common = append(common, d.Key)
 	}
-	return h.grantPackAccess(ctx, "access:common-v1", common)
+	if err := h.grantPackAccess(ctx, "access:common-v1", common); err != nil {
+		return err
+	}
+	return h.grantPackAccess(ctx, "access:catalog-v1", []string{"catalog_entries"})
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {

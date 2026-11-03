@@ -56,6 +56,7 @@ func (h *Handler) pricingRoutes(r chi.Router) {
 		r.Put("/"+object+"/{id}/lines", h.handlePutLines(object))
 	}
 	r.Post("/quotes/{id}/revise", h.handleReviseQuote)
+	r.Post("/quotes/{id}/payment-plan", h.handlePaymentPlan)
 	r.Post("/quotes/{id}/convert", h.handleConvertDocument("quotes", "sales_orders"))
 	r.Post("/sales_orders/{id}/invoice", h.handleConvertDocument("sales_orders", "invoices"))
 }
