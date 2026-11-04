@@ -20,7 +20,7 @@ export function Avatar({ name, className }: { name: string; className?: string }
   return (
     <span
       className={cn(
-        'grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 text-[12px] font-semibold text-white shadow-sm',
+        'grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-teal-400 to-emerald-500 text-[12px] font-semibold text-white shadow-sm',
         className
       )}
       aria-hidden

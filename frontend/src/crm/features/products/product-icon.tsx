@@ -34,7 +34,7 @@ export const PRODUCT_ICONS: Record<string, LucideIcon> = {
 export const PRODUCT_ICON_KEYS = Object.keys(PRODUCT_ICONS);
 
 /** Product accent swatches (the only hard-coded colours in the product screens). */
-export const ACCENT_COLORS = ['#4F46E5', '#2563EB', '#0891B2', '#059669', '#65A30D', '#D97706', '#DC2626', '#DB2777'];
+export const ACCENT_COLORS = ['#0F766E', '#4F46E5', '#2563EB', '#0891B2', '#059669', '#65A30D', '#D97706', '#DC2626', '#DB2777'];
 
 const sizes = {
   sm: 'size-8 rounded-md [&_svg]:size-4',

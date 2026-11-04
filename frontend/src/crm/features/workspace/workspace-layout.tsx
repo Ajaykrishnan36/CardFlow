@@ -72,7 +72,8 @@ export function WorkspaceLayout({ code }: { code?: string } = {}) {
 /** The product setup's accent colour (Details & branding) becomes the workspace's primary colour. */
 function useProductAccent(hex: string | undefined) {
   useEffect(() => {
-    const hsl = hex ? hexToHsl(hex) : null;
+    // The setup's old default (indigo) is no choice of the business's: the CRM's own teal stays (D-176).
+    const hsl = hex && hex.toLowerCase() !== '#4f46e5' ? hexToHsl(hex) : null;
     if (!hsl) return;
     const [h, s, l] = hsl;
     const el = document.createElement('style');

@@ -166,7 +166,7 @@ export function OwnerLoginPage() {
     <div className="dark flex min-h-full flex-col">
       <div className="relative flex flex-1 flex-col overflow-hidden bg-[hsl(228_30%_5%)] text-foreground">
         <div
-          className="pointer-events-none absolute left-1/2 top-[-18rem] size-[46rem] -translate-x-1/2 rounded-full bg-indigo-600/25 blur-3xl"
+          className="pointer-events-none absolute left-1/2 top-[-18rem] size-[46rem] -translate-x-1/2 rounded-full bg-teal-600/25 blur-3xl"
           aria-hidden
         />
         <div
@@ -183,7 +183,7 @@ export function OwnerLoginPage() {
                   <Crown className="size-3" aria-hidden />
                 </span>
               </div>
-              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300">
+              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.2em] text-teal-300">
                 {t("brand.name")}
               </p>
               <h1 className="mt-2 text-[26px] font-semibold tracking-tight">
@@ -205,7 +205,7 @@ export function OwnerLoginPage() {
               </p>
               <Link
                 to="/crm/login"
-                className="text-[13px] font-medium text-indigo-300 hover:underline"
+                className="text-[13px] font-medium text-teal-300 hover:underline"
               >
                 ← {t("auth.owner.workspaceLink")}
               </Link>

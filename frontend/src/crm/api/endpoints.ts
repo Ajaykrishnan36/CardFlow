@@ -850,6 +850,57 @@ export interface BusinessDashboardSummary {
   mine?: Array<{ object: string; label: string; count: number }>;
 }
 
+export type OverviewRange = 'month' | 'quarter' | 'year';
+
+export interface OverviewKpi {
+  key: string;
+  label: string;
+  value: number;
+  before?: number;
+  money?: boolean;
+  percent?: boolean;
+  sub?: string;
+  trend: number[];
+  path?: string;
+  invert?: boolean;
+}
+
+export interface OverviewStage {
+  key: string;
+  label: string;
+  count: number;
+  value: number;
+  tone?: string;
+}
+
+export interface Overview {
+  range: OverviewRange;
+  from: string;
+  period: string;
+  currency: string;
+  kpis: OverviewKpi[];
+  funnel: OverviewStage[];
+  lost?: OverviewStage;
+  openPipeline?: { name: string; value: number; count: number };
+  winRate?: number;
+  winRateBefore?: number;
+  winRateTrend?: number[];
+  avgCycleDays?: number;
+  avgCycleDaysBefore?: number;
+  revenueTrend: number[];
+  wonTrend: number[];
+  trendLabels: string[];
+  topProducts: Array<{ name: string; value: number; count: number }>;
+  leaderboard: Array<{ id?: string; name: string; value: number; count: number; initials?: string }>;
+  atRisk: Array<{ id: string; name: string; amount: number; reason: string }>;
+  upcoming: Array<{ object: string; id: string; title: string; when: string; who?: string }>;
+  activity: Array<{ kind: string; category: string; object: string; id: string; title: string; actor: string; at: string }>;
+  expectedRevenue: number;
+  wonValue: number;
+  pendingPayments: number;
+  revenue: number;
+}
+
 export interface OfficeRow {
   key: string;
   label: string;
@@ -991,6 +1042,8 @@ export const businessApi = {
     api<BusinessProfile>(`/w/${enc(code)}/business`, { method: 'PATCH', body }),
   summary: (code: string, params: { range: string; from?: string; to?: string }) => api<BusinessDashboardSummary>(`/w/${enc(code)}/dashboard/summary${qs(params)}`),
   office: (code: string) => api<OfficeView>(`/w/${enc(code)}/dashboard/office`),
+  /** The owner's whole business on one screen (D-176). */
+  overview: (code: string, range: OverviewRange) => api<Overview>(`/w/${enc(code)}/dashboard/overview${qs({ range })}`),
   /** Who added and converted what (D-137). 403 for people who only see their own records. */
   team: (code: string, params: { range: string; from?: string; to?: string }) => api<TeamPerformance>(`/w/${enc(code)}/dashboard/team${qs(params)}`)
 };

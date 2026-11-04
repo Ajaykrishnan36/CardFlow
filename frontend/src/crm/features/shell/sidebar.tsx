@@ -83,6 +83,13 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
   const inWorkspace = Boolean(workspaceCode);
   const location = useLocation();
   const navGroups = arranged ? groupNav(arranged) : [];
+  // The main "New" button (D-176): a deal where the member sells, else a lead.
+  const quickNew = (() => {
+    const opp = navigation?.find((n) => n.key === 'opportunities' && n.available);
+    if (opp) return { label: 'New deal', path: `${opp.path}?new=1` };
+    const lead = navigation?.find((n) => n.key === 'leads' && n.available);
+    return lead ? { label: 'New lead', path: `${lead.path}?new=1` } : null;
+  })();
   const [openSection, setOpenSection] = useOpenSection(navGroups, location.pathname);
 
   return (
@@ -137,6 +144,27 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
           </button>
         )}
       </div>
+
+      {inWorkspace && quickNew ? (
+        <div className={cn('px-3 pt-3', collapsed && 'px-2')}>
+          {(() => {
+            const link = (
+              <Link
+                to={quickNew.path}
+                onClick={onNavigate}
+                className={cn(
+                  'flex h-10 items-center gap-2 rounded-xl bg-primary px-3 text-[13px] font-semibold text-primary-foreground shadow-md shadow-primary/30 transition-[transform,box-shadow] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/30',
+                  collapsed && 'justify-center px-0'
+                )}
+              >
+                <Plus className="size-4" aria-hidden />
+                {!collapsed ? <span className="flex-1">{quickNew.label}</span> : <span className="sr-only">{quickNew.label}</span>}
+              </Link>
+            );
+            return collapsed ? <Tooltip content={quickNew.label}>{link}</Tooltip> : link;
+          })()}
+        </div>
+      ) : null}
 
       {/* Navigation */}
       <nav className="crm-scroll flex-1 overflow-y-auto px-3 py-3" aria-label="Main">
@@ -233,12 +261,12 @@ function SidebarLink({ item, collapsed, onNavigate, filtered }: { item: NavItem;
       className={({ isActive: routeActive }) => {
         const isActive = override ?? routeActive;
         return cn(
-          'group flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] font-medium transition-colors',
-          collapsed && 'mx-auto w-9 justify-center px-0',
+          'group flex h-9 items-center gap-2.5 rounded-xl px-2.5 text-[13px] font-medium transition-[background-color,color,box-shadow,transform] duration-200',
+          collapsed && 'mx-auto w-10 justify-center px-0',
           isActive
-            ? 'bg-primary-soft text-primary'
+            ? 'bg-sidebar-active text-sidebar-active-foreground shadow-lift'
             : item.available
-              ? 'text-foreground/80 hover:bg-muted hover:text-foreground'
+              ? 'text-foreground/75 hover:translate-x-0.5 hover:bg-muted hover:text-foreground'
               : 'text-muted-foreground/70 hover:bg-muted hover:text-muted-foreground'
         );
       }}

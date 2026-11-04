@@ -1,7 +1,7 @@
 const path = require('path');
 
 // Design tokens follow PRD §10.5: 4/8 px spacing, 6 px radius, Inter, neutral greys,
-// primary #4F46E5 (overridable per workspace via --primary), light + dark themes.
+// primary deep teal (D-176; overridable per workspace via --primary), light + dark themes.
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: 'class',
@@ -39,18 +39,24 @@ module.exports = {
         popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
         success: { DEFAULT: 'hsl(var(--success))', soft: 'hsl(var(--success-soft))' },
         warning: { DEFAULT: 'hsl(var(--warning))', soft: 'hsl(var(--warning-soft))' },
-        danger: { DEFAULT: 'hsl(var(--danger))', soft: 'hsl(var(--danger-soft))', foreground: 'hsl(var(--danger-foreground))' }
+        danger: { DEFAULT: 'hsl(var(--danger))', soft: 'hsl(var(--danger-soft))', foreground: 'hsl(var(--danger-foreground))' },
+        navy: { DEFAULT: 'hsl(var(--navy))', foreground: 'hsl(var(--navy-foreground))', soft: 'hsl(var(--navy-soft))' },
+        mint: { DEFAULT: 'hsl(var(--mint))', soft: 'hsl(var(--mint-soft))' },
+        'sidebar-active': { DEFAULT: 'hsl(var(--sidebar-active))', foreground: 'hsl(var(--sidebar-active-foreground))' },
+        chart: { 1: 'hsl(var(--chart-1))', 2: 'hsl(var(--chart-2))', 3: 'hsl(var(--chart-3))', 4: 'hsl(var(--chart-4))', 5: 'hsl(var(--chart-5))' }
       },
       borderRadius: {
-        sm: '4px',
-        DEFAULT: '6px',
-        md: '6px',
-        lg: '8px',
-        xl: '12px',
-        '2xl': '16px'
+        sm: '6px',
+        DEFAULT: '8px',
+        md: '8px',
+        lg: '10px',
+        xl: '14px',
+        '2xl': '18px',
+        '3xl': '24px'
       },
       boxShadow: {
-        card: '0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06)',
+        card: '0 1px 2px 0 rgb(15 23 42 / 0.03), 0 4px 16px -6px rgb(15 23 42 / 0.08)',
+        lift: '0 2px 4px -1px rgb(15 23 42 / 0.05), 0 14px 32px -12px rgb(15 23 42 / 0.18)',
         pop: '0 8px 24px -6px rgb(15 23 42 / 0.18), 0 2px 6px -2px rgb(15 23 42 / 0.08)',
         glow: '0 0 0 1px hsl(var(--primary) / 0.12), 0 12px 40px -12px hsl(var(--primary) / 0.45)'
       },

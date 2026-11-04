@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Outlet, useLocation, useMatch } from 'react-router-dom';
-import { ArrowLeft, Crown, Menu as MenuIcon, Search } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Crown, Menu as MenuIcon, Search } from 'lucide-react';
 import { isOwnerSession, useCapabilities, useMe } from '@crm/auth/session';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@crm/components/ui/menu';
 import { Button } from '@crm/components/ui/button';
@@ -67,7 +67,7 @@ export function AppShell() {
       <aside
         className={cn(
           'hidden shrink-0 border-r transition-[width] duration-200 ease-out md:block',
-          collapsed ? 'w-[64px]' : 'w-[248px]'
+          collapsed ? 'w-[72px]' : 'w-[264px]'
         )}
       >
         <SidebarContent me={me} navigation={navigation} loading={navLoading} workspace={workspace} workspaceCode={wsCode} collapsed={collapsed} apiPrefix={apiPrefix} />
@@ -108,7 +108,7 @@ export function AppShell() {
             </Link>
           </div>
         ) : null}
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur-md sm:px-5">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b border-border/60 bg-background/80 px-3 backdrop-blur-md sm:px-6">
           <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={() => setMobileNavOpen(true)} aria-label={t('shell.openMenu')}>
             <MenuIcon />
           </Button>
@@ -130,6 +130,16 @@ export function AppShell() {
           <Button variant="subtle" size="icon-sm" className="md:hidden" onClick={() => setCommandOpen(true)} aria-label={t('shell.search')}>
             <Search />
           </Button>
+          <button
+            type="button"
+            onClick={() => setCommandOpen(true)}
+            className="hidden h-9 w-64 items-center gap-2 rounded-full border bg-card px-3 text-[13px] text-muted-foreground shadow-card transition-colors hover:border-muted-foreground/30 lg:flex"
+          >
+            <Search className="size-4" aria-hidden />
+            <span className="flex-1 text-left">{t('shell.search')}</span>
+            <kbd className="rounded border bg-muted px-1.5 font-sans text-[11px]">⌘K</kbd>
+          </button>
+          <TodayChip />
           {apiPrefix ? <NotificationsBell prefix={apiPrefix} /> : null}
           <ThemeToggle />
         </header>
@@ -141,5 +151,19 @@ export function AppShell() {
       <Shortcuts navigation={navigation ?? []} />
       <CommandMenu navigation={navigation ?? []} workspaces={workspace?.workspaces} currentWorkspace={wsCode} apiPrefix={apiPrefix} routeBase={routeBase} />
     </div>
+  );
+}
+
+/** Today's date and the week of the year, as on a sales floor (D-176). */
+function TodayChip() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+  return (
+    <span className="hidden h-9 items-center gap-2 rounded-full border bg-card px-3 text-[13px] shadow-card xl:inline-flex">
+      <CalendarDays className="size-4 text-primary" aria-hidden />
+      <span className="font-medium text-foreground">{now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+      <span className="text-muted-foreground">· Week {week}</span>
+    </span>
   );
 }

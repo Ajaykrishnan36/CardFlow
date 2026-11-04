@@ -5,7 +5,8 @@ import { formatMoney } from '@crm/lib/money';
 
 // Dependency-free charts for reports (D-50): plain SVG/HTML using the theme colours.
 
-const PALETTE = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#a855f7', '#ec4899', '#84cc16', '#f97316', '#64748b'];
+// The CRM's chart colours (D-176): teal first, then navy blue and mint, then the rest.
+const PALETTE = ['#14b8a6', '#3451b2', '#6ee7b7', '#f59e0b', '#0ea5e9', '#f43f5e', '#64748b', '#84cc16', '#f97316', '#a3a3a3'];
 
 export function formatValue(v: number, currency?: boolean) {
   if (currency) return formatMoney(Math.round(v)).replace(/\.00$/, '');

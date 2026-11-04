@@ -44,33 +44,33 @@ function BrandPanel() {
     { icon: ShieldCheck, title: t('auth.brand.f3Title'), body: t('auth.brand.f3Body') }
   ];
   return (
-    <aside className="relative hidden h-full overflow-hidden bg-[#1E1B4B] text-white lg:flex lg:flex-col">
+    <aside className="relative hidden h-full overflow-hidden bg-[#0B1B3A] text-white lg:flex lg:flex-col">
       {/* Layered backdrop: gradient, glow blobs, fading grid. */}
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,#312E81_0%,#1E1B4B_45%,#0B0A24_100%)]" aria-hidden />
-      <div className="absolute -left-24 -top-24 size-[28rem] rounded-full bg-indigo-500/30 blur-3xl" aria-hidden />
-      <div className="absolute -bottom-32 right-[-6rem] size-[26rem] rounded-full bg-violet-500/20 blur-3xl" aria-hidden />
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,#123A5A_0%,#172554_45%,#07122B_100%)]" aria-hidden />
+      <div className="absolute -left-24 -top-24 size-[28rem] rounded-full bg-teal-500/30 blur-3xl" aria-hidden />
+      <div className="absolute -bottom-32 right-[-6rem] size-[26rem] rounded-full bg-emerald-500/20 blur-3xl" aria-hidden />
       <div className="crm-grid-bg absolute inset-0" aria-hidden />
 
       <div className="relative flex min-h-0 flex-1 flex-col px-12 py-10 xl:px-16 xl:py-12">
         <Logo inverted />
 
         <div className="my-auto max-w-xl py-10">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-indigo-100 backdrop-blur">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium text-teal-100 backdrop-blur">
             <Sparkles className="size-3.5" aria-hidden />
             {t('auth.brand.eyebrow')}
           </span>
           <h1 className="mt-5 text-[34px] font-semibold leading-[1.15] tracking-tight xl:text-[42px]">{t('auth.brand.headline')}</h1>
-          <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-indigo-100/75">{t('auth.brand.sub')}</p>
+          <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-teal-100/75">{t('auth.brand.sub')}</p>
 
           <ul className="mt-9 space-y-5">
             {features.map(({ icon: Icon, title, body }) => (
               <li key={title} className="flex gap-4">
                 <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.07] shadow-inner">
-                  <Icon className="size-5 text-indigo-200" aria-hidden />
+                  <Icon className="size-5 text-teal-200" aria-hidden />
                 </span>
                 <div>
                   <p className="text-[15px] font-semibold">{title}</p>
-                  <p className="mt-0.5 text-sm leading-relaxed text-indigo-100/65">{body}</p>
+                  <p className="mt-0.5 text-sm leading-relaxed text-teal-100/65">{body}</p>
                 </div>
               </li>
             ))}
@@ -79,7 +79,7 @@ function BrandPanel() {
 
         <PipelinePreview />
 
-        <p className="mt-8 text-xs text-indigo-100/50">{t('auth.brand.trust')}</p>
+        <p className="mt-8 text-xs text-teal-100/50">{t('auth.brand.trust')}</p>
       </div>
     </aside>
   );
@@ -96,7 +96,7 @@ function PipelinePreview() {
   return (
     <div className="relative hidden rounded-2xl border border-white/10 bg-white/[0.06] p-4 shadow-2xl backdrop-blur-md [@media(min-height:1000px)]:xl:block" aria-hidden>
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-indigo-100/60">{t('auth.brand.previewTitle')}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-teal-100/60">{t('auth.brand.previewTitle')}</span>
         <span className="flex gap-1">
           <span className="size-2 rounded-full bg-white/20" />
           <span className="size-2 rounded-full bg-white/20" />
@@ -106,7 +106,7 @@ function PipelinePreview() {
       <div className="grid grid-cols-3 gap-3">
         {columns.map((col, ci) => (
           <div key={col.label} className="rounded-xl bg-black/15 p-2.5">
-            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-indigo-100/70">
+            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-teal-100/70">
               <span className={cn('size-1.5 rounded-full', col.dot)} />
               {col.label}
             </p>
@@ -118,7 +118,7 @@ function PipelinePreview() {
                   style={{ animationDelay: `${(ci * 3 + i) * 0.7}s` }}
                 >
                   <div className="flex items-center gap-1.5">
-                    <span className="size-4 shrink-0 rounded-full bg-gradient-to-br from-indigo-300 to-violet-400" />
+                    <span className="size-4 shrink-0 rounded-full bg-gradient-to-br from-teal-300 to-emerald-400" />
                     <span className="h-1.5 rounded-full bg-white/50" style={{ width: `${w * 100}%` }} />
                   </div>
                   <span className="mt-2 block h-1.5 w-2/3 rounded-full bg-white/20" />

@@ -52,9 +52,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if e.Can("due_items", "read") {
 		nav = append(nav, NavItem{Key: "upcoming", Label: "Upcoming", Path: base + "/upcoming", Icon: "calendar", Group: "Customer care", Available: true})
 	}
-	// Forecasts are worked out from opportunities (D-112).
+	// Forecasts are worked out from opportunities (D-112); the pipeline shows them by stage (D-176).
 	if e.Can("opportunities", "read") {
-		nav = append(nav, NavItem{Key: "forecasts", Label: "Forecasts", Path: base + "/forecasts", Icon: "trending-up", Group: "Sales", Available: true})
+		nav = append(nav, NavItem{Key: "pipeline", Label: "Pipeline", Path: base + "/pipeline", Icon: "funnel", Available: true},
+			NavItem{Key: "forecasts", Label: "Forecast", Path: base + "/forecasts", Icon: "trending-up", Group: "Sales", Available: true})
 	}
 	// Requests waiting for a decision: discounts, refunds, credit notes, write-offs (D-121).
 	if e.Can("quotes", "read") || e.Can("invoices", "read") || e.HasCapability(CapApprovals) {
@@ -141,6 +142,8 @@ var flowGroups = []struct {
 	{"Follow-ups", []string{"tasks", "appointments", "events", "upcoming", "notes", "communications", "cards"}},
 }
 
+var overview = map[string]bool{"home": true, "pipeline": true, "forecasts": true}
+
 func flowFirst(nav []NavItem) []NavItem {
 	rank := map[string]int{}
 	group := map[string]string{}
@@ -154,8 +157,11 @@ func flowFirst(nav []NavItem) []NavItem {
 	var head, flow, rest []NavItem
 	for _, it := range nav {
 		switch {
+		case overview[it.Key]:
+			it.Group = ""
+			head = append(head, it) // the dashboard, pipeline and forecast stay on top (D-176)
 		case it.Group == "" && len(flow) == 0 && len(rest) == 0:
-			head = append(head, it) // the dashboard stays on top
+			head = append(head, it)
 		case rank[it.Key] > 0:
 			it.Group = group[it.Key]
 			flow = append(flow, it)

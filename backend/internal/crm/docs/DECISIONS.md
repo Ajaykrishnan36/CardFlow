@@ -1810,6 +1810,38 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   and in date), each marked Showroom price or "Only for <customer>". A stopped plan's and
   expired prices are folded under "Earlier and stopped prices"; nothing is deleted.
 
+## D-176 — The new look, phase 1: design system, shell, dashboard, pipeline
+
+- **Colours**: one primary, deep teal (#0F766E light, #14B8A6 dark), and two secondaries,
+  midnight navy (#172554) and soft mint (#A7F3D0); the rest is neutral. They are tokens in
+  `styles/crm.css` (light and dark, both designed, not inverted), so every page follows. The
+  standard setup's old indigo accent no longer overrides them; a business that picked its own
+  accent keeps it. Cards are rounder with softer shadows; the sign-in screens and old charts
+  moved to the same palette. The light/dark toggle and its saved choice are unchanged.
+- **Charts** (`components/charts`): one kit for every page — numbers count up from 0 (and from
+  their last value when the data changes), lines draw left to right with the area filling
+  under them and a hover tooltip, bars grow, the funnel's bands widen in turn, gauges sweep
+  with a glowing end, heatmap cells appear in a stagger, plus health rings, sparklines,
+  progress bars and a waterfall. "Reduce motion" shows them at once. They only draw values
+  they are given.
+- **Sidebar and top bar**: the active page is a navy pill (teal in dark mode), a "New deal"
+  (or "New lead") button sits under the search, Dashboard, Pipeline and Forecast are on top;
+  the top bar has a search pill and today's date with the week number.
+- **Dashboard** (`GET /dashboard/overview?range=month|quarter|year`): the pipeline flow
+  (leads of the period, every open stage, won) as a funnel with the win-rate gauge and the
+  latest event; open pipeline; win rate with its weekly trend; average sales cycle; deals at
+  risk (close date passed, or no update in 14 days); eight numbers — leads, open deals, won,
+  revenue (money received), new customers, orders, pending payments, conversion — each
+  against the same days of the period before with an 8-step trend; revenue and won over
+  time; recent activity with filters; top products and services from invoices; the sales
+  leaderboard; tasks and appointments in the next 7 days. Viewers who see only their own
+  records get their own numbers; sections they can't read are left out. It refreshes every
+  minute. The earlier dashboard sections stay below it.
+- **Pipeline** (`/pipeline`): the funnel, stage-by-stage conversion, win rate and the cycle on
+  top; deals as a sortable, paged list (the default), a board to drag deals between stages
+  (saved through the same rules as an edit — a refusal puts the card back and says why), or
+  compact cards; search; "New deal".
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

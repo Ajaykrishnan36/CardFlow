@@ -11,8 +11,8 @@ export function LogoMark({ className }: { className?: string }) {
     <svg viewBox="0 0 32 32" className={cn('size-8', className)} aria-hidden>
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#818CF8" />
-          <stop offset="1" stopColor="#4F46E5" />
+          <stop stopColor="#2DD4BF" />
+          <stop offset="1" stopColor="#0F766E" />
         </linearGradient>
       </defs>
       <rect width="32" height="32" rx="8" fill={`url(#${gradientId})`} />

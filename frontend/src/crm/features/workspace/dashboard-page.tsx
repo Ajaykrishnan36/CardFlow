@@ -24,6 +24,7 @@ import { TeamSection } from './team-section';
 import { GettingStartedPanel } from './getting-started';
 import { AtAGlance } from './at-a-glance';
 import { OfficeCard } from './office-card';
+import { OverviewSection } from './overview';
 
 /** /crm/w/:ws/home — the member's dashboard (or the first module when dashboard.view isn't granted). */
 const wsPrefix = (code: string) => `/w/${encodeURIComponent(code)}`;
@@ -72,7 +73,7 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1240px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+    <div className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-[22px] font-semibold tracking-tight text-foreground sm:text-2xl">{t(`workspaceApp.dashboard.${greetingKey}`, { name: firstName })}</h1>
@@ -123,6 +124,7 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
         </Card>
       ) : (
         <div className="space-y-6">
+          <OverviewSection code={code} />
           <AtAGlance code={code} />
           <OfficeCard code={code} />
           {arrange(DASHBOARD_SECTIONS[device].filter((s) => s.key !== 'section:quick'), (s) => s.key, layout).map((s) =>

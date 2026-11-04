@@ -4,27 +4,44 @@
 
 /* Design tokens (PRD §10.5). Only loaded on /crm pages, so nothing here reaches CardFlow. */
 @layer base {
+  /* The CRM's colours (D-176): one primary — deep teal — and two secondaries, midnight navy
+     and soft mint. Everything else is neutral. Change a colour here and every page follows. */
   :root {
-    --background: 0 0% 100%;
-    --surface: 220 23% 97.5%;
-    --foreground: 224 39% 11%;
+    --background: 220 20% 97%;
+    --surface: 220 22% 95.5%;
+    --foreground: 224 45% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 224 39% 11%;
+    --card-foreground: 224 45% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 224 39% 11%;
-    --muted: 220 16% 95.5%;
-    --muted-foreground: 220 9% 44%;
-    --accent: 220 16% 95%;
-    --accent-foreground: 224 39% 11%;
-    --border: 220 14% 90%;
-    --input: 220 13% 86%;
-    --ring: 243 75% 59%;
-    --primary: 243 75% 59%;
+    --popover-foreground: 224 45% 12%;
+    --muted: 220 18% 95%;
+    --muted-foreground: 220 10% 45%;
+    --accent: 170 40% 94%;
+    --accent-foreground: 224 45% 12%;
+    --border: 220 16% 90%;
+    --input: 220 14% 86%;
+    --ring: 175 77% 26%;
+    --primary: 175 77% 26%;
     --primary-foreground: 0 0% 100%;
-    --primary-soft: 238 100% 97%;
-    --sidebar: 220 23% 98%;
-    --success: 152 62% 34%;
-    --success-soft: 150 60% 95%;
+    --primary-soft: 168 60% 94%;
+    --navy: 226 57% 21%;
+    --navy-foreground: 0 0% 100%;
+    --navy-soft: 226 45% 95%;
+    --mint: 152 76% 80%;
+    --mint-soft: 152 70% 94%;
+    --sidebar: 0 0% 100%;
+    --sidebar-active: 226 57% 15%;
+    --sidebar-active-foreground: 0 0% 100%;
+    --hero: 226 60% 14%;
+    --hero-2: 214 70% 22%;
+    --hero-foreground: 210 40% 98%;
+    --chart-1: 173 80% 40%;
+    --chart-2: 226 57% 35%;
+    --chart-3: 152 60% 62%;
+    --chart-4: 220 14% 72%;
+    --chart-5: 196 75% 45%;
+    --success: 160 84% 30%;
+    --success-soft: 152 70% 94%;
     --warning: 32 92% 44%;
     --warning-soft: 42 100% 94%;
     --danger: 0 72% 50%;
@@ -34,26 +51,41 @@
   }
 
   .dark {
-    --background: 225 18% 7%;
-    --surface: 225 16% 9%;
-    --foreground: 220 15% 93%;
-    --card: 225 15% 11%;
-    --card-foreground: 220 15% 93%;
-    --popover: 225 15% 12%;
-    --popover-foreground: 220 15% 93%;
-    --muted: 225 13% 16%;
-    --muted-foreground: 220 10% 62%;
-    --accent: 225 13% 17%;
-    --accent-foreground: 220 15% 93%;
-    --border: 225 12% 20%;
-    --input: 225 11% 25%;
-    --ring: 239 84% 67%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    --primary-soft: 242 40% 19%;
-    --sidebar: 225 17% 8.5%;
-    --success: 152 55% 50%;
-    --success-soft: 152 40% 14%;
+    --background: 222 24% 7%;
+    --surface: 222 22% 9%;
+    --foreground: 210 30% 96%;
+    --card: 222 22% 11%;
+    --card-foreground: 210 30% 96%;
+    --popover: 222 22% 12.5%;
+    --popover-foreground: 210 30% 96%;
+    --muted: 222 18% 15.5%;
+    --muted-foreground: 218 14% 64%;
+    --accent: 190 30% 16%;
+    --accent-foreground: 210 30% 96%;
+    --border: 222 16% 19%;
+    --input: 222 14% 24%;
+    --ring: 173 80% 40%;
+    --primary: 173 80% 40%;
+    --primary-foreground: 222 40% 8%;
+    --primary-soft: 175 55% 14%;
+    --navy: 226 57% 21%;
+    --navy-foreground: 0 0% 100%;
+    --navy-soft: 226 40% 17%;
+    --mint: 152 76% 80%;
+    --mint-soft: 160 40% 15%;
+    --sidebar: 226 52% 10%;
+    --sidebar-active: 173 80% 40%;
+    --sidebar-active-foreground: 222 40% 8%;
+    --hero: 226 55% 12%;
+    --hero-2: 214 60% 18%;
+    --hero-foreground: 210 40% 98%;
+    --chart-1: 173 80% 45%;
+    --chart-2: 226 70% 66%;
+    --chart-3: 152 76% 72%;
+    --chart-4: 220 12% 42%;
+    --chart-5: 196 80% 55%;
+    --success: 160 70% 45%;
+    --success-soft: 160 40% 14%;
     --warning: 38 92% 58%;
     --warning-soft: 38 50% 14%;
     --danger: 0 80% 64%;
@@ -142,6 +174,31 @@
     background: linear-gradient(90deg, transparent, hsl(var(--background) / 0.6), transparent);
     animation: crm-shimmer 1.4s infinite;
   }
+}
+
+/* Motion (D-176): charts draw in, numbers count up, cards rise in a stagger. */
+@keyframes crm-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes crm-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes crm-grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes crm-pulse-glow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes crm-cell { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+.crm-rise { animation: crm-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.crm-hero {
+  background:
+    radial-gradient(120% 140% at 85% 0%, hsl(var(--chart-1) / 0.22) 0%, transparent 55%),
+    radial-gradient(90% 120% at 0% 100%, hsl(var(--hero-2)) 0%, transparent 60%),
+    hsl(var(--hero));
+  color: hsl(var(--hero-foreground));
+}
+.crm-hero-stars {
+  background-image: radial-gradient(hsl(0 0% 100% / 0.35) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse at 60% 40%, black 10%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 60% 40%, black 10%, transparent 70%);
+}
+.crm-mint-card {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(168 70% 32%) 55%, hsl(160 60% 40%) 100%);
+  color: hsl(0 0% 100%);
 }
 
 @keyframes crm-shimmer {

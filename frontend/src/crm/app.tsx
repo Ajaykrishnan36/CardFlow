@@ -22,6 +22,7 @@ import { CampaignEditorPage, CampaignsPage } from './features/tools/campaigns-pa
 import { MailboxesPage } from './features/tools/mailboxes-page';
 import { TeamsPage } from './features/tools/teams-page';
 import { ForecastPage } from './features/forecast/forecast-page';
+import { PipelinePage } from './features/pipeline/pipeline-page';
 import { ApprovalsPage, CampaignResultsPage, PricingSetupPage } from './features/commerce/commerce-pages';
 import { SsoPage } from './features/tools/sso-page';
 import { DeveloperPage } from './features/tools/developer-page';
@@ -222,6 +223,7 @@ function workspaceRoutes(prefix: string) {
               <Route path="settings/business" element={<BusinessProfilePage />} />
               <Route path="cards" element={<CardsPage />} />
               <Route path="forecasts" element={<ForecastPage />} />
+              <Route path="pipeline" element={<PipelinePage />} />
               <Route path="approvals" element={<ApprovalsPage />} />
               <Route path="campaign-results" element={<CampaignResultsPage />} />
               <Route path="settings/pricing" element={<PricingSetupPage />} />
