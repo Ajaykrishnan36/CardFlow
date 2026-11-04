@@ -1860,6 +1860,29 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   (saved through the same rules as an edit — a refusal puts the card back and says why), or
   compact cards; search; "New deal".
 
+## D-177 — Lost reasons, changing a sent quote's price, activity on the right, list summaries
+
+- Closing a lead as lost (or a deal as closed lost), from the form, a list or the board, opens
+  "Why was this lead lost?" with quick reasons and a box; the reason is saved with the change.
+  Cancel leaves the record as it was. The server already refuses a lost lead or deal without
+  a reason.
+- A sent quote's prices stay fixed. **Change price** makes the next version (the sent one is
+  kept as history, marked expired) and opens its items at once. The items editor takes a
+  discount as a percent or as rupees off each unit, and **Round the total to (₹)** sets a
+  whole-quote target: someone who may set prices gets exactly that total, tax included
+  (each price scaled); anyone else gets the same discount on every line, as close as two
+  decimals allow. Discounts past a price book's limit still go for approval.
+- The payment plan popup shows quick choices (3/6/9/12 instalments; weekly, fortnightly,
+  monthly) and the whole schedule with each date and amount. Every popup now has the same
+  padding and rounded frame unless it sets its own.
+- On every record page, Activity is a card at the top of the right-hand column; the tabs are
+  Details, Emails, Related and Documents.
+- The sidebar keeps a module lit on its records (Quotes stays active on a quote), and the
+  collapsed sidebar shows its icons again (the tooltip had turned the link's styles into text).
+- Every list starts with a summary: all records and each status as a chip with its count,
+  counted with the same access rules as the list; a chip filters the list.
+- Home no longer shows Recent cards for branches, consents, privacy requests and territories.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

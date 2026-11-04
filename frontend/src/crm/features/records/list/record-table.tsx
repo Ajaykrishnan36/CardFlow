@@ -122,7 +122,7 @@ export function RecordTable({
             const href = rowHref(scope, object, r);
             const on = selected.has(r.id);
             return (
-              <tr key={r.id} className={cn('group border-b last:border-0', on ? 'bg-primary-soft/60' : 'hover:bg-muted/50')}>
+              <tr key={r.id} className={cn('group border-b border-border/60 transition-colors last:border-0', on ? 'bg-primary-soft/60' : 'hover:bg-primary-soft/25')}>
                 <td className={cn('w-10 pl-4', py)}>
                   <input type="checkbox" className="size-4 accent-[hsl(var(--primary))]" checked={on} onChange={() => toggle(r.id)} aria-label={t('lists.selectRow', { name: r.title })} />
                 </td>
@@ -156,8 +156,8 @@ export function RecordTable({
   return (
     <div className="hidden overflow-x-auto sm:block">
       <table className="w-full text-left text-[13px]">
-        <thead className="sticky top-0 z-10 bg-muted/60 backdrop-blur">
-          <tr className="border-b text-xs text-muted-foreground">
+        <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
+          <tr className="border-b text-[11px] uppercase tracking-wider text-muted-foreground">
             <th scope="col" className="w-10 pl-4">
               <input type="checkbox" className="size-4 accent-[hsl(var(--primary))]" checked={allOn} onChange={toggleAll} aria-label={t('lists.selectPage')} />
             </th>

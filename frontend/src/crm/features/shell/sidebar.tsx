@@ -257,7 +257,8 @@ function SidebarLink({ item, collapsed, onNavigate, filtered }: { item: NavItem;
     <NavLink
       to={item.path}
       onClick={onNavigate}
-      end={item.path.split('/').length <= 3}
+      // A page stays lit on its records too (/quotes/123); only the dashboard needs an exact match.
+      end={item.key === 'home' || item.path.endsWith('/home')}
       className={({ isActive: routeActive }) => {
         const isActive = override ?? routeActive;
         return cn(
@@ -281,7 +282,8 @@ function SidebarLink({ item, collapsed, onNavigate, filtered }: { item: NavItem;
       )}
     </NavLink>
   );
-  return collapsed ? <Tooltip content={item.label}>{link}</Tooltip> : link;
+  // The tooltip gets its own wrapper: given the link itself, it would turn its className function into text.
+  return collapsed ? <Tooltip content={item.label}><span className="block">{link}</span></Tooltip> : link;
 }
 
 function WorkspaceAvatar({ name, className }: { name: string; className?: string }) {

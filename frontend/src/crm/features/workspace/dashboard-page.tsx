@@ -26,6 +26,9 @@ import { AtAGlance } from './at-a-glance';
 import { OfficeCard } from './office-card';
 import { OverviewSection } from './overview';
 
+/** Set-up records that don't belong on Home's "Recent" cards (D-177): they live in their own pages. */
+const NOT_ON_HOME = new Set<string>(['business_branches', 'consents', 'privacy_requests', 'territories']);
+
 /** /crm/w/:ws/home — the member's dashboard (or the first module when dashboard.view isn't granted). */
 const wsPrefix = (code: string) => `/w/${encodeURIComponent(code)}`;
 
@@ -143,8 +146,8 @@ function DashboardView({ code, workspaceName, readable }: { code: string; worksp
             ) : s.key === 'section:recent' ? (
               <RecentGrid
                 key={s.key}
-                data={q.data ? { ...q.data, recent: arrange(q.data.recent.filter((g) => inApp(listHref(scope, g.object))), (g) => `recent:${g.object}`, layout) } : undefined}
-                readable={arrange(readable, (o) => `recent:${o}`, layout)}
+                data={q.data ? { ...q.data, recent: arrange(q.data.recent.filter((g) => inApp(listHref(scope, g.object)) && !NOT_ON_HOME.has(g.object)), (g) => `recent:${g.object}`, layout) } : undefined}
+                readable={arrange(readable.filter((o) => !NOT_ON_HOME.has(o)), (o) => `recent:${o}`, layout)}
               />
             ) : null
           )}

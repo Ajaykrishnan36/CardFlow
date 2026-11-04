@@ -14,6 +14,7 @@ import { currentBusinessFor, tenantFromPath } from '@crm/lib/tenant';
 import { SidebarContent } from './sidebar';
 import { CommandMenu } from './command-menu';
 import { Shortcuts } from './shortcuts';
+import { LostReasonHost } from '@crm/features/records/lost-reason-dialog';
 import { ThemeToggle } from './theme-toggle';
 import { NotificationsBell, useLiveUpdates } from './live';
 
@@ -149,6 +150,7 @@ export function AppShell() {
       </div>
 
       <Shortcuts navigation={navigation ?? []} />
+      <LostReasonHost />
       <CommandMenu navigation={navigation ?? []} workspaces={workspace?.workspaces} currentWorkspace={wsCode} apiPrefix={apiPrefix} routeBase={routeBase} />
     </div>
   );

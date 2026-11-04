@@ -372,6 +372,24 @@ export interface LoginPolicy {
 
 export type RuleBody = { name: string; message: string; field: string; filter: unknown; active?: boolean };
 
+// Closing a lead or deal as lost needs the reason (D-177): wherever it happens — the form, a
+// list, the board — the app asks for it in a popup and sends it with the change.
+type LostReasonPrompt = (object: ObjectKey) => Promise<string | null>;
+let lostReasonPrompt: LostReasonPrompt | null = null;
+export function setLostReasonPrompt(fn: LostReasonPrompt | null) {
+  lostReasonPrompt = fn;
+}
+async function withLostReason(object: ObjectKey, values: Record<string, unknown>) {
+  const lost = (object === 'leads' && values.status === 'lost') || (object === 'opportunities' && values.status === 'closed_lost');
+  const given = typeof values.lostReason === 'string' && values.lostReason.trim() !== '';
+  if (!lost || given || !lostReasonPrompt) return values;
+  const reason = await lostReasonPrompt(object);
+  if (!reason) {
+    throw new ApiError(422, 'validation_failed', 'Not changed: closing as lost needs the reason.', { lostReason: 'Tell us why it was lost.' });
+  }
+  return { ...values, lostReason: reason };
+}
+
 export function recordsApiFor(prefix: string) {
   return {
   meta: (object: ObjectKey) => api<ObjectMeta>(`${prefix}/crm/meta/${object}`),
@@ -393,9 +411,10 @@ export function recordsApiFor(prefix: string) {
 
   list: (object: ObjectKey, params: RecordListParams = {}) => api<RecordPage>(`${prefix}/crm/${object}${qs(params)}`),
   get: (object: ObjectKey, id: string) => api<RecordDetail>(`${prefix}/crm/${object}/${enc(id)}`),
-  create: (object: ObjectKey, values: Record<string, unknown>) => api<RecordRow>(`${prefix}/crm/${object}`, { method: 'POST', body: { values } }),
-  update: (object: ObjectKey, id: string, values: Record<string, unknown>, expectedVersion: number) =>
-    api<RecordRow>(`${prefix}/crm/${object}/${enc(id)}`, { method: 'PATCH', body: { values, expectedVersion } }),
+  create: async (object: ObjectKey, values: Record<string, unknown>) =>
+    api<RecordRow>(`${prefix}/crm/${object}`, { method: 'POST', body: { values: await withLostReason(object, values) } }),
+  update: async (object: ObjectKey, id: string, values: Record<string, unknown>, expectedVersion: number) =>
+    api<RecordRow>(`${prefix}/crm/${object}/${enc(id)}`, { method: 'PATCH', body: { values: await withLostReason(object, values), expectedVersion } }),
   remove: (object: ObjectKey, id: string) => api<void>(`${prefix}/crm/${object}/${enc(id)}`, { method: 'DELETE' }),
   convertLead: (id: string, body: ConvertBody, idempotencyKey: string) =>
     api<ConvertResult>(`${prefix}/crm/leads/${enc(id)}/convert`, { method: 'POST', body, headers: { 'Idempotency-Key': idempotencyKey } }),

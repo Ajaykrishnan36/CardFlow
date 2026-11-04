@@ -64,7 +64,11 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   const record = detail?.record;
   useDocumentTitle(record?.title ?? meta?.labelSingular ?? t('records.common.loading'));
 
-  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') as Tab) || 'details');
+  // Activity is on the right now (D-177): an old ?tab=activity link opens the details.
+  const [tab, setTab] = useState<Tab>(() => {
+    const t0 = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+    return t0 && t0 !== 'activity' ? t0 : 'details';
+  });
   const [showEmpty, setShowEmpty] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -490,7 +494,6 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
               onChange={setTab}
               items={[
                 { value: 'details', label: t('records.detail.tabDetails') },
-                { value: 'activity', label: t('records.detail.tabActivity') },
                 ...(email ? [{ value: 'emails' as Tab, label: t('records.detail.tabEmails') }] : []),
                 {
                   value: 'related',
@@ -574,8 +577,6 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                   })
                 )}
               </div>
-            ) : tab === 'activity' ? (
-              <RecordTimeline object={object} id={id} canWrite={scope.can(object, 'read')} />
             ) : tab === 'emails' ? (
               <RecordEmails object={object} id={id} canSend={canEmail} onNewEmail={() => setEmailOpen(true)} />
             ) : tab === 'files' ? (
@@ -606,6 +607,18 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
         </div>
 
         <aside className="min-w-0 space-y-4">
+          {/* Activity sits on the right, next to the record (D-177), on every record page. */}
+          <Card className="crm-rise overflow-hidden">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <p className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
+                <span className="grid size-7 place-items-center rounded-lg bg-primary-soft text-primary"><Activity className="size-3.5" aria-hidden /></span>
+                {t('records.detail.tabActivity')}
+              </p>
+            </div>
+            <div className="crm-scroll max-h-[560px] overflow-y-auto">
+              <RecordTimeline object={object} id={id} canWrite={scope.can(object, 'read')} />
+            </div>
+          </Card>
           {inWorkspace && object === 'cases' ? <CaseSlaCard record={record} /> : null}
           {inWorkspace && object === 'invoices' ? <InvoicePaymentsCard record={record} /> : null}
           {inWorkspace && object === 'payments' ? <PaymentAllocationsCard record={record} canEdit={canEdit} /> : null}

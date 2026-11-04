@@ -65,7 +65,7 @@ export function PageHeader({
           {icon ? <div className="shrink-0">{icon}</div> : null}
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-[22px] font-semibold tracking-tight text-foreground sm:text-2xl">{title}</h1>
+              <h1 className="truncate text-[24px] font-bold tracking-tight text-foreground sm:text-[26px]">{title}</h1>
               {badges}
             </div>
             {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}

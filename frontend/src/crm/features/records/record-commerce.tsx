@@ -1,9 +1,9 @@
 import { zoned } from '@crm/lib/zone';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Banknote, CalendarClock, FileDown, FileOutput, GitBranch, MapPin, Megaphone, Package, Pencil, Plus, Receipt, ShieldCheck, Tag, UserCheck, Users, Wrench, X } from 'lucide-react';
+import { Banknote, CalendarClock, FileDown, FileOutput, GitBranch, IndianRupee, Percent, Sparkles, MapPin, Megaphone, Package, Pencil, Plus, Receipt, ShieldCheck, Tag, UserCheck, Users, Wrench, X } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import { businessApi, commerceApi, type BundleComponent, type PriceLineInput, type PriceResult } from '@crm/api/endpoints';
 import type { LookupTarget, LookupValue, ObjectKey, RecordRow } from '@crm/api/types';
@@ -163,13 +163,15 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
     void qc.invalidateQueries({ queryKey: key });
     void qc.invalidateQueries({ queryKey: recordKeys.detail(scope.prefix, object, record.id) });
   };
+  const [sp, setSp] = useSearchParams();
   const next = useMutation({
-    mutationFn: (kind: 'convert' | 'invoice' | 'revise' | 'wo-invoice') =>
-      kind === 'convert' ? api.convertQuote(record.id) : kind === 'invoice' ? api.invoiceOrder(record.id) : kind === 'revise' ? api.reviseQuote(record.id) : api.invoiceWorkOrder(record.id),
-    onSuccess: (r) => {
-      toast.success(`Created ${r.code}`);
+    mutationFn: (kind: 'convert' | 'invoice' | 'revise' | 'reprice' | 'wo-invoice') =>
+      kind === 'convert' ? api.convertQuote(record.id) : kind === 'invoice' ? api.invoiceOrder(record.id) : kind === 'revise' || kind === 'reprice' ? api.reviseQuote(record.id) : api.invoiceWorkOrder(record.id),
+    onSuccess: (r, kind) => {
+      toast.success(kind === 'reprice' ? `New version ${r.code}: set the new price` : `Created ${r.code}`);
       refresh();
-      navigate(recordHref(scope, r.object, r.id));
+      // "Change price" (D-177): the new version opens with its items ready to edit.
+      navigate(recordHref(scope, r.object, r.id) + (kind === 'reprice' ? '?editItems=1' : ''));
     },
     onError: (e) => toast.error(firstError(e))
   });
@@ -188,6 +190,14 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
     onError: (e) => toast.error(firstError(e))
   });
   const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    if (sp.get('editItems') && linesQ.data?.editable) {
+      setEditing(true);
+      const q = new URLSearchParams(sp);
+      q.delete('editItems');
+      setSp(q, { replace: true });
+    }
+  }, [sp, setSp, linesQ.data?.editable]);
   const [paying, setPaying] = useState(false);
   const [planning, setPlanning] = useState(false);
   const payMeta = useObjectMeta('payments');
@@ -290,6 +300,12 @@ export function DocumentLinesCard({ object, record }: { object: ObjectKey; recor
             {d?.editable ? (
               <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
                 <Pencil /> {p && p.lines.length ? 'Edit items' : 'Add items'}
+              </Button>
+            ) : null}
+            {object === 'quotes' && !d?.editable && status === 'sent' && scope.can('quotes', 'create') && p && p.lines.length > 0 ? (
+              <Button size="sm" variant="navy" loading={next.isPending && next.variables === 'reprice'} onClick={() => next.mutate('reprice')}
+                title="Prices of a sent quote are fixed: this makes a new version with the new price and keeps this one as history.">
+                <Pencil /> Change price
               </Button>
             ) : null}
             {object === 'quotes' && scope.can('quotes', 'create') && p && p.lines.length > 0 ? (
@@ -408,6 +424,9 @@ interface EditLine {
   quantity: string;
   discountPercent: string;
   unitPrice: string;
+  /** The discount typed as rupees off each unit (turned into a percent of the price). */
+  discountRupees?: string;
+  mode?: 'pct' | 'amt';
 }
 
 function LinesEditor({ object, record, current, onClose, onSaved }: { object: ObjectKey; record: RecordRow; current: PriceResult; onClose: () => void; onSaved: () => void }) {
@@ -458,20 +477,53 @@ function LinesEditor({ object, record, current, onClose, onSaved }: { object: Ob
   const set = (key: number, patch: Partial<EditLine>) => setRows((r) => r.map((x) => (x.key === key ? { ...x, ...patch } : x)));
   // The priced top-level line for each row, in order.
   const top = (pv?.lines ?? []).filter((l) => l.bundleOf == null);
+  // "Round the total to" (D-177): one target for the whole quote. Someone who may set prices
+  // gets exactly that total (each price scaled, tax included); everyone else gets the same
+  // discount on every line, as close as a percent with two decimals allows.
+  const [target, setTarget] = useState('');
+  const applyTarget = () => {
+    const want = Number(target);
+    if (!pv || !(want > 0) || top.length !== rows.length) return;
+    const gross = top.reduce((n, l) => n + l.quantity * l.unitPrice * (1 + l.taxRate / 100), 0);
+    if (!(gross > 0)) return;
+    const ratio = want / gross;
+    if (ratio > 1) {
+      setError('The new total is more than the price before discounts. Raise the price under Price instead.');
+      return;
+    }
+    setError(null);
+    setRows((rs) =>
+      rs.map((r, i) =>
+        canOverride || !r.itemId
+          ? { ...r, unitPrice: String(Math.round(top[i]!.unitPrice * ratio * 100) / 100), discountPercent: '', discountRupees: '', mode: 'pct' }
+          : { ...r, discountPercent: String(Math.round((1 - ratio) * 10000) / 100), discountRupees: '', mode: 'pct' }
+      )
+    );
+  };
+  const basePrice = (i: number) => (rows[i]?.unitPrice ? Number(rows[i]!.unitPrice) : top[i]?.unitPrice ?? 0);
 
   return (
     <FormDialog wide title="Items and pricing" description="Prices come from the price book. Discount rules, bundle contents and tax are worked out as you go." error={error ?? problem} onClose={onClose}
       onSubmit={() => { setError(null); save.mutate(); }} submit="Save items" busy={save.isPending} disabled={Boolean(problem)}>
-      <Field label="Price book" hint="Leave empty to use this customer's own price book, or the default one.">
-        <RecordPicker target="price_books" value={book} onPick={setBook} />
-      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Price book" hint="Leave empty to use this customer's own price book, or the default one.">
+          <RecordPicker target="price_books" value={book} onPick={setBook} />
+        </Field>
+        <Field label="Round the total to (₹)" hint={canOverride ? 'The prices are set so the total, with tax, is exactly this.' : 'The same discount is given on every line to come as close as possible.'}>
+          <div className="flex gap-2">
+            <Input type="number" min="0" step="1" value={target} onChange={(e) => setTarget(e.target.value)} placeholder={pv ? String(Math.round(pv.total)) : 'e.g. 90000'}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyTarget(); } }} />
+            <Button type="button" variant="outline" onClick={applyTarget} disabled={!target || !pv}><Sparkles /> Apply</Button>
+          </div>
+        </Field>
+      </div>
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full min-w-[620px] text-[13px]">
           <thead>
             <tr className="border-b bg-muted/40 text-left text-xs font-medium text-muted-foreground">
               <th className="px-3 py-2">Item</th>
               <th className="w-20 px-2 py-2">Qty</th>
-              <th className="w-24 px-2 py-2">Discount %</th>
+              <th className="w-32 px-2 py-2">Discount</th>
               <th className="w-28 px-2 py-2">{canOverride ? 'Price override' : 'Price'}</th>
               <th className="w-28 px-3 py-2 text-right">Amount</th>
               <th className="w-8" />
@@ -493,7 +545,22 @@ function LinesEditor({ object, record, current, onClose, onSaved }: { object: Ob
                   <Input type="number" min="0" step="any" value={r.quantity} onChange={(e) => set(r.key, { quantity: e.target.value })} aria-label={`Quantity of ${r.name}`} />
                 </td>
                 <td className="px-2 py-1.5">
-                  <Input type="number" min="0" max="100" step="any" value={r.discountPercent} onChange={(e) => set(r.key, { discountPercent: e.target.value })} aria-label={`Discount on ${r.name}`} />
+                  <div className="flex items-center gap-1">
+                    {r.mode === 'amt' ? (
+                      <Input type="number" min="0" step="0.01" value={r.discountRupees ?? ''} aria-label={`Rupees off each ${r.name}`}
+                        onChange={(e) => {
+                          const amt = e.target.value;
+                          const b = basePrice(i);
+                          set(r.key, { discountRupees: amt, discountPercent: amt === '' || !b ? '' : String(Math.round((Number(amt) / b) * 10000) / 100) });
+                        }} />
+                    ) : (
+                      <Input type="number" min="0" max="100" step="any" value={r.discountPercent} onChange={(e) => set(r.key, { discountPercent: e.target.value, discountRupees: '' })} aria-label={`Discount on ${r.name}`} />
+                    )}
+                    <button type="button" onClick={() => set(r.key, { mode: r.mode === 'amt' ? 'pct' : 'amt' })} title={r.mode === 'amt' ? 'Type a percent instead' : 'Type rupees off each instead'}
+                      className="grid size-8 shrink-0 place-items-center rounded-md border text-muted-foreground hover:border-primary hover:text-primary">
+                      {r.mode === 'amt' ? <IndianRupee className="size-3.5" /> : <Percent className="size-3.5" />}
+                    </button>
+                  </div>
                 </td>
                 <td className="px-2 py-1.5">
                   {canOverride || !r.itemId ? (
@@ -1179,30 +1246,82 @@ function PaymentPlanDialog({ open, onOpenChange, balance, money, onSave, onDone 
     },
     onError: (e) => setError(firstError(e))
   });
-  const n = Math.max(1, Number(count) || 1);
+  const n = Math.min(60, Math.max(2, Math.round(Number(count)) || 2));
+  const step = Math.max(1, Math.round(Number(every)) || 30);
+  // The schedule as the server makes it: equal parts in whole paise, the last one takes the rest.
+  const part = Math.floor((balance / n) * 100) / 100;
+  const schedule = Array.from({ length: n }, (_, i) => {
+    const d = new Date(`${firstDue}T00:00:00`);
+    d.setDate(d.getDate() + step * i);
+    return { i: i + 1, date: Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }), amount: i === n - 1 ? Math.round((balance - part * (n - 1)) * 100) / 100 : part };
+  });
+  const presets = [3, 6, 9, 12];
+  const freq = [
+    { days: 7, label: 'Weekly' },
+    { days: 14, label: 'Fortnightly' },
+    { days: 30, label: 'Monthly' }
+  ];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogTitle className="text-base font-semibold">Payment plan</DialogTitle>
-        <DialogDescription className="text-[13px] text-muted-foreground">
-          Split the {money(balance)} still due into instalments. Each payment you take on this quote pays them in date order; the last one makes the invoice.
-        </DialogDescription>
-        {error ? <Alert tone="danger">{error}</Alert> : null}
-        <div className="mt-3 grid grid-cols-3 gap-3">
-          <Field label="Instalments">
-            <Input type="number" min={2} max={60} value={count} onChange={(e) => setCount(e.target.value)} />
-          </Field>
-          <Field label="First due">
-            <Input type="date" value={firstDue} onChange={(e) => setFirstDue(e.target.value)} />
-          </Field>
-          <Field label="Every (days)">
-            <Input type="number" min={1} value={every} onChange={(e) => setEvery(e.target.value)} />
-          </Field>
+      <DialogContent className="max-w-xl overflow-hidden rounded-2xl p-0">
+        <div className="flex items-start gap-3 border-b px-6 pb-4 pt-5 pr-12">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary-soft text-primary"><CalendarClock className="size-5" /></span>
+          <div className="min-w-0">
+            <DialogTitle className="text-[17px] font-semibold text-foreground">Payment plan</DialogTitle>
+            <DialogDescription className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+              Split <span className="font-semibold text-foreground">{money(balance)}</span> still due into instalments. Each payment taken on this quote pays them in date order; the last one makes the invoice.
+            </DialogDescription>
+          </div>
         </div>
-        <p className="mt-2 text-[13px] text-foreground">
-          {n} × about <b>{money(Math.floor((balance / n) * 100) / 100)}</b>
-        </p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="space-y-4 px-6 py-5">
+          {error ? <Alert tone="danger">{error}</Alert> : null}
+          <div>
+            <p className="mb-1.5 text-[13px] font-medium text-foreground">How many instalments</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {presets.map((p) => (
+                <button key={p} type="button" onClick={() => setCount(String(p))}
+                  className={cn('rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition-colors', n === p ? 'border-primary bg-primary text-primary-foreground' : 'hover:border-primary/50 hover:text-primary')}>
+                  {p}
+                </button>
+              ))}
+              <Input type="number" min={2} max={60} value={count} onChange={(e) => setCount(e.target.value)} className="h-9 w-24" aria-label="Number of instalments" />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="First instalment due">
+              <Input type="date" value={firstDue} onChange={(e) => setFirstDue(e.target.value)} />
+            </Field>
+            <div>
+              <p className="mb-1.5 text-[13px] font-medium text-foreground">Then every</p>
+              <div className="flex items-center gap-1.5">
+                {freq.map((f) => (
+                  <button key={f.days} type="button" onClick={() => setEvery(String(f.days))}
+                    className={cn('rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors', step === f.days ? 'border-primary bg-primary-soft text-primary' : 'text-muted-foreground hover:text-foreground')}>
+                    {f.label}
+                  </button>
+                ))}
+                <Input type="number" min={1} value={every} onChange={(e) => setEvery(e.target.value)} className="h-9 w-16" aria-label="Days between instalments" />
+                <span className="text-xs text-muted-foreground">days</span>
+              </div>
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-xl border">
+            <div className="flex items-center justify-between bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+              <span>{n} instalments</span>
+              <span>Total {money(balance)}</span>
+            </div>
+            <ol className="crm-scroll max-h-52 divide-y overflow-y-auto">
+              {schedule.map((x) => (
+                <li key={x.i} className="flex items-center gap-3 px-4 py-2 text-[13px]">
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary-soft text-[11px] font-semibold text-primary">{x.i}</span>
+                  <span className="flex-1 text-muted-foreground">{x.date}</span>
+                  <span className="font-semibold tabular-nums text-foreground">{money(x.amount)}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t bg-muted/30 px-6 py-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button loading={save.isPending} onClick={() => save.mutate()}>Make plan</Button>
         </div>

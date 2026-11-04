@@ -14,6 +14,7 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@crm/co
 import { Select } from '@crm/components/ui/form-controls';
 import { Skeleton } from '@crm/components/ui/spinner';
 import { PageContainer, PageHeader, SearchInput } from '@crm/components/page';
+import { StatusStrip } from './list/status-strip';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
@@ -369,6 +370,11 @@ function RecordListView({ object }: { object: ObjectKey }) {
           />
           {ws !== ALL_WS ? <ClearProductButton onClick={() => pickProduct(ALL_WS)} /> : null}
         </div>
+      ) : null}
+
+      {meta && !binMode && !isOwner ? (
+        <StatusStrip object={object} meta={meta} base={{ workspace: ws, app, q: q || undefined }} filter={draft.filter}
+          onFilter={(f) => { setDraft((d) => ({ ...d, filter: f })); patchParams({ page: null }); }} />
       ) : null}
 
       <Card className="min-w-0 overflow-hidden">
