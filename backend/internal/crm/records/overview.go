@@ -583,3 +583,72 @@ func shortRupees(v float64) string {
 	}
 	return "₹" + strconv.FormatFloat(v, 'f', 0, 64)
 }
+
+// GET /w/{code}/forecast/trend?from=YYYY-MM-DD&to=YYYY-MM-DD (D-176): closed won added up
+// week by week through a forecast period, up to today — the actual line of the forecast
+// chart. Nothing is projected here; the page draws the pace from these points.
+func (h *Handler) handleForecastTrend(w http.ResponseWriter, r *http.Request) {
+	sc := scopeFrom(r.Context())
+	if !sc.Enabled("opportunities") || !sc.Can("opportunities", "read") {
+		shared.WriteError(w, r, errForbidden)
+		return
+	}
+	ctx := r.Context()
+	me := actor(r)
+	from, err1 := time.Parse("2006-01-02", r.URL.Query().Get("from"))
+	to, err2 := time.Parse("2006-01-02", r.URL.Query().Get("to"))
+	if err1 != nil || err2 != nil || to.Before(from) || to.Sub(from) > 400*24*time.Hour {
+		shared.WriteError(w, r, shared.Validation(map[string]string{"from": "Give the period as from and to dates."}))
+		return
+	}
+	args := []any{sc.WS, from.Format("2006-01-02"), to.Format("2006-01-02")}
+	own := ""
+	if sc.OwnOnly("opportunities") {
+		args = append(args, sc.OwnersFor("opportunities", me))
+		own = " AND t.owner_id = ANY($4::uuid[])"
+	}
+	rows, err := h.store.Pool.Query(ctx, `SELECT COALESCE(NULLIF(t.custom->>'closeDate', ''), to_char(t.updated_at, 'YYYY-MM-DD')), COALESCE(sum(`+numeric(`t.custom->>'amount'`)+`), 0)::float8
+		FROM crm.object_records t WHERE t.workspace_id = $1 AND t.deleted_at IS NULL AND t.object_key = 'opportunities' AND t.status = 'closed_won'
+		  AND COALESCE(NULLIF(t.custom->>'closeDate', ''), to_char(t.updated_at, 'YYYY-MM-DD')) BETWEEN $2 AND $3`+own+` GROUP BY 1`, args...)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	byDay := map[string]float64{}
+	for rows.Next() {
+		var d string
+		var v float64
+		if rows.Scan(&d, &v) == nil {
+			byDay[d] += v
+		}
+	}
+	rows.Close()
+	type week struct {
+		Label  string   `json:"label"`
+		End    string   `json:"end"`
+		Closed *float64 `json:"closed"` // running total; null for weeks still to come
+	}
+	out := struct {
+		Weeks []week `json:"weeks"`
+		Today string `json:"today"`
+	}{Weeks: []week{}, Today: time.Now().Format("2006-01-02")}
+	total := 0.0
+	n := 0
+	for start := from; !start.After(to); start = start.AddDate(0, 0, 7) {
+		n++
+		end := start.AddDate(0, 0, 6)
+		if end.After(to) {
+			end = to
+		}
+		wk := week{Label: "W" + strconv.Itoa(n), End: end.Format("2006-01-02")}
+		if !start.After(time.Now()) {
+			for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+				total += byDay[d.Format("2006-01-02")]
+			}
+			v := total
+			wk.Closed = &v
+		}
+		out.Weeks = append(out.Weeks, wk)
+	}
+	shared.WriteJSON(w, http.StatusOK, out)
+}

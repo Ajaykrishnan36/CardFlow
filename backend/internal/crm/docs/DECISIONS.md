@@ -1837,6 +1837,12 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   leaderboard; tasks and appointments in the next 7 days. Viewers who see only their own
   records get their own numbers; sections they can't read are left out. It refreshes every
   minute. The earlier dashboard sections stay below it.
+- **Forecast**: on top of the existing tiles and table — the target as a semicircle gauge
+  (closed won against it, with a mark where commit lands), commit / best case / gap; the path
+  to target (closed, then commit, best case and the rest of the pipeline stacked); the
+  leaderboard of people against their own targets; and closed won week by week
+  (`GET /forecast/trend`), with best case and commit as they stand today and the pace so far
+  carried forward as a dashed line, labelled as such.
 - **Pipeline** (`/pipeline`): the funnel, stage-by-stage conversion, win rate and the cycle on
   top; deals as a sortable, paged list (the default), a board to drag deals between stages
   (saved through the same rules as an edit — a refusal puts the card back and says why), or

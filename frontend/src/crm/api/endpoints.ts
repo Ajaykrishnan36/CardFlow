@@ -1209,6 +1209,9 @@ export function enterpriseApi(code: string) {
 
     forecastPeriods: () => api<{ data: ForecastPeriod[]; current: { month: string; quarter: string; year: string }; fiscalStartMonth: number }>(`${base}/forecast/periods`),
     forecast: (params: { period: string; groupBy?: string }) => api<Forecast>(`${base}/forecast${qs(params)}`),
+    /** Closed won added up week by week through a period (D-176). */
+    forecastTrend: (from: string, to: string) =>
+      api<{ weeks: Array<{ label: string; end: string; closed: number | null }>; today: string }>(`${base}/forecast/trend${qs({ from, to })}`),
     setQuota: (body: { periodKey: string; scope: 'company' | 'team' | 'user'; ownerId?: string; teamId?: string; amount: number }) =>
       api<{ ok: boolean }>(`${base}/forecast/quotas`, { method: 'PUT', body }),
     submitForecast: (body: { periodKey: string; forecastAmount?: number; comment?: string }) =>

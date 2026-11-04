@@ -48,6 +48,7 @@ import (
 func (h *Handler) forecastRoutes(r chi.Router) {
 	r.Get("/forecast/history", h.handleForecastHistory)
 	r.Get("/forecast", h.handleForecast)
+	r.Get("/forecast/trend", h.handleForecastTrend)
 	r.Get("/forecast/periods", h.handleForecastPeriods)
 	r.Put("/forecast/quotas", h.handleSetQuota)
 	r.Post("/forecast/submit", h.handleSubmitForecast)

@@ -18,6 +18,7 @@ import { formatMoney } from '@crm/lib/money';
 import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
 import { useWorkspace, workspaceBase } from '@crm/features/workspace/workspace-context';
+import { ForecastVisuals } from './forecast-visuals';
 
 // Forecasts (D-112): what the business expects to close in a month, quarter or financial
 // year, worked out from its opportunities and set against targets. Nothing is stored
@@ -74,7 +75,7 @@ export function ForecastPage() {
   return (
     <PageContainer wide>
       <PageHeader
-        title="Forecasts"
+        title="Forecast"
         icon={
           <span className="grid size-10 place-items-center rounded-lg bg-primary-soft text-primary">
             <TrendingUp className="size-5" aria-hidden />
@@ -142,6 +143,7 @@ export function ForecastPage() {
         </div>
       ) : (
         <>
+          <ForecastVisuals code={code} f={f} />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Tile
               label="Target"
