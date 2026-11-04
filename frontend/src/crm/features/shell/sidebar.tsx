@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Building2, Check, ChevronDown, ChevronsLeft, ChevronsRight, ChevronsUpDown, Crown, LayoutGrid, Plus, Search } from 'lucide-react';
 import type { Me, NavItem, WorkspaceContext } from '@crm/api/types';
 import { isOwnerSession, workspaceHomePath } from '@crm/auth/session';
@@ -16,35 +16,27 @@ import { UserMenu } from './user-menu';
 import { setSelectedApp } from '@crm/features/workspace/selected-app';
 import { FavoritesNav } from './live';
 
-/** These sections start open (the journey and the trade's own pack); the rest start folded (D-174). */
-const DEFAULT_OPEN = ['Customer journey', 'Dealership', 'Insurance', 'Legal', 'Real estate', 'Salon'];
-
 function isHere(path: string, pathname: string) {
   const p = path.split('?')[0]!;
   return pathname === p || pathname.startsWith(p + '/');
 }
 
-/** Which sections the person opened or folded, remembered on this device. */
-function useFolds(scope: string): [Record<string, boolean>, (name: string, open: boolean) => void] {
-  const key = `crm.nav.folds:${scope}`;
-  const [folds, setFolds] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(key) ?? '{}') as Record<string, boolean>;
-    } catch {
-      return {};
-    }
-  });
-  const toggle = (name: string, open: boolean) =>
-    setFolds((f) => {
-      const next = { ...f, [name]: open };
-      try {
-        localStorage.setItem(key, JSON.stringify(next));
-      } catch {
-        /* private window: remembered for this visit only */
-      }
-      return next;
-    });
-  return [folds, toggle];
+/**
+ * Which section is open inside a business (D-174): one at a time, like an accordion. The
+ * section of the page you are on opens (the first section when the page is in none);
+ * opening another closes it, and the open one can be closed. In the owner console every
+ * section stays open.
+ */
+function useOpenSection(groups: Array<{ name: string | null; items: NavItem[] }>, pathname: string) {
+  const named = groups.filter((g) => g.name && g.items.some((i) => i.available));
+  const here = named.find((g) => g.items.some((i) => i.available && isHere(i.path, pathname)))?.name ?? null;
+  // undefined: not chosen yet; null: the person closed every section.
+  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (here) setChosen(here);
+  }, [here]);
+  const open = chosen === undefined ? here ?? named[0]?.name ?? null : chosen;
+  return [open, setChosen] as const;
 }
 
 function groupNav(items: NavItem[]) {
@@ -90,7 +82,8 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
   const primaryMembership = me.memberships.find((m) => !m.isPlatformWorkspace) ?? me.memberships[0];
   const inWorkspace = Boolean(workspaceCode);
   const location = useLocation();
-  const [folds, toggleFold] = useFolds(apiPrefix ?? 'console');
+  const navGroups = arranged ? groupNav(arranged) : [];
+  const [openSection, setOpenSection] = useOpenSection(navGroups, location.pathname);
 
   return (
     <div className={cn('flex h-full flex-col bg-sidebar', className)}>
@@ -155,18 +148,19 @@ export function SidebarContent({ me, navigation, loading, workspace, workspaceCo
             ))}
           </div>
         ) : (
-          groupNav(arranged).map((group) => {
+          navGroups.map((group) => {
             const items = group.items.filter((item) => item.available);
             if (!items.length) return null;
-            const here = items.some((item) => isHere(item.path, location.pathname));
-            // Sections fold (D-174): the one you are in and the customer journey start open.
-            const open = collapsed || !group.name || here || (folds[group.name] ?? DEFAULT_OPEN.includes(group.name));
+            // The owner console keeps every section open; a business shows one at a time.
+            const open = collapsed || !group.name || !inWorkspace || openSection === group.name;
             return (
               <div key={group.name ?? 'root'} className={cn(open ? 'mb-4' : 'mb-1', 'last:mb-0')}>
-                {group.name && !collapsed ? (
+                {group.name && !collapsed && !inWorkspace ? (
+                  <p className="mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">{group.name}</p>
+                ) : group.name && !collapsed ? (
                   <button
                     type="button"
-                    onClick={() => toggleFold(group.name!, !open)}
+                    onClick={() => setOpenSection(open ? null : group.name)}
                     aria-expanded={open}
                     className="group/fold mb-1 flex w-full items-center gap-1 rounded px-2 py-0.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
                   >

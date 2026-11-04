@@ -1791,10 +1791,10 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   settled, withdrawn, closed) sets its closing date, and a closed matter takes no new hearing.
   The advocate (matter owner, and the hearing's owner) is notified the day before. New matters
   and matters decided in favour or settled are notified like sales.
-- The sidebar's sections fold: Customer journey and the trade's own pack start open, the rest
-  start folded with their count, and the section of the page you are on is always open. What
-  someone opens or folds is remembered on that device. The whole sidebar still collapses to
-  icons.
+- Inside a business the sidebar's sections work like an accordion: one open at a time — the
+  section of the page you are on, or the first section — and opening another closes it; the
+  open one can be closed too. The owner console keeps every section open. The whole sidebar
+  still collapses to icons.
 - Wording that assumed a showroom is gone from shared screens (branch help, convert dialog, web
   form placeholders).
 
