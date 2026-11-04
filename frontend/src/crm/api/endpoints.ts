@@ -1186,6 +1186,11 @@ export interface PriceBookEntry {
   validTo?: string;
   isActive: boolean;
   version: number;
+  /** The price applies today: entry and book active and in date (D-175). */
+  current?: boolean;
+  bookDefault?: boolean;
+  /** The customer a book is only for. */
+  bookFor?: string;
 }
 
 export interface BundleComponent {

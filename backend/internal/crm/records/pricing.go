@@ -100,15 +100,26 @@ type PriceBookEntry struct {
 	ValidTo        *string `json:"validTo,omitempty"`
 	Active         bool    `json:"isActive"`
 	Version        int     `json:"version"`
+	// Whether the price applies today (D-175): the entry and its book are active and in date.
+	// A book only for one customer says whose; the showroom's default book says so.
+	Current     bool   `json:"current"`
+	BookDefault bool   `json:"bookDefault,omitempty"`
+	BookFor     string `json:"bookFor,omitempty"`
 }
 
 const entrySelect = `
 	SELECT e.id::text, e.price_book_id::text, COALESCE(b.name, ''), e.catalog_item_id::text, COALESCE(i.name, ''), COALESCE(i.custom->>'sku', ''),
 	       e.currency, e.list_price::text, e.unit_price::text, e.cost::text, e.max_discount_pct::text,
 	       trim(trailing '.' from trim(trailing '0' from e.min_quantity::text)), trim(trailing '.' from trim(trailing '0' from e.max_quantity::text)),
-	       e.valid_from::text, e.valid_to::text, e.is_active, e.version
+	       e.valid_from::text, e.valid_to::text, e.is_active, e.version,
+	       (e.is_active AND e.valid_from <= current_date AND (e.valid_to IS NULL OR e.valid_to >= current_date)
+	        AND COALESCE(b.status, 'active') = 'active' AND b.deleted_at IS NULL
+	        AND (COALESCE(b.custom->>'validFrom', '') = '' OR b.custom->>'validFrom' <= to_char(current_date, 'YYYY-MM-DD'))
+	        AND (COALESCE(b.custom->>'validTo', '') = '' OR b.custom->>'validTo' >= to_char(current_date, 'YYYY-MM-DD'))),
+	       COALESCE(b.custom->>'isDefault', '') = 'true', COALESCE(a.name, '')
 	FROM crm.price_book_entries e
 	LEFT JOIN crm.object_records b ON b.id = e.price_book_id
+	LEFT JOIN crm.accounts a ON a.id::text = b.custom->>'accountId' AND a.workspace_id = b.workspace_id
 	LEFT JOIN crm.object_records i ON i.id = e.catalog_item_id`
 
 func scanEntry(row pgx.Row) (PriceBookEntry, error) {
@@ -116,7 +127,7 @@ func scanEntry(row pgx.Row) (PriceBookEntry, error) {
 	var list, unit string
 	var cost *string
 	err := row.Scan(&e.ID, &e.PriceBookID, &e.PriceBook, &e.ItemID, &e.Item, &e.SKU, &e.Currency, &list, &unit, &cost, &e.MaxDiscountPct,
-		&e.MinQuantity, &e.MaxQuantity, &e.ValidFrom, &e.ValidTo, &e.Active, &e.Version)
+		&e.MinQuantity, &e.MaxQuantity, &e.ValidFrom, &e.ValidTo, &e.Active, &e.Version, &e.Current, &e.BookDefault, &e.BookFor)
 	e.ListPrice, e.UnitPrice = mustCents(list), mustCents(unit)
 	if cost != nil {
 		c := mustCents(*cost)
@@ -1928,4 +1939,48 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// priceBookSaved (D-175): one plan at a time. Only one active showroom (default) price book
+// may cover a day, and only one active book per customer: a New Year offer starts once the
+// running showroom book is stopped (Inactive, or its Valid to ended), so every bike shows
+// and quotes the one price that is on.
+func (h *Handler) priceBookSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, after *Row) error {
+	if s := after.text("status"); s != "" && s != "active" {
+		return nil
+	}
+	account := after.text("accountId")
+	if account == "" && !after.flag("isDefault") {
+		return nil
+	}
+	var other, otherName, from, to string
+	err := tx.QueryRow(ctx, `
+		SELECT id::text, name, COALESCE(custom->>'validFrom', ''), COALESCE(custom->>'validTo', '') FROM crm.object_records
+		WHERE workspace_id = $1 AND object_key = 'price_books' AND deleted_at IS NULL AND id <> $2 AND COALESCE(status, 'active') = 'active'
+		  AND (($3 <> '' AND custom->>'accountId' = $3) OR ($3 = '' AND custom->>'isDefault' = 'true' AND COALESCE(custom->>'accountId', '') = ''))
+		  AND COALESCE(NULLIF(custom->>'validFrom', ''), '0000-01-01') <= COALESCE(NULLIF($5, ''), '9999-12-31')
+		  AND COALESCE(NULLIF(custom->>'validTo', ''), '9999-12-31') >= COALESCE(NULLIF($4, ''), '0000-01-01')
+		ORDER BY created_at LIMIT 1`, ws, after.uuid(), account, after.text("validFrom"), after.text("validTo")).Scan(&other, &otherName, &from, &to)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	when := ""
+	if from != "" || to != "" {
+		when = " (" + firstNonBlank(from, "start") + " to " + firstNonBlank(to, "no end") + ")"
+	}
+	who := "the showroom's price book"
+	if account != "" {
+		who = "this customer's price book"
+	}
+	return refuse("status", "\""+otherName+"\" is already "+who+" for these dates"+when+". Stop it first — set it to Inactive or end its Valid to — then start this one.")
+}
+
+func firstNonBlank(v, def string) string {
+	if strings.TrimSpace(v) == "" {
+		return def
+	}
+	return v
 }

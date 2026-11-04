@@ -161,6 +161,11 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 			return after, nil
 		}
 		return after, h.workOrderService(ctx, tx, ws, op, before, after)
+	case "price_books":
+		if op == "delete" || !standardObject(spec.Key) {
+			return after, nil
+		}
+		return after, h.priceBookSaved(ctx, tx, ws, after)
 	case "consents":
 		if op == "delete" || !standardObject(spec.Key) {
 			return after, nil

@@ -558,13 +558,17 @@ export function PriceEntriesCard({ mode, record }: { mode: 'book' | 'item'; reco
   const refresh = () => void qc.invalidateQueries({ queryKey: key });
   const remove = useMutation({ mutationFn: (id: string) => api.deleteEntry(id), onSuccess: () => { toast.success('Price removed'); refresh(); }, onError: (e) => toast.error(firstError(e)) });
   if (!code) return null;
-  const rows = listQ.data?.data ?? [];
+  const all = listQ.data?.data ?? [];
+  // On a product, the prices that apply today come first; a stopped plan's or an expired
+  // price is history, folded below (D-175).
+  const rows = mode === 'item' ? all.filter((e) => e.current) : all;
+  const earlier = mode === 'item' ? all.filter((e) => !e.current) : [];
   const canManage = listQ.data?.canManage ?? false;
   return (
-    <Panel icon={<Tag />} title={mode === 'book' ? 'Prices in this book' : 'Prices'} count={rows.length}
+    <Panel icon={<Tag />} title={mode === 'book' ? 'Prices in this book' : 'Prices today'} count={rows.length}
       actions={canManage ? <Button size="sm" variant="ghost" onClick={() => setAdding(true)}><Plus /> Price</Button> : null}>
       {listQ.isLoading ? <Loading /> : rows.length === 0 ? (
-        <Empty>{mode === 'book' ? 'This price book has no prices yet. Add the products and services it covers.' : 'Not in any price book yet: quotes use the catalog price.'}</Empty>
+        <Empty>{mode === 'book' ? 'This price book has no prices yet. Add the products and services it covers.' : earlier.length ? 'No price book is on today: quotes use the catalog price.' : 'Not in any price book yet: quotes use the catalog price.'}</Empty>
       ) : (
         <ul className="divide-y">
           {rows.map((e) => (
@@ -573,6 +577,8 @@ export function PriceEntriesCard({ mode, record }: { mode: 'book' | 'item'; reco
                 <Link to={recordHref(scope, mode === 'book' ? 'catalog_items' : 'price_books', mode === 'book' ? e.itemId : e.priceBookId)} className="font-medium text-primary hover:underline">
                   {mode === 'book' ? e.item : e.priceBook}
                 </Link>
+                {mode === 'item' && e.bookFor ? <span className="ml-1.5 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Only for {e.bookFor}</span> : null}
+                {mode === 'item' && e.bookDefault && !e.bookFor ? <span className="ml-1.5 rounded bg-primary-soft px-1.5 py-0.5 text-[11px] text-primary">Showroom price</span> : null}
                 <p className="text-xs text-muted-foreground">
                   {Number(e.minQuantity) > 1 ? `From ${e.minQuantity} · ` : ''}from {e.validFrom}{e.validTo ? ` to ${e.validTo}` : ''}
                   {e.maxDiscountPercent ? ` · max ${Number(e.maxDiscountPercent)}% off` : ''}{e.isActive ? '' : ' · inactive'}
@@ -587,6 +593,21 @@ export function PriceEntriesCard({ mode, record }: { mode: 'book' | 'item'; reco
           ))}
         </ul>
       )}
+      {earlier.length ? (
+        <details className="border-t px-4 py-2 text-[13px]">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground">Earlier and stopped prices ({earlier.length})</summary>
+          <ul className="mt-1 divide-y">
+            {earlier.map((e) => (
+              <li key={e.id} className="flex items-center gap-2 py-1.5 text-muted-foreground">
+                <Link to={recordHref(scope, 'price_books', e.priceBookId)} className="min-w-0 flex-1 truncate hover:underline">
+                  {e.priceBook}{e.bookFor ? ` · only for ${e.bookFor}` : ''} · from {e.validFrom}{e.validTo ? ` to ${e.validTo}` : ''}
+                </Link>
+                <span className="tabular-nums line-through">{formatMoney(e.unitPrice, e.currency)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
       {adding ? <EntryDialog mode={mode} record={record} baseCurrency={listQ.data?.base ?? 'INR'} onClose={() => setAdding(false)} onDone={refresh} /> : null}
     </Panel>
   );

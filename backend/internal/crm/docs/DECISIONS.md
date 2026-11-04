@@ -1798,6 +1798,18 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
 - Wording that assumed a showroom is gone from shared screens (branch help, convert dialog, web
   form placeholders).
 
+## D-175 — One price plan at a time
+
+- Only one active showroom (default) price book may cover a day, and only one active price
+  book per customer. Starting a second — a New Year offer while "Showroom 2026" still runs —
+  is refused: "Showroom 2026 is already the showroom's price book for these dates. Stop it
+  first — set it to Inactive or end its Valid to — then start this one." So a quote always
+  picks one price: the named book (a contract's), else the customer's own, else the
+  showroom's running plan.
+- A product's **Prices today** lists only the prices that apply today (entry and book active
+  and in date), each marked Showroom price or "Only for <customer>". A stopped plan's and
+  expired prices are folded under "Earlier and stopped prices"; nothing is deleted.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.
