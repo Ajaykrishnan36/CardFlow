@@ -178,55 +178,149 @@ export interface FunnelStage {
   value?: number;
 }
 
-/** Stages stacked as a glowing funnel: each band widens to its share as it appears. */
-export function Funnel({ stages, height = 260, className }: { stages: FunnelStage[]; height?: number; className?: string }) {
+/**
+ * The pipeline as a glass funnel (D-178): a 3D cone with a lit rim at every stage, particles
+ * drifting down through it (as many as the leads, up to 36), and each ring labelled with how
+ * many of the stage before made it there. Hover a stage for its count, value and conversion;
+ * click it to open that stage.
+ */
+export function Funnel({
+  stages,
+  height = 260,
+  className,
+  onSelect,
+  format = (n: number) => String(Math.round(n)),
+}: {
+  stages: FunnelStage[];
+  height?: number;
+  className?: string;
+  onSelect?: (s: FunnelStage) => void;
+  format?: (n: number) => string;
+}) {
   const on = useEntered(80);
   const reduced = useReducedMotion();
   const id = useId().replace(/:/g, '');
+  const [hover, setHover] = useState<number | null>(null);
   const n = Math.max(1, stages.length);
-  const w = 320;
-  const band = height / n;
-  const top = Math.max(1, ...stages.map((s) => s.count));
-  // Each band's half-width: a funnel narrows down, and a bigger stage is wider.
-  const half = (i: number) => {
-    const shape = 1 - (i / n) * 0.78;
-    const share = 0.35 + 0.65 * (stages[i] ? stages[i]!.count / top : 0);
-    return (w / 2 - 6) * Math.max(0.12, shape * (0.55 + 0.45 * share));
-  };
+  const w = 360;
+  const top = 18;
+  const bottom = height - 30;
+  const cx = w / 2;
+  // The cone narrows smoothly; each stage boundary is a ring on it.
+  const radius = (t: number) => (w / 2 - 14) * (1 - 0.82 * Math.pow(t, 0.85)) + 6;
+  const yAt = (t: number) => top + (bottom - top) * t;
+  const rings = Array.from({ length: n + 1 }, (_, i) => i / n);
+  const tilt = 0.16; // ellipse height as a share of its width: the perspective
+  const left = rings.map((t) => `${cx - radius(t)},${yAt(t)}`);
+  const right = [...rings].reverse().map((t) => `${cx + radius(t)},${yAt(t)}`);
+  const body = `M ${left.join(' L ')} L ${right.join(' L ')} Z`;
+  const pct = (i: number) => (i > 0 && stages[i - 1]!.count > 0 ? Math.round((stages[i]!.count / stages[i - 1]!.count) * 100) : null);
+  const particles = reduced ? 0 : Math.min(36, Math.max(8, stages[0]?.count ?? 0));
+  const flows = useMemo(
+    () =>
+      Array.from({ length: particles }, (_, k) => {
+        const lane = ((k * 37) % 100) / 100 - 0.5; // -0.5..0.5 across the cone
+        const pts = rings.map((t) => `${(cx + radius(t) * lane * 1.6).toFixed(1)},${(yAt(t) + Math.sin(k + t * 6) * 3).toFixed(1)}`);
+        return { d: `M ${pts.join(' L ')}`, dur: 3.2 + ((k * 13) % 25) / 10, delay: -((k * 0.37) % 4), r: 1.2 + ((k * 7) % 10) / 10 };
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [particles, n, height]
+  );
+  const h = hover !== null ? stages[hover] : null;
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} className={cn('w-full', className)} role="img" aria-label="Pipeline funnel">
-      <defs>
-        <linearGradient id={`fb${id}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="hsl(var(--chart-5))" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity="0.9" />
-        </linearGradient>
-        <filter id={`fg${id}`} x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="6" />
-        </filter>
-      </defs>
-      {stages.map((s, i) => {
-        const y = i * band;
-        const a = half(i);
-        const b = i + 1 < n ? half(i + 1) : a * 0.75;
-        const cx = w / 2;
-        const d = `M ${cx - a} ${y + 3} L ${cx + a} ${y + 3} L ${cx + b} ${y + band - 3} L ${cx - b} ${y + band - 3} Z`;
-        return (
-          <g
-            key={s.key}
-            style={{
-              transformOrigin: `${cx}px ${y + band / 2}px`,
-              transform: on || reduced ? 'scaleX(1)' : 'scaleX(0.05)',
-              opacity: on || reduced ? 1 : 0,
-              transition: `transform 900ms cubic-bezier(0.16,1,0.3,1) ${i * 110}ms, opacity 500ms ease ${i * 110}ms`,
-            }}
-          >
-            <path d={d} fill={`url(#fb${id})`} filter={`url(#fg${id})`} opacity={0.5} />
-            <path d={d} fill={`url(#fb${id})`} stroke="hsl(var(--chart-3) / 0.7)" strokeWidth={1} />
-            <ellipse cx={cx} cy={y + 3} rx={a} ry={4} fill="none" stroke="hsl(var(--chart-3) / 0.9)" strokeWidth={1.2} />
-          </g>
-        );
-      })}
-    </svg>
+    <div className={cn('relative', className)}>
+      <svg viewBox={`0 0 ${w} ${height}`} className="w-full overflow-visible" role="img" aria-label="Pipeline funnel">
+        <defs>
+          <linearGradient id={`glass${id}`} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="hsl(var(--chart-5))" stopOpacity="0.55" />
+            <stop offset="35%" stopColor="hsl(var(--chart-1))" stopOpacity="0.16" />
+            <stop offset="65%" stopColor="hsl(var(--chart-1))" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="hsl(var(--chart-5))" stopOpacity="0.5" />
+          </linearGradient>
+          <linearGradient id={`depth${id}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(var(--chart-3))" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="hsl(var(--chart-1))" stopOpacity="0.6" />
+          </linearGradient>
+          <filter id={`glow${id}`} x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="3.5" result="b" />
+            <feMerge>
+              <feMergeNode in="b" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <radialGradient id={`spark${id}`}>
+            <stop offset="0%" stopColor="white" />
+            <stop offset="60%" stopColor="hsl(var(--chart-3))" />
+            <stop offset="100%" stopColor="hsl(var(--chart-3))" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <g style={{ transformOrigin: `${cx}px ${top}px`, transform: on || reduced ? 'scaleY(1)' : 'scaleY(0.2)', opacity: on || reduced ? 1 : 0, transition: 'transform 1100ms cubic-bezier(0.16,1,0.3,1), opacity 600ms ease' }}>
+          {/* the glass body, with depth */}
+          <path d={body} fill={`url(#depth${id})`} opacity={0.35} />
+          <path d={body} fill={`url(#glass${id})`} stroke="hsl(var(--chart-3) / 0.55)" strokeWidth={1} />
+          {/* the stage bands: a hover target each, lit when hovered */}
+          {stages.map((s, i) => {
+            const t0 = rings[i]!;
+            const t1 = rings[i + 1]!;
+            const d = `M ${cx - radius(t0)},${yAt(t0)} L ${cx + radius(t0)},${yAt(t0)} L ${cx + radius(t1)},${yAt(t1)} L ${cx - radius(t1)},${yAt(t1)} Z`;
+            return (
+              <path key={s.key} d={d} fill={hover === i ? 'hsl(var(--chart-3) / 0.28)' : 'transparent'} className={cn(onSelect && 'cursor-pointer')}
+                onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onClick={() => onSelect?.(s)} style={{ transition: 'fill 200ms' }} />
+            );
+          })}
+          {/* particles drifting down */}
+          {flows.map((f, k) => (
+            <circle key={k} r={f.r} fill={`url(#spark${id})`} opacity={0.9} pointerEvents="none">
+              <animateMotion dur={`${f.dur}s`} begin={`${f.delay}s`} repeatCount="indefinite" path={f.d} />
+              <animate attributeName="opacity" values="0;1;1;0" dur={`${f.dur}s`} begin={`${f.delay}s`} repeatCount="indefinite" />
+            </circle>
+          ))}
+          {/* the lit rings, back half dimmer, front half bright */}
+          {rings.map((t, i) => {
+            const r = radius(t);
+            const y = yAt(t);
+            const ry = Math.max(2, r * tilt);
+            const lit = hover !== null && (i === hover || i === hover + 1);
+            return (
+              <g key={i} pointerEvents="none">
+                <path d={`M ${cx - r},${y} A ${r} ${ry} 0 0 1 ${cx + r},${y}`} fill="none" stroke="hsl(var(--chart-3) / 0.35)" strokeWidth={1} />
+                <path d={`M ${cx - r},${y} A ${r} ${ry} 0 0 0 ${cx + r},${y}`} fill="none" stroke={lit ? 'white' : 'hsl(var(--chart-3))'} strokeWidth={lit ? 2.2 : 1.5} filter={`url(#glow${id})`}
+                  style={{ opacity: on || reduced ? 1 : 0, transition: `opacity 500ms ease ${300 + i * 110}ms` }} />
+              </g>
+            );
+          })}
+          {/* the share of the stage before, at each ring */}
+          {stages.map((s, i) => {
+            const p = pct(i);
+            if (p === null) return null;
+            const t = rings[i]!;
+            return (
+              <g key={s.key} pointerEvents="none" style={{ opacity: on || reduced ? 1 : 0, transition: `opacity 500ms ease ${600 + i * 110}ms` }}>
+                <rect x={cx + radius(t) + 6} y={yAt(t) - 8} width={38} height={16} rx={8} fill="hsl(var(--hero-foreground) / 0.1)" />
+                <text x={cx + radius(t) + 25} y={yAt(t) + 3.5} textAnchor="middle" fontSize="9.5" fontWeight="600" fill="hsl(var(--hero-foreground) / 0.85)">{p}%</text>
+              </g>
+            );
+          })}
+          {/* the outflow: what was won leaves the funnel */}
+          <path d={`M ${cx},${bottom} C ${cx},${bottom + 22} ${cx + 60},${bottom + 26} ${w - 4},${bottom + 8}`} fill="none" stroke="hsl(var(--chart-3))" strokeWidth={1.6}
+            strokeDasharray="3 5" filter={`url(#glow${id})`} opacity={0.8} pointerEvents="none">
+            {!reduced ? <animate attributeName="stroke-dashoffset" from="16" to="0" dur="1.2s" repeatCount="indefinite" /> : null}
+          </path>
+          <circle cx={cx} cy={bottom} r={4} fill="white" filter={`url(#glow${id})`} pointerEvents="none" />
+        </g>
+      </svg>
+      {h ? (
+        <div className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-xl border border-white/10 bg-navy/95 px-3 py-2 text-xs text-white shadow-pop animate-fade-in">
+          <p className="font-semibold">{h.label}</p>
+          <p className="text-white/75">
+            {h.count} {h.key === 'leads' ? 'leads' : 'deals'}
+            {h.value ? ` · ${format(h.value)}` : ''}
+            {hover !== null && pct(hover) !== null ? ` · ${pct(hover)}% of ${stages[hover - 1]!.label.toLowerCase()}` : ''}
+          </p>
+          {onSelect ? <p className="mt-0.5 text-[10px] text-mint">Click to open</p> : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

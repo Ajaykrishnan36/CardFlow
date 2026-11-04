@@ -15,6 +15,7 @@ import { Select } from '@crm/components/ui/form-controls';
 import { Skeleton } from '@crm/components/ui/spinner';
 import { PageContainer, PageHeader, SearchInput } from '@crm/components/page';
 import { StatusStrip } from './list/status-strip';
+import { StockOverview } from './list/stock-overview';
 import { EmptyState, ErrorState } from '@crm/components/states';
 import { cn } from '@crm/lib/utils';
 import { useDocumentTitle } from '@crm/features/auth/login-pages';
@@ -372,6 +373,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
         </div>
       ) : null}
 
+      {!binMode && !isOwner && (object === 'stock_moves' || object === 'stock_lots' || object === 'vehicle_stock') ? <StockOverview /> : null}
       {meta && !binMode && !isOwner ? (
         <StatusStrip object={object} meta={meta} base={{ workspace: ws, app, q: q || undefined }} filter={draft.filter}
           onFilter={(f) => { setDraft((d) => ({ ...d, filter: f })); patchParams({ page: null }); }} />

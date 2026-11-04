@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Activity, ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, Ellipsis, GitMerge, KeyRound, LayoutTemplate, Lock, Mail, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
+import { Activity, XCircle, ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, Ellipsis, GitMerge, KeyRound, LayoutTemplate, Lock, Mail, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordDetail, RecordRow, RelatedList } from '@crm/api/types';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -477,6 +477,16 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
         ) : null}
       </Card>
 
+      {(object === 'leads' && record.values.status === 'lost') || (object === 'opportunities' && record.values.status === 'closed_lost') ? (
+        // Why it was lost (D-178), where everyone opening the record sees it.
+        <div role="status" className="crm-rise mb-4 flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger-soft px-4 py-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-danger text-white"><XCircle className="size-4" aria-hidden /></span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-danger">Closed lost{record.updatedAt ? ` · ${new Date(record.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}</p>
+            <p className="text-[14px] text-foreground">{String(record.values.lostReason ?? '') || 'No reason was recorded.'}</p>
+          </div>
+        </div>
+      ) : null}
       {detail.conversion ? <ConversionBanner conversion={detail.conversion} /> : null}
       <DuplicatesBanner object={object} id={id} enabled={canEdit && canDelete} onReview={() => setMergeOpen(true)} />
 

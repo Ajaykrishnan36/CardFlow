@@ -529,6 +529,9 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:trade-v1", tradeUpgrades()); err != nil {
 		return err
 	}
+	if err := applyObjectUpgrades(ctx, tx, "objects:stock-link-v1", stockLinkUpgrades()); err != nil {
+		return err
+	}
 	if err := markTradeOnly(ctx, tx); err != nil {
 		return err
 	}
@@ -994,7 +997,14 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 	if err := h.grantPackAccess(ctx, "access:catalog-v1", []string{"catalog_entries"}); err != nil {
 		return err
 	}
-	return h.grantPackAccess(ctx, "access:legal-v1", []string{"legal_matters", "court_hearings"})
+	if err := h.grantPackAccess(ctx, "access:legal-v1", []string{"legal_matters", "court_hearings"}); err != nil {
+		return err
+	}
+	// Vehicles from before D-178 get their stock lines and movements; a failure is logged, not fatal.
+	if err := h.backfillVehicleStock(ctx); err != nil {
+		slog.Error("crm: vehicles not added to the common stock", "error", err)
+	}
+	return nil
 }
 
 func (h *Handler) listDefinitions(ctx context.Context, q querier) ([]*ObjectDefinition, error) {

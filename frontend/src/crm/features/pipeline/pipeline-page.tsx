@@ -1,5 +1,5 @@
 import { useMemo, useState, type DragEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CalendarDays, CheckCircle2, Columns3, Hourglass, LayoutGrid, List, Plus, Search, Trophy } from 'lucide-react';
@@ -47,6 +47,15 @@ export function PipelinePage() {
     }
   });
   const [q, setQ] = useState('');
+  // ?stage= (a click on the funnel) shows that stage's deals only.
+  const [sp, setSp] = useSearchParams();
+  const stage = sp.get('stage') ?? '';
+  const pickStage = (s: string) => {
+    const next = new URLSearchParams(sp);
+    if (s) next.set('stage', s);
+    else next.delete('stage');
+    setSp(next, { replace: true });
+  };
   const [range] = useState<OverviewRange>('quarter');
   const pickView = (v: View) => {
     setView(v);
@@ -65,10 +74,10 @@ export function PipelinePage() {
   const rows = useMemo(() => {
     const all = list.data?.data ?? [];
     const term = q.trim().toLowerCase();
-    return term
-      ? all.filter((r) => `${r.title} ${r.lookups.accountId?.label ?? ''} ${r.lookups.contactId?.label ?? ''}`.toLowerCase().includes(term))
-      : all;
-  }, [list.data, q]);
+    return all
+      .filter((r) => !stage || r.values.status === stage)
+      .filter((r) => !term || `${r.title} ${r.lookups.accountId?.label ?? ''} ${r.lookups.contactId?.label ?? ''}`.toLowerCase().includes(term));
+  }, [list.data, q, stage]);
   const open = rows.filter((r) => !['closed_won', 'closed_lost'].includes(String(r.values.status)));
   const openValue = open.reduce((n, r) => n + num(r.values.amount), 0);
   const canEdit = scope.can('opportunities', 'update');
@@ -145,7 +154,7 @@ export function PipelinePage() {
                   );
                 })}
               </ul>
-              <Funnel stages={d.funnel} height={230} />
+              <Funnel stages={d.funnel} height={230} format={(n) => shortMoney(n)} onSelect={(s) => (s.key === 'leads' ? undefined : pickStage(s.key === stage ? '' : s.key))} />
               <Gauge value={d.winRate ?? 0} size={170} thickness={10}>
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">Win rate</p>
@@ -177,6 +186,16 @@ export function PipelinePage() {
           </div>
         </div>
       )}
+
+      {stage ? (
+        <div className="flex items-center gap-2 text-[13px]">
+          <span className="text-muted-foreground">Showing</span>
+          <button type="button" onClick={() => pickStage('')} className="inline-flex items-center gap-1.5 rounded-full bg-sidebar-active px-3 py-1 text-xs font-semibold text-sidebar-active-foreground">
+            {stages.find((s) => s.value === stage)?.label ?? stage} ×
+          </button>
+          <span className="text-muted-foreground">deals only — click to show all</span>
+        </div>
+      ) : null}
 
       {/* Deals */}
       {list.isPending || meta.isPending ? (

@@ -1883,6 +1883,21 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   counted with the same access rules as the list; a chip filters the list.
 - Home no longer shows Recent cards for branches, consents, privacy requests and territories.
 
+## D-178 — Vehicles in the common stock, stock overview, 3D funnel, lost reason shown
+
+- Vehicles stay their own records (VIN, colour, booking) but are part of the common Stock: one
+  stock line per model ("Vehicles") counts them, and every vehicle received, allocated,
+  released, delivered or taken back writes its stock movement (with the vehicle, booking and
+  customer). Vehicles from before are added once at start-up.
+- Stock, Stock movements and Vehicle stock lists open with eight weeks of stock in against
+  out, on hand by product (low lines flagged), promised stock and stock value
+  (`GET /stock/summary`).
+- The pipeline funnel is a glass cone with lit rings, particles drifting down, each ring's
+  share of the stage before; hover shows count, value and conversion; click opens the stage
+  (Pipeline filtered by `?stage=`, or Leads).
+- A lost lead or deal shows "Closed lost" with its reason at the top of the record; a lost
+  deal's stage tracker ends at Closed lost.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

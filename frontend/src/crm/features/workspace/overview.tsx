@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity, AlertTriangle, ArrowRight, Banknote, CalendarClock, CheckCircle2, ClipboardList, FileText, Handshake, Hourglass, Percent, Receipt,
@@ -262,6 +262,7 @@ function OverviewBody({ code, d }: { code: string; d: Overview }) {
 }
 
 function PipelineHero({ d, base }: { d: Overview; base: string }) {
+  const navigate = useNavigate();
   const latest = d.activity[0];
   const won = d.funnel.find((s) => s.key === 'closed_won');
   const rate = d.winRate ?? 0;
@@ -298,7 +299,8 @@ function PipelineHero({ d, base }: { d: Overview; base: string }) {
             </li>
           ))}
         </ul>
-        <Funnel stages={d.funnel} height={250} />
+        <Funnel stages={d.funnel} height={250} format={(n) => shortMoney(n)}
+          onSelect={(s) => navigate(s.key === 'leads' ? `${base}/leads` : `${base}/pipeline?stage=${encodeURIComponent(s.key)}`)} />
         <div className="flex flex-col items-center gap-3">
           <Gauge value={rate} size={190} thickness={11}>
             <div>

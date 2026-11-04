@@ -180,7 +180,12 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		if !standardObject(spec.Key) || op == "delete" {
 			return after, nil
 		}
-		return h.packRouter(ctx, tx, ws, spec, a, op, before, after)
+		out, err := h.packRouter(ctx, tx, ws, spec, a, op, before, after)
+		if err == nil && spec.Key == "vehicle_stock" && out != nil {
+			// Whoever changed it (a person or a booking), the common stock follows (D-178).
+			err = h.vehicleStockSaved(ctx, tx, ws, op, before, out)
+		}
+		return out, err
 	}
 	return after, nil
 }

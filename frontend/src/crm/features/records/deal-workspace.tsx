@@ -31,7 +31,9 @@ export function DealWorkspace({ record }: { record: RecordRow }) {
   const qc = useQueryClient();
   const code = codeOf(scope.prefix);
   const meta = useObjectMeta('opportunities');
-  const stages = (meta.data?.statuses ?? []).filter((s) => s.value !== 'closed_lost');
+  const lostDeal = String(record.values.status ?? '') === 'closed_lost';
+  // A lost deal shows where it ended: the stages, then Closed lost.
+  const stages = (meta.data?.statuses ?? []).filter((s) => s.value !== (lostDeal ? 'closed_won' : 'closed_lost'));
   const status = String(record.values.status ?? '');
   const at = stages.findIndex((s) => s.value === status);
   const amount = num(record.values.amount);
@@ -86,7 +88,7 @@ export function DealWorkspace({ record }: { record: RecordRow }) {
                     onClick={() => void move(s.value)}
                     className={cn(
                       'flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-all duration-500',
-                      current ? 'bg-sidebar-active text-sidebar-active-foreground shadow-lift' : done ? 'text-primary hover:bg-primary-soft' : 'text-muted-foreground hover:bg-muted',
+                      current && lostDeal ? 'bg-danger text-white shadow-lift' : current ? 'bg-sidebar-active text-sidebar-active-foreground shadow-lift' : done ? 'text-primary hover:bg-primary-soft' : 'text-muted-foreground hover:bg-muted',
                       !canEdit && 'cursor-default'
                     )}
                     style={{ opacity: on ? 1 : 0, transform: on ? 'none' : 'translateY(4px)', transitionDelay: `${i * 70}ms` }}

@@ -1093,6 +1093,10 @@ export const businessApi = {
   office: (code: string) => api<OfficeView>(`/w/${enc(code)}/dashboard/office`),
   /** Accounts with health, engagement and last touch; with an account, its heatmap and key contacts (D-176). */
   customerHealth: (code: string, account?: string) => api<CustomerHealth>(`/w/${enc(code)}/customers/health${qs({ account })}`),
+  /** Stock in and out by week and stock on hand by product (D-178). */
+  stockSummary: (code: string) =>
+    api<{ weeks: Array<{ label: string; in: number; out: number }>; items: Array<{ name: string; onHand: number; reserved: number; low: boolean; vehicles?: boolean }>;
+      onHand: number; reserved: number; lines: number; low: number; value: number; inThisWeek: number; outThisWeek: number }>(`/w/${enc(code)}/stock/summary`),
   /** The owner's whole business on one screen (D-176). */
   overview: (code: string, range: OverviewRange) => api<Overview>(`/w/${enc(code)}/dashboard/overview${qs({ range })}`),
   /** Who added and converted what (D-137). 403 for people who only see their own records. */
