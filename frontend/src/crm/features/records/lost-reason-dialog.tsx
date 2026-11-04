@@ -22,15 +22,26 @@ export function LostReasonHost() {
   const [error, setError] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
 
+  // One question at a time: asked again while it is open (a second save of the same change),
+  // the same answer goes to both.
+  const pending = useRef<{ object: ObjectKey; promise: Promise<string | null> } | null>(null);
   useEffect(() => {
-    setLostReasonPrompt(
-      (object) =>
-        new Promise<string | null>((resolve) => {
-          setReason('');
-          setError('');
-          setAsk({ object, done: resolve });
-        })
-    );
+    setLostReasonPrompt((object) => {
+      if (pending.current && pending.current.object === object) return pending.current.promise;
+      const promise = new Promise<string | null>((resolve) => {
+        setReason('');
+        setError('');
+        setAsk({
+          object,
+          done: (v) => {
+            pending.current = null;
+            resolve(v);
+          }
+        });
+      });
+      pending.current = { object, promise };
+      return promise;
+    });
     return () => setLostReasonPrompt(null);
   }, []);
 

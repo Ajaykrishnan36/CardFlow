@@ -274,6 +274,7 @@ function EditableCell({ object, meta, field, row, editable, py }: { object: Obje
     }
   });
   const commit = (v: unknown = draft) => {
+    if (save.isPending) return;
     if (sameValue(v, row.values[field.key])) return setEditing(false);
     save.mutate(v === '' ? null : v);
   };
@@ -282,6 +283,8 @@ function EditableCell({ object, meta, field, row, editable, py }: { object: Obje
   useEffect(() => {
     if (!editing) return;
     const onDown = (e: MouseEvent) => {
+      // Not while a save is waiting (it may be asking for a reason), and not for clicks in a popup.
+      if (save.isPending || (e.target as Element | null)?.closest?.('[role="dialog"], [role="alertdialog"]')) return;
       if (cellRef.current && !cellRef.current.contains(e.target as Node)) commit();
     };
     window.addEventListener('mousedown', onDown);
