@@ -33,6 +33,7 @@ import {
   AccountTerritoryCard, BookAppointmentButton, BundleCard, CaseWorkOrderButton, ContactRolesCard, CreditNoteCard, DocumentLinesCard, EntitlementUsageCard,
   PriceEntriesCard, RecordCampaignsCard, RecordTeamCard, TerritoryMembersCard, hasContactRoles, hasLines, hasRecordTeam
 } from './record-commerce';
+import { DealWorkspace } from './deal-workspace';
 import { CaseSlaCard, InvoicePaymentsCard, PaymentAllocationsCard, RelationshipsCard, RenewContractButton } from './record-enterprise';
 import { ApplicationBanner } from '@crm/features/owner/application-banner';
 
@@ -474,6 +475,8 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
       {detail.conversion ? <ConversionBanner conversion={detail.conversion} /> : null}
       <DuplicatesBanner object={object} id={id} enabled={canEdit && canDelete} onReview={() => setMergeOpen(true)} />
+
+      {inWorkspace && object === 'opportunities' ? <DealWorkspace record={record} /> : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div ref={mainRef} className="min-w-0 lg:col-span-2">

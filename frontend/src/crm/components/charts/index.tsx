@@ -529,7 +529,7 @@ export function Sparkline({ points, color = 'hsl(var(--chart-1))', width = 120, 
 }
 
 /** A small ring with a score in it: green when healthy, amber to watch, red at risk. */
-export function HealthRing({ score, size = 38 }: { score: number; size?: number }) {
+export function HealthRing({ score, size = 38, light }: { score: number; size?: number; light?: boolean }) {
   const v = useAnimatedNumber(score, 1200);
   const tone = score >= 70 ? 'hsl(var(--success))' : score >= 50 ? 'hsl(var(--warning))' : 'hsl(var(--danger))';
   const r = size / 2 - 3;
@@ -537,10 +537,10 @@ export function HealthRing({ score, size = 38 }: { score: number; size?: number 
   return (
     <span className="relative inline-grid place-items-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90" aria-hidden>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={3} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={light ? 'hsl(0 0% 100% / 0.15)' : 'hsl(var(--muted))'} strokeWidth={3} />
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={tone} strokeWidth={3} strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - Math.max(0, Math.min(100, v)) / 100)} />
       </svg>
-      <span className="absolute text-[11px] font-semibold tabular-nums text-foreground">{Math.round(v)}</span>
+      <span className={cn('absolute font-semibold tabular-nums', light ? 'text-white' : 'text-foreground', size >= 50 ? 'text-[16px]' : 'text-[11px]')}>{Math.round(v)}</span>
     </span>
   );
 }

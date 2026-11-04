@@ -1843,6 +1843,18 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   leaderboard of people against their own targets; and closed won week by week
   (`GET /forecast/trend`), with best case and commit as they stand today and the pace so far
   carried forward as a dashed line, labelled as such.
+- **Deal page**: above the usual record page — the deal value with a probability ring and
+  "Mark won"; a stage tracker (done stages ticked, the current one with its days, click a
+  stage to move the deal through the same rules); stakeholders around the customer from the
+  deal's contact roles and primary contact; next steps from the deal's tasks (tick to
+  complete, with how many are done); the deal breakdown from its product lines.
+- **Customer health** (`/customers`, `GET /customers/health`): every account with owner, open
+  pipeline, a health score (recency of the last touch up to 40, activity in 12 weeks up to
+  25, deals won up to 20, a base of 15, less 15 for a deal past its close date and 15 for an
+  overdue invoice — explained on the page), 12 weeks of engagement and the last touch,
+  filtered Healthy / Watch / At risk; the chosen account's activity day by day (18 weeks),
+  what kind it was, and its key contacts with their roles; a Contacts tab with paging.
+  Engagement is what happened on the account, its contacts and the records that name it.
 - **Pipeline** (`/pipeline`): the funnel, stage-by-stage conversion, win rate and the cycle on
   top; deals as a sortable, paged list (the default), a board to drag deals between stages
   (saved through the same rules as an edit — a refusal puts the card back and says why), or

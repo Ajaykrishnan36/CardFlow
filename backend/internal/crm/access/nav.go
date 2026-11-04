@@ -65,6 +65,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if e.Can("lead", "read") || e.Can("contact", "read") {
 		nav = append(nav, NavItem{Key: "cards", Label: "Business cards", Path: base + "/cards", Icon: "scan-line", Group: "Sales", Available: true})
 	}
+	// Accounts with their health and engagement, and their contacts (D-176).
+	if e.Can("account", "read") {
+		nav = append(nav, NavItem{Key: "customers", Label: "Customer health", Path: base + "/customers", Icon: "heart", Group: "Sales", Available: true})
+	}
 	// Vendors are accounts of type Vendor or Supplier (D-114): the same records, a filtered list.
 	if e.Can("account", "read") {
 		nav = append(nav, NavItem{Key: "vendors", Label: "Vendors", Path: base + "/accounts?type=vendor", Icon: "truck", Group: "Purchasing", Available: true})
@@ -136,7 +140,7 @@ var flowGroups = []struct {
 	name string
 	keys []string
 }{
-	{"Customer journey", []string{"leads", "contacts", "accounts", "opportunities", "test_rides", "quotes", "finance_applications", "payments",
+	{"Customer journey", []string{"leads", "contacts", "accounts", "customers", "opportunities", "test_rides", "quotes", "finance_applications", "payments",
 		"invoices", "vehicle_bookings", "assets", "cases", "service_dues"}},
 	{"Products & stock", []string{"catalog_items", "catalog_entries", "services", "price_books", "vehicle_stock", "stock_lots", "stock_moves"}},
 	{"Follow-ups", []string{"tasks", "appointments", "events", "upcoming", "notes", "communications", "cards"}},

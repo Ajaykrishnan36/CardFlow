@@ -85,6 +85,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Get("/dashboard/summary", h.handleDashboardSummary)
 		r.Get("/dashboard/office", h.handleOffice)
 		r.Get("/dashboard/overview", h.handleOverview)
+		r.Get("/customers/health", h.handleCustomerHealth)
 		r.Get("/dashboard/team", h.handleDashboardTeam)
 		r.Get("/access/fields", h.handleWorkspaceFieldCatalog)
 		h.reportRoutes(r)

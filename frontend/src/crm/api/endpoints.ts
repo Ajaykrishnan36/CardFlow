@@ -850,6 +850,36 @@ export interface BusinessDashboardSummary {
   mine?: Array<{ object: string; label: string; count: number }>;
 }
 
+export interface AccountHealth {
+  id: string;
+  name: string;
+  kind?: string;
+  industry?: string;
+  owner: string;
+  openValue: number;
+  openDeals: number;
+  wonValue: number;
+  score: number;
+  engagement: number[];
+  touches: number;
+  lastTouch?: string;
+  lastKind?: string;
+  overdueDeal?: boolean;
+  overdueInvoice?: boolean;
+}
+
+export interface CustomerHealth {
+  data: AccountHealth[];
+  weeks: number;
+  detail?: {
+    heatmap: number[];
+    from: string;
+    weeks: number;
+    kinds: Record<string, number>;
+    contacts: Array<{ id: string; name: string; title?: string; role?: string; lastTouch?: string }>;
+  };
+}
+
 export type OverviewRange = 'month' | 'quarter' | 'year';
 
 export interface OverviewKpi {
@@ -1042,6 +1072,8 @@ export const businessApi = {
     api<BusinessProfile>(`/w/${enc(code)}/business`, { method: 'PATCH', body }),
   summary: (code: string, params: { range: string; from?: string; to?: string }) => api<BusinessDashboardSummary>(`/w/${enc(code)}/dashboard/summary${qs(params)}`),
   office: (code: string) => api<OfficeView>(`/w/${enc(code)}/dashboard/office`),
+  /** Accounts with health, engagement and last touch; with an account, its heatmap and key contacts (D-176). */
+  customerHealth: (code: string, account?: string) => api<CustomerHealth>(`/w/${enc(code)}/customers/health${qs({ account })}`),
   /** The owner's whole business on one screen (D-176). */
   overview: (code: string, range: OverviewRange) => api<Overview>(`/w/${enc(code)}/dashboard/overview${qs({ range })}`),
   /** Who added and converted what (D-137). 403 for people who only see their own records. */
