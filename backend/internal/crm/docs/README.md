@@ -1,4 +1,4 @@
-# Ajay's CRM — developer notes
+# Cogniz CRM — developer notes
 
 Lives inside the CardFlow repo without touching CardFlow code:
 

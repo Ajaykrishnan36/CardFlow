@@ -1,5 +1,5 @@
 -- 012: Persist in-app support tickets (previously kept in memory and lost on restart).
--- Ajay's CRM reads these and writes replies back, so the app user sees the answer.
+-- Cogniz CRM reads these and writes replies back, so the app user sees the answer.
 CREATE TABLE IF NOT EXISTS support_tickets (
     id          VARCHAR(20) PRIMARY KEY,
     user_id     UUID REFERENCES users(id) ON DELETE SET NULL,

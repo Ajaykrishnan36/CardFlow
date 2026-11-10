@@ -93,7 +93,7 @@ func (h *SupportHandler) withMessages(ctx context.Context, list []Ticket) {
 }
 
 // SupportHandler stores tickets in the support_tickets table (migration 012) so they
-// survive restarts and Ajay's CRM can answer them. Without a database it falls back to
+// survive restarts and Cogniz CRM can answer them. Without a database it falls back to
 // the in-memory sample tickets below.
 type SupportHandler struct {
 	db      *database.DB
@@ -307,7 +307,7 @@ func (h *SupportHandler) GetMyTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddMyMessage lets the person write again on their ticket. A resolved ticket reopens,
-// so the support team sees it; Ajay's CRM picks the change up on its next sync.
+// so the support team sees it; Cogniz CRM picks the change up on its next sync.
 func (h *SupportHandler) AddMyMessage(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	t, ok := h.ownTicket(r, id)

@@ -1,6 +1,6 @@
-# Ajay's CRM — Decisions & Status
+# Cogniz CRM — Decisions & Status
 
-Source of truth: "Ajay's CRM Core — End-to-End PRD (React + Go + PostgreSQL)" (58 pages, 25 Sep 2026).
+Source of truth: "Cogniz CRM Core (formerly Ajay's CRM) — End-to-End PRD (React + Go + PostgreSQL)" (58 pages, 25 Sep 2026).
 This file records every place the implementation deviates from, or fills a gap in, the PRD
 (PRD §0: "choose the simplest secure option … write it down in docs/DECISIONS.md, and continue").
 
@@ -1897,6 +1897,17 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
   (Pipeline filtered by `?stage=`, or Leads).
 - A lost lead or deal shows "Closed lost" with its reason at the top of the record; a lost
   deal's stage tracker ends at Closed lost.
+
+## D-179 — The product is Cogniz CRM
+
+- The brand is **Cogniz CRM** everywhere it is shown or sent: page titles, the sign-in and
+  owner console, the app name (default `CRM_APP_NAME`), the email sender name, recovery-code
+  files, the address-lookup user agent, docs and comments. Mentions of Ajay the person stay.
+- Two internal keys keep their old spelling on purpose: the business-code key
+  (`platform/codes.go`), which every issued business URL depends on, and the local-only
+  development encryption key. Nobody sees either.
+- Live reads the name from the environment when set: `CRM_APP_NAME` and `CRM_SMTP_FROM` on
+  Render must say Cogniz CRM too.
 
 ## Seed
 

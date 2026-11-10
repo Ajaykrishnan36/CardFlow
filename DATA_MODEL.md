@@ -1,6 +1,6 @@
 # Data model
 
-How Ajay's CRM stores its data: every table, what it is for, and how the tables connect.
+How Cogniz CRM stores its data: every table, what it is for, and how the tables connect.
 Written from the database itself on 5 Oct 2026 (CRM migrations 0001–0022, app migrations
 001–015). Section 12 lists every column of every table.
 

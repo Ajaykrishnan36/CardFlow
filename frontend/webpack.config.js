@@ -74,7 +74,7 @@ module.exports = {
     new webpack.DefinePlugin(loadBuildEnv()),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html'),
-      title: "Ajay's CRM"
+      title: "Cogniz CRM"
     })
   ],
   watchOptions: {

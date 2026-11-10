@@ -1,7 +1,7 @@
 // English strings (PRD §0.1: English UI; every string goes through i18n keys).
 const en = {
   brand: {
-    name: "Ajay's CRM",
+    name: "Cogniz CRM",
     ownerConsole: 'Owner console'
   },
   common: {
@@ -151,7 +151,7 @@ const en = {
       copyAll: 'Copy all',
       savedCheck: "I've stored these codes somewhere safe",
       notNow: 'Not now',
-      recoveryFileHeader: "Ajay's CRM recovery codes — each works once. Generated {{date}}."
+      recoveryFileHeader: "Cogniz CRM recovery codes — each works once. Generated {{date}}."
     },
     forgot: {
       title: 'Reset your password',

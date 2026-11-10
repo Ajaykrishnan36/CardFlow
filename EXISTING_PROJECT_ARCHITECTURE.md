@@ -16,7 +16,7 @@ Rules used while writing it:
 
 The repository holds **two products that share one server, one database and one web build**:
 
-| | **CardFlow app** ("Business Card Snap") | **Ajay's CRM** |
+| | **CardFlow app** ("Business Card Snap") | **Cogniz CRM** |
 |---|---|---|
 | What it is | Consumer app: scan business cards, keep a card vault, list your own business, browse businesses | Multi-tenant CRM platform with an Owner Console |
 | Frontend | React Native Web, plain JavaScript, `frontend/src/` (≈15,000 lines) | React DOM + TypeScript + Tailwind, `frontend/src/crm/` (≈38,400 lines) |
@@ -50,7 +50,7 @@ Income and expenses do not exist anywhere in the codebase.
 │  Browser                                                                     │
 │  ├─ /            → CardFlow app      (React Native Web, JS)                  │
 │  ├─ /share/:id   → shared card view  (CardFlow, no login needed)             │
-│  └─ /crm/*       → Ajay's CRM        (React DOM, TypeScript, Tailwind)       │
+│  └─ /crm/*       → Cogniz CRM        (React DOM, TypeScript, Tailwind)       │
 │                                                                              │
 │  frontend/src/entry.js picks which app to load from the URL path             │
 └───────────────┬───────────────────────────────────┬──────────────────────────┘
@@ -1057,7 +1057,7 @@ Biggest structural decision: the customer app is React Native Web and the CRM is
 | 13 | Should phone-contacts backup stay? | Scope |
 | 14 | Is KYC (Aadhaar, PAN, GST verification) still wanted? | It is entirely unbuilt |
 | 15 | Row counts and data quality in the live database. `UNKNOWN — requires clarification` (not inspected) | Migration effort |
-| 16 | The CRM PRD ("Ajay's CRM Core", 58 pages) referenced by `DECISIONS.md` is not in the repo | Source of truth for CRM scope |
+| 16 | The CRM PRD ("Cogniz CRM Core", formerly "Ajay's CRM Core", 58 pages) referenced by `DECISIONS.md` is not in the repo | Source of truth for CRM scope |
 
 ---
 

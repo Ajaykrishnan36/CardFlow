@@ -59,7 +59,7 @@ func LoadConfig(cardflowEnv string) (cfg Config, problems []string) {
 	}
 	cfg.AppEnv = env
 
-	cfg.AppName = firstNonEmpty(os.Getenv("CRM_APP_NAME"), "Ajay's CRM")
+	cfg.AppName = firstNonEmpty(os.Getenv("CRM_APP_NAME"), "Cogniz CRM")
 
 	defaultBase := "http://localhost:3001"
 	if env != "local" {

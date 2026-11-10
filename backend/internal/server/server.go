@@ -64,7 +64,7 @@ type Deps struct {
 
 // New wires every service and route and returns the handler with the CRM module.
 func New(d Deps) (http.Handler, *crm.Module) {
-	// Ajay's CRM lives in its own module/schema; it can only disable itself, never CardFlow.
+	// Cogniz CRM lives in its own module/schema; it can only disable itself, never CardFlow.
 	var crmPool *pgxpool.Pool
 	if d.DB != nil {
 		crmPool = d.DB.Pool

@@ -444,7 +444,7 @@ func (h *Handler) writeTenant(w http.ResponseWriter, r *http.Request, t *Tenant,
 var geoClient = &http.Client{Timeout: 8 * time.Second}
 
 // geoUA names us to the lookup services (India Post refuses Go's default client name).
-const geoUA = "AjaysCRM/1.0 (address autofill; contact: support@ajayscrm.app)"
+const geoUA = "CognizCRM/1.0 (address autofill; contact: support@cognizcrm.app)"
 
 type geoCache struct {
 	sync.Mutex

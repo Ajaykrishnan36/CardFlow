@@ -16,7 +16,7 @@ func TestHTMLEmailRendersAllParts(t *testing.T) {
 	html, err := renderHTML(Message{
 		Subject: "Test", Heading: "Reset your password", Lines: []string{"Hi Ajay <script>"}, Code: "123456",
 		Button: &Button{Label: "Choose a new password", URL: "https://example.com/r?token=a&b=c"}, Footer: "Expires soon.",
-	}, "Ajay's CRM")
+	}, "Cogniz CRM")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestBrevoSendPayload(t *testing.T) {
 		_, _ = w.Write([]byte(`{"messageId":"x"}`))
 	}))
 	defer srv.Close()
-	b := newBrevo(shared.Config{BrevoAPIKey: "k1", SMTPFrom: "Ajay's CRM <me@example.com>", AppName: "Ajay's CRM"})
+	b := newBrevo(shared.Config{BrevoAPIKey: "k1", SMTPFrom: "Cogniz CRM <me@example.com>", AppName: "Cogniz CRM"})
 	b.client = &http.Client{Transport: rewrite{srv.URL}}
 	err := b.Send(context.Background(), Message{To: "you@example.com", Subject: "123456 is your code", Heading: "Your sign-in code", Code: "123456"})
 	if err != nil {
@@ -46,7 +46,7 @@ func TestBrevoSendPayload(t *testing.T) {
 	if key != "k1" || got["subject"] != "123456 is your code" {
 		t.Fatalf("key=%q body=%v", key, got)
 	}
-	if sender := got["sender"].(map[string]any); sender["email"] != "me@example.com" || sender["name"] != "Ajay's CRM" {
+	if sender := got["sender"].(map[string]any); sender["email"] != "me@example.com" || sender["name"] != "Cogniz CRM" {
 		t.Fatalf("sender=%v", sender)
 	}
 	if html, _ := got["htmlContent"].(string); !strings.Contains(html, "123456") {

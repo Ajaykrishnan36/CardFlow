@@ -99,7 +99,7 @@ export function AppNavigator() {
     const names = { home: 'Home', menu: 'My CRM', cards: 'My Cards', card: 'Business card', scan: 'Scan a card', browse: 'Browse', listing: 'Listing',
       mybusiness: 'My business', profile: 'Profile', support: 'Support', businesses: 'Your businesses', share: 'Shared card' };
     const what = route ? names[route.name] || (route.object ? route.object.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase()) : '') : '';
-    document.title = [what, activeName, "Ajay's CRM"].filter(Boolean).join(' · ');
+    document.title = [what, activeName, "Cogniz CRM"].filter(Boolean).join(' · ');
   }, [route, activeName]);
 
   const code = activeCode;

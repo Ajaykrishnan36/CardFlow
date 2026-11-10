@@ -1,4 +1,4 @@
-// Package crm is Ajay's CRM, a modular monolith living alongside CardFlow in the same
+// Package crm is Cogniz CRM, a modular monolith living alongside CardFlow in the same
 // binary. Everything it owns sits under /api/crm/v1 and the Postgres schema "crm";
 // see docs/DECISIONS.md for how and why it differs from the PRD's greenfield layout.
 package crm
