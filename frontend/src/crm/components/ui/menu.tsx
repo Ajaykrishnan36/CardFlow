@@ -108,7 +108,7 @@ export const DialogContent = forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-1/2 top-[12vh] z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-2xl border bg-popover p-6 text-popover-foreground shadow-pop animate-pop-in focus:outline-none',
+        'fixed left-1/2 top-[12vh] z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-2xl border bg-popover p-6 text-popover-foreground shadow-pop animate-slide-up focus:outline-none',
         className
       )}
       {...props}
