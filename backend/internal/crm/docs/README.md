@@ -40,7 +40,7 @@ Until these are set on Render, the CRM stays disabled (every `/api/crm` call ret
 | `CRM_ENCRYPTION_KEY_BASE64` | `openssl rand -base64 32` (keep it stable — it encrypts MFA secrets) |
 | `CRM_OWNER_EMAIL` | owner's email |
 | `CRM_OWNER_BOOTSTRAP_PASSWORD` | ≥ 12 chars, one-time; change it at first sign-in, then delete the variable |
-| `CRM_BASE_URL` | web origin used in emails, e.g. `https://card-flow-kappa.vercel.app` |
+| `CRM_BASE_URL` | web origin used in emails, e.g. `https://cogniz-crm.vercel.app` |
 | `CRM_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` / `_FROM` | optional; without them emails only go to the log |
 
 `CRM_APP_ENV` defaults to `production` when CardFlow's `ENV=production`. Never set

@@ -63,7 +63,7 @@ func LoadConfig(cardflowEnv string) (cfg Config, problems []string) {
 
 	defaultBase := "http://localhost:3001"
 	if env != "local" {
-		defaultBase = "https://card-flow-kappa.vercel.app"
+		defaultBase = "https://cogniz-crm.vercel.app"
 	}
 	cfg.BaseURL = strings.TrimRight(firstNonEmpty(os.Getenv("CRM_BASE_URL"), defaultBase), "/")
 
