@@ -55,6 +55,8 @@ type WorkspaceMember struct {
 	RoleName     string     `json:"roleName,omitempty"`
 	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
 	CreatedAt    time.Time  `json:"createdAt"`
+	// PaidUntil is when the member's paid access ends (D-164); empty = never paid.
+	PaidUntil *time.Time `json:"paidUntil,omitempty"`
 }
 
 type Invitation struct {
@@ -152,7 +154,7 @@ func (h *Handler) getWorkspace(ctx context.Context, id uuid.UUID) (*WorkspaceDet
 
 	rows, err = h.store.Pool.Query(ctx, `
 		SELECT m.id, i.id, i.display_name, COALESCE(e.value_normalized, ''), m.status,
-		       COALESCE(r.key, ''), COALESCE(r.name, ''), i.last_login_at, m.created_at
+		       COALESCE(r.key, ''), COALESCE(r.name, ''), i.last_login_at, m.created_at, m.paid_until
 		FROM crm.memberships m
 		JOIN crm.identities i ON i.id = m.identity_id
 		LEFT JOIN crm.verified_identifiers e ON e.identity_id = i.id AND e.kind = 'email' AND e.namespace = 'global'
@@ -167,7 +169,7 @@ func (h *Handler) getWorkspace(ctx context.Context, id uuid.UUID) (*WorkspaceDet
 	}
 	for rows.Next() {
 		var m WorkspaceMember
-		if err := rows.Scan(&m.MembershipID, &m.IdentityID, &m.DisplayName, &m.Email, &m.Status, &m.RoleKey, &m.RoleName, &m.LastLoginAt, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.MembershipID, &m.IdentityID, &m.DisplayName, &m.Email, &m.Status, &m.RoleKey, &m.RoleName, &m.LastLoginAt, &m.CreatedAt, &m.PaidUntil); err != nil {
 			rows.Close()
 			return nil, err
 		}

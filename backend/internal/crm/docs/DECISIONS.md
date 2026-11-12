@@ -1909,6 +1909,38 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
 - Live reads the name from the environment when set: `CRM_APP_NAME` and `CRM_SMTP_FROM` on
   Render must say Cogniz CRM too.
 
+## D-180 — The owner's leads are people who want a CRM; converting one is approving it
+
+- The owner console's Leads and Contacts count and list the owner's own (Platform CRM)
+  records only, never the businesses' customers. Accounts and the Users card left the owner's
+  menu and overview; "Products" (people who created a CRM) is called Contacts.
+- The owner's lead form is the sign-up form: person, mobile, business name, team size,
+  industry, business type, business phone and email, tax ID and the plan of interest. Trade
+  fields (test rides, policies, matters) and trade lists never show on it; a business's own
+  lead form never shows these fields.
+- Convert on an owner lead is **Approve**, and needs a plan (paid in hand, or online later). A
+  sign-up's waiting business opens; a lead the owner typed in gets its business made from the
+  lead with its mobile number as Super Admin. Either way the URL is sent and the lead becomes
+  a contact. `POST /platform/leads/{id}/approve`.
+- The owner renews members of a business with a payment taken in hand: one or many members,
+  a plan, a method and the amount; each member's paid date moves on. `POST /platform/workspaces/{id}/renew`.
+
+## D-181 — The website at "/"; its forms are owner leads
+
+- "/" is the public website (`frontend/src/crmwebsite`); the sign-up / sign-in moved to
+  "/signup". On a business's own domain and in the phone app, "/" stays that sign-in.
+- "Book a free call" and "Send an enquiry" post to `POST /public/enquiries` (no sign-in):
+  checked again on the server, a hidden robot trap, at most 5 per address and 120 in all
+  every ten minutes. Each files a lead in the owner's Platform CRM with source
+  `website_call` / `website_enquiry` and `requestType` `call` / `enquiry`; a call request keeps
+  its preferred date and time and a call status (awaiting confirmation until the team
+  confirms it). One open lead per mobile number: a second request is added to it and noted.
+  The owner gets a bell notification.
+- The owner has **Call requests** and **Website enquiries** in the menu, as dashboard cards
+  (new, pending, completed / converted) and as filtered lead lists with their own columns.
+- Pictures on the site are real CRM screens from the demonstration business, labelled as
+  sample data.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

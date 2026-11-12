@@ -61,7 +61,7 @@ export function TenantLoginPage({ code: fixed }: { code?: string }) {
           }
         />
         <Link
-          to="/"
+          to="/signup"
           className="text-sm font-medium text-primary hover:underline"
         >
           Go to Create your own CRM
@@ -114,7 +114,7 @@ export function TenantLoginPage({ code: fixed }: { code?: string }) {
 }
 
 // Hosts that serve every business (the main site); any other host may be a business's own domain.
-function sharedHost(host: string): boolean {
+export function sharedHost(host: string): boolean {
   return (
     /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host) ||
     /\.(vercel\.app|onrender\.com|localhost)$/.test(host) ||
@@ -122,7 +122,7 @@ function sharedHost(host: string): boolean {
   );
 }
 
-/** "/" — the main sign-in, or a business's own sign-in when the site is opened on its domain. */
+/** "/signup" — the main sign-in, or a business's own sign-in when the site is opened on its domain. */
 export function RootLoginPage() {
   const host = window.location.hostname.toLowerCase();
   const own = !sharedHost(host);

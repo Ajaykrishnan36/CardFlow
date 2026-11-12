@@ -407,6 +407,7 @@ func (h *Handler) onboardingRoutes(r chi.Router) {
 // PublicTenantRoutes need no sign-in: a business's login page finds its name (D-156, D-158).
 func (h *Handler) PublicTenantRoutes(r chi.Router) {
 	// The industries and their business types for the sign-up form (D-174).
+	r.Post("/public/enquiries", h.handleWebsiteEnquiry)
 	r.Get("/public/industries", func(w http.ResponseWriter, r *http.Request) {
 		shared.WriteJSON(w, http.StatusOK, map[string]any{"data": access.Industries})
 	})

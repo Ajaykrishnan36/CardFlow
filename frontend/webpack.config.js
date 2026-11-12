@@ -25,6 +25,22 @@ function loadBuildEnv() {
 
 const crmDir = path.resolve(__dirname, 'src/crm');
 
+// The website's robots.txt and sitemap.xml (src/crmwebsite/seo) are served from the site root.
+class SeoFiles {
+  apply(compiler) {
+    compiler.hooks.thisCompilation.tap('SeoFiles', (compilation) => {
+      compilation.hooks.processAssets.tap({ name: 'SeoFiles', stage: webpack.Compilation.PROCESS_ASSETS_STAGE_ADDITIONAL }, () => {
+        const dir = path.resolve(__dirname, 'src/crmwebsite/seo');
+        for (const name of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+          const full = path.join(dir, name);
+          compilation.fileDependencies.add(full);
+          compilation.emitAsset(name, new webpack.sources.RawSource(fs.readFileSync(full)));
+        }
+      });
+    });
+  }
+}
+
 module.exports = {
   // One app for every URL; the phone layout is a lazy chunk (src/MobileRoot.js).
   entry: path.resolve(__dirname, 'src/entry.js'),
@@ -65,12 +81,13 @@ module.exports = {
         use: ['style-loader', 'css-loader', 'postcss-loader']
       },
       {
-        test: /\.(png|jpe?g|gif|svg)$/i,
+        test: /\.(png|jpe?g|gif|svg|webp|mp4|webm)$/i,
         type: 'asset/resource'
       }
     ]
   },
   plugins: [
+    new SeoFiles(),
     new webpack.DefinePlugin(loadBuildEnv()),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'public/index.html'),

@@ -26,10 +26,12 @@ func OwnerCapabilities() Capabilities {
 		Navigation: []NavItem{
 			{Key: "overview", Label: "Overview", Path: "/crm/owner/dashboard", Icon: "layout-dashboard", Available: true},
 			{Key: "leads", Label: "Leads", Path: "/crm/owner/leads", Icon: "user-plus", Group: "Platform CRM", Available: true},
-			{Key: "accounts", Label: "Accounts", Path: "/crm/owner/accounts", Icon: "briefcase", Group: "Platform CRM", Available: true},
-			{Key: "contacts", Label: "Contacts", Path: "/crm/owner/contacts", Icon: "contact", Group: "Platform CRM", Available: true},
-			// Products = accounts (one mobile number each) and Apps = their businesses (D-161).
-			{Key: "customers", Label: "Products", Path: "/crm/owner/customers", Icon: "users", Group: "Administration", Available: true},
+			// What the website brought in (D-181): the same leads, filtered.
+			{Key: "call_requests", Label: "Call requests", Path: "/crm/owner/leads?requestType=call", Icon: "phone", Group: "Platform CRM", Available: true},
+			{Key: "website_enquiries", Label: "Website enquiries", Path: "/crm/owner/leads?requestType=enquiry", Icon: "message-square", Group: "Platform CRM", Available: true},
+			// Contacts = the people (one mobile number each) who created a CRM; Apps = their
+			// businesses (D-161). The Platform CRM contacts list is reached from here, not the menu.
+			{Key: "customers", Label: "Contacts", Path: "/crm/owner/customers", Icon: "users", Group: "Administration", Available: true},
 			{Key: "billing", Label: "Billing", Path: "/crm/owner/billing", Icon: "credit-card", Group: "Administration", Available: true},
 			{Key: "workspaces", Label: "Apps", Path: "/crm/owner/workspaces", Icon: "layout-grid", Group: "Administration", Available: true},
 			{Key: "objects", Label: "Objects", Path: "/crm/owner/objects", Icon: "box", Group: "Administration", Available: true},

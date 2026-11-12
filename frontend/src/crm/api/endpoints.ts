@@ -150,6 +150,12 @@ export const platformApi = {
       `/platform/applications/${enc(workspaceId)}/approve`,
       { method: 'POST', body }
     ),
+  /** Converting one of the owner's leads is approving it on a plan (D-180). */
+  approveLead: (leadId: string, body: ApproveBody & { plan: BillingPeriod }) =>
+    api<{ approved: boolean; application?: Application; notified: Record<'email' | 'sms' | 'whatsapp', string> }>(
+      `/platform/leads/${enc(leadId)}/approve`,
+      { method: 'POST', body }
+    ),
   /** Products: one per person who created businesses, with how many apps they run. */
   customers: () => api<{ data: Customer[] }>('/platform/customers').then((r) => r.data),
   customer: (id: string) => api<{ customer: Customer; apps: Application[] }>(`/platform/customers/${enc(id)}`),
@@ -1730,5 +1736,8 @@ export interface OwnerBilling {
 
 export const ownerBillingApi = {
   get: () => api<OwnerBilling>('/platform/billing'),
-  save: (body: { enabled: boolean; prices: Record<BillingPeriod, number> }) => api<OwnerBilling>('/platform/billing', { method: 'PUT', body })
+  save: (body: { enabled: boolean; prices: Record<BillingPeriod, number> }) => api<OwnerBilling>('/platform/billing', { method: 'PUT', body }),
+  /** The owner renews members of a business with a payment taken in hand (no Razorpay). */
+  renew: (workspaceId: string, body: { plan: BillingPeriod; method: 'cash' | 'upi' | 'bank' | 'cheque'; amount?: number; reference?: string; membershipIds: string[] }) =>
+    api<{ members: { membershipId: string; paidUntil?: string }[] }>(`/platform/workspaces/${encodeURIComponent(workspaceId)}/renew`, { method: 'POST', body })
 };

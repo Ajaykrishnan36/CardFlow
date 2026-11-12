@@ -75,6 +75,7 @@ func (h *Handler) Routes(r chi.Router) {
 		r.Patch("/platform/workspaces/{id}", h.handleUpdateWorkspace)
 		r.Post("/platform/workspaces/{id}/products", h.handleAssignProduct)
 		r.Patch("/platform/workspaces/{id}/products/{productId}", h.handleUpdateWorkspaceProduct)
+		r.Post("/platform/workspaces/{id}/renew", h.handleRenewMembers)
 		r.Post("/platform/workspaces/{id}/invitations", h.handleInvite)
 		r.Post("/platform/workspaces/{id}/invitations/{invitationId}/resend", h.handleResendInvite)
 		r.Post("/platform/workspaces/{id}/invitations/{invitationId}/revoke", h.handleRevokeInvite)

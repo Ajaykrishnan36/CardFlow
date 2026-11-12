@@ -10,6 +10,21 @@ const PRESETS = {
       partner: { label: 'Partners', singular: 'partner', in: ['partner', 'reseller', 'distributor'], create: { type: 'partner' } }
     }
   },
+  // The owner's leads by what was asked for on the website (D-181).
+  leads: {
+    param: 'requestType',
+    values: {
+      call: {
+        label: 'Call requests', singular: 'call request', in: ['call'], create: { requestType: 'call', source: 'website_call', callStatus: 'requested' },
+        columns: ['organization', 'mobile', 'industry', 'preferredDate', 'preferredTime', 'callStatus', 'status', 'ownerId', 'createdAt']
+      },
+      enquiry: {
+        label: 'Website enquiries', singular: 'enquiry', in: ['enquiry'], create: { requestType: 'enquiry', source: 'website_enquiry' },
+        columns: ['organization', 'mobile', 'subject', 'enquiryCategory', 'industry', 'status', 'ownerId', 'createdAt']
+      },
+      signup: { label: 'Sign-ups', singular: 'sign-up', in: ['signup'], create: {} }
+    }
+  },
   catalog_items: {
     param: 'itemType',
     values: {

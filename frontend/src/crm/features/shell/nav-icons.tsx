@@ -1,4 +1,5 @@
 import {
+  PhoneCall,
   ScanLine,
   BadgeCheck,
   SlidersHorizontal,
@@ -89,6 +90,7 @@ const icons: Record<string, LucideIcon> = {
   landmark: Landmark,
   'id-card': IdCard,
   smartphone: Smartphone,
+  phone: PhoneCall,
   store: Store,
   'scan-line': ScanLine,
   workflow: Workflow,

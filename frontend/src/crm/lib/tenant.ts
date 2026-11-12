@@ -76,7 +76,7 @@ export function toTenantPath(path: string): string {
 export function loginPathFor(pathname: string): string {
   if (pathname.startsWith("/crm/owner")) return "/crm/owner/login";
   const slug = tenantFromPath(pathname);
-  return slug ? `/${slug}/login` : "/";
+  return slug ? `/${slug}/login` : "/signup";
 }
 
 // The tenant whose login page is open (/<tenant>/login). Sign-in requests carry it so the

@@ -36,6 +36,7 @@ import { ProductObjectDetailPage, ProductObjectsPage } from './features/objects/
 import { NotFoundPage } from '@crm/features/system/pages';
 
 // Route-level code splitting (PRD §11 performance): only the sign-in screens ship eagerly.
+const HomePage = lazy(() => import('../crmwebsite').then((m) => ({ default: m.HomePage })));
 const MfaVerifyPage = lazy(() => import('@crm/features/auth/mfa-pages').then((m) => ({ default: m.MfaVerifyPage })));
 const MfaSetupPage = lazy(() => import('@crm/features/auth/mfa-pages').then((m) => ({ default: m.MfaSetupPage })));
 const ForgotPasswordPage = lazy(() => import('@crm/features/auth/password-pages').then((m) => ({ default: m.ForgotPasswordPage })));
@@ -126,7 +127,7 @@ function UnauthorizedBridge() {
 function RootRedirect() {
   const { data: me, isPending } = useMe();
   if (isPending) return <FullPageLoader />;
-  if (!me) return <Navigate to="/" replace />;
+  if (!me) return <Navigate to="/signup" replace />;
   return <Navigate to={me.next.startsWith('/crm/mfa') || me.next === '/crm/change-password' ? me.next : homeFor(me)} replace />;
 }
 
@@ -137,15 +138,16 @@ function AppRoutes() {
         <Route path="/crm" element={<RootRedirect />} />
 
         <Route element={<RedirectIfSignedIn />}>
-          {/* "/" and "/crm/login" are the same sign-in (D-104). */}
-          {/* The main sign-in is "/" now; old /crm/login links still land there (D-156). */}
-          <Route path="/crm/login" element={<KeepSearch to="/" />} />
+          {/* The main sign-in is "/signup" (D-181); old /crm/login links still land there (D-156). */}
+          <Route path="/crm/login" element={<KeepSearch to="/signup" />} />
           <Route path="/crm/signup" element={<SignupPage />} />
         </Route>
         <Route element={<OwnerLoginGate />}>
           <Route path="/crm/owner/login" element={<OwnerLoginPage />} />
         </Route>
-        <Route path="/" element={<RootLoginPage />} />
+        {/* "/" is the website (D-181): its Sign up button opens the sign-in at "/signup". */}
+        <Route path="/" element={<HomePage />} />
+        <Route path="/signup" element={<RootLoginPage />} />
         <Route path="/:tenant/login" element={<TenantLoginPage />} />
         <Route path="/crm/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/crm/reset-password" element={<ResetPasswordPage />} />
@@ -296,7 +298,7 @@ const SHARED_PAGES = /^\/crm\/(login|signup|forgot-password|reset-password|accep
 function Shell() {
   const location = useLocation();
   // The site's own page only registers and asks the server nothing until a number is sent (D-160).
-  const { data: me } = useMe(location.pathname !== '/');
+  const { data: me } = useMe(location.pathname !== '/' && location.pathname !== '/signup');
   const phone = usePhoneLayout();
   const [noAppProfile, setNoAppProfile] = useState(false);
   // Signing in as someone else gets a fresh chance at the phone layout.

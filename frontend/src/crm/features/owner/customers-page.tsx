@@ -14,11 +14,11 @@ import { WorkspaceStatusBadge } from "@crm/features/workspaces/workspace-ui";
 import type { WorkspaceStatus } from "@crm/api/types";
 
 /**
- * /crm/owner/customers — Products (D-161): one per person, one mobile number, who created a
+ * /crm/owner/customers — Contacts (D-161): one per person, one mobile number, who created a
  * CRM on "Create your own CRM", with how many apps (businesses) they run.
  */
 export function CustomersPage() {
-  useDocumentTitle("Products");
+  useDocumentTitle("Contacts");
   const q = useQuery({
     queryKey: ["platform", "customers"],
     queryFn: platformApi.customers,
@@ -34,8 +34,8 @@ export function CustomersPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Products"
-        description="One product per account: the person (mobile number) who created a CRM, and how many apps they run."
+        title="Contacts"
+        description="Everyone who created a CRM: one per mobile number, and how many apps they run."
       />
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <SearchInput
@@ -46,7 +46,7 @@ export function CustomersPage() {
         />
         {q.data ? (
           <p className="text-[13px] text-muted-foreground">
-            {q.data.length} {q.data.length === 1 ? "product" : "products"} ·{" "}
+            {q.data.length} {q.data.length === 1 ? "contact" : "contacts"} ·{" "}
             {apps} {apps === 1 ? "app" : "apps"}
           </p>
         ) : null}
@@ -56,13 +56,13 @@ export function CustomersPage() {
           <Skeleton className="m-5 h-40" />
         ) : q.isError ? (
           <ErrorState
-            title="Couldn't load products"
+            title="Couldn't load contacts"
             onRetry={() => void q.refetch()}
           />
         ) : rows.length === 0 ? (
           <EmptyState
             icon={UserRound}
-            title="No products yet"
+            title="No contacts yet"
             body="When someone creates their CRM on the sign-up page, their account shows here."
           />
         ) : (
@@ -136,8 +136,8 @@ export function CustomerDetailPage() {
     queryFn: () => platformApi.customer(id),
     enabled: Boolean(id),
   });
-  useDocumentTitle(q.data?.customer.name || "Product");
-  const crumbs = [{ label: "Products", to: "/crm/owner/customers" }];
+  useDocumentTitle(q.data?.customer.name || "Contact");
+  const crumbs = [{ label: "Contacts", to: "/crm/owner/customers" }];
   if (q.isPending)
     return (
       <PageContainer>
@@ -147,9 +147,9 @@ export function CustomerDetailPage() {
   if (q.isError || !q.data) {
     return (
       <PageContainer>
-        <PageHeader title="Product" crumbs={crumbs} />
+        <PageHeader title="Contact" crumbs={crumbs} />
         <ErrorState
-          title="Couldn't load this product"
+          title="Couldn't load this contact"
           onRetry={() => void q.refetch()}
         />
       </PageContainer>

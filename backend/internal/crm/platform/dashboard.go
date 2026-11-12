@@ -113,11 +113,13 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 		     JOIN crm.role_assignments ra ON ra.membership_id = m.id
 		     JOIN crm.roles ro ON ro.id = ra.role_id AND ro.key = 'SUPER_ADMIN'
 		    WHERE i.last_login_at IS NOT NULL),
-		  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL),
-		  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.status NOT IN ('converted', 'lost')),
+		  -- Leads and contacts are the owner's own (Platform CRM): sign-up requests and enquiries,
+		  -- never the businesses' customers.
+		  (SELECT count(*) FROM crm.leads l JOIN crm.workspaces w ON w.id = l.workspace_id AND w.is_platform WHERE l.deleted_at IS NULL),
+		  (SELECT count(*) FROM crm.leads l JOIN crm.workspaces w ON w.id = l.workspace_id AND w.is_platform WHERE l.deleted_at IS NULL AND l.status NOT IN ('converted', 'lost')),
 		  (SELECT count(*) FROM crm.accounts a WHERE a.deleted_at IS NULL),
 		  (SELECT count(*) FROM crm.identities WHERE status <> 'deleted'),
-		  (SELECT count(*) FROM crm.contacts c WHERE c.deleted_at IS NULL),
+		  (SELECT count(*) FROM crm.contacts c JOIN crm.workspaces w ON w.id = c.workspace_id AND w.is_platform WHERE c.deleted_at IS NULL),
 		  (SELECT count(*) FROM crm.workspace_products wp JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform WHERE wp.status = 'active'),
 		  (SELECT count(DISTINCT wp.workspace_id) FROM crm.workspace_products wp JOIN crm.workspaces w ON w.id = wp.workspace_id AND NOT w.is_platform WHERE wp.status = 'active')`).Scan(
 		&activeProducts, &draftProducts, &activeWorkspaces, &totalWorkspaces,
@@ -139,10 +141,11 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 			     AND ($2::uuid IS NULL OR wp.product_id = $2::uuid)),
 			  (SELECT count(DISTINCT wp.workspace_id) FROM crm.workspace_products wp WHERE wp.workspace_id IN (SELECT id FROM ws) AND wp.status = 'active'
 			     AND ($2::uuid IS NULL OR wp.product_id = $2::uuid)),
-			  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.workspace_id IN (SELECT id FROM ws)),
-			  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.status NOT IN ('converted', 'lost') AND l.workspace_id IN (SELECT id FROM ws)),
+			  -- The owner's own leads and contacts that came from these businesses' sign-ups.
+			  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.id IN (SELECT application_lead_id FROM crm.workspaces WHERE id IN (SELECT id FROM ws))),
+			  (SELECT count(*) FROM crm.leads l WHERE l.deleted_at IS NULL AND l.status NOT IN ('converted', 'lost') AND l.id IN (SELECT application_lead_id FROM crm.workspaces WHERE id IN (SELECT id FROM ws))),
 			  (SELECT count(*) FROM crm.accounts a WHERE a.deleted_at IS NULL AND a.workspace_id IN (SELECT id FROM ws)),
-			  (SELECT count(*) FROM crm.contacts c WHERE c.deleted_at IS NULL AND c.workspace_id IN (SELECT id FROM ws)),
+			  (SELECT count(*) FROM crm.contacts c WHERE c.deleted_at IS NULL AND c.id IN (SELECT l.converted_contact_id FROM crm.leads l WHERE l.id IN (SELECT application_lead_id FROM crm.workspaces WHERE id IN (SELECT id FROM ws)))),
 			  (SELECT count(DISTINCT m.identity_id) FROM crm.memberships m WHERE m.workspace_id IN (SELECT id FROM ws) AND m.status <> 'revoked'),
 			  (SELECT count(DISTINCT m.identity_id) FROM crm.memberships m WHERE m.workspace_id IN (SELECT id FROM ws) AND m.status = 'active'),
 			  (SELECT count(*) FROM crm.invitations i WHERE i.workspace_id IN (SELECT id FROM ws) AND i.status IN ('pending', 'delivered') AND i.expires_at > now())`,
@@ -158,17 +161,30 @@ func (h *Handler) dashboard(ctx context.Context, f ownerFilter) (*Dashboard, err
 	_ = h.store.Pool.QueryRow(ctx, `
 		SELECT count(DISTINCT created_by_identity) FILTER (WHERE origin = 'self_serve'), count(*) FILTER (WHERE status = 'pending')
 		FROM crm.workspaces WHERE NOT is_platform AND status <> 'deleted'`).Scan(&customers, &pendingApps)
+	// What the website brought in (D-181), counted from the owner's leads.
+	var calls, newCalls, pendingCalls, doneCalls, enquiries, newEnquiries, openEnquiries, convertedEnquiries int
+	_ = h.store.Pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE t = 'call'), count(*) FILTER (WHERE t = 'call' AND l.status = 'new'),
+		       count(*) FILTER (WHERE t = 'call' AND COALESCE(l.custom->>'callStatus', 'requested') IN ('requested', 'scheduled') AND l.status NOT IN ('converted', 'lost')),
+		       count(*) FILTER (WHERE t = 'call' AND l.custom->>'callStatus' = 'completed'),
+		       count(*) FILTER (WHERE t = 'enquiry'), count(*) FILTER (WHERE t = 'enquiry' AND l.status = 'new'),
+		       count(*) FILTER (WHERE t = 'enquiry' AND l.status NOT IN ('new', 'converted', 'lost')),
+		       count(*) FILTER (WHERE t = 'enquiry' AND l.status = 'converted')
+		FROM crm.leads l JOIN crm.workspaces w ON w.id = l.workspace_id AND w.is_platform
+		CROSS JOIN LATERAL (SELECT l.custom->>'requestType' AS t) x
+		WHERE l.deleted_at IS NULL`).Scan(&calls, &newCalls, &pendingCalls, &doneCalls, &enquiries, &newEnquiries, &openEnquiries, &convertedEnquiries)
 	_, _ = installedApps, appProducts
+	// Accounts and Users are no longer shown on the owner's overview.
+	_, _, _, _, _ = accounts, totalUsers, activeIdentities, suspendedIdentities, contacts
 	d := &Dashboard{
 		KPIs: []KPI{
 			// Products = accounts that created a CRM; Apps = every business (D-161).
-			{Key: "customers", Label: "Products", Value: customers, Hint: "accounts", Path: "/crm/owner/customers"},
+			{Key: "customers", Label: "Contacts", Value: customers, Hint: "people who created a CRM", Path: "/crm/owner/customers"},
 			{Key: "workspaces", Label: "Apps", Value: totalWorkspaces, Hint: productsHint(activeWorkspaces, totalWorkspaces-activeWorkspaces), Path: "/crm/owner/workspaces"},
 			{Key: "approvals", Label: "To approve", Value: pendingApps, Hint: "new businesses", Path: "/crm/owner/workspaces?status=pending"},
 			{Key: "leads", Label: "Leads", Value: totalLeads, Hint: plural(openLeads, "open"), Path: "/crm/owner/leads"},
-			{Key: "accounts", Label: "Accounts", Value: accounts, Path: "/crm/owner/accounts"},
-			{Key: "contacts", Label: "Contacts", Value: contacts, Path: "/crm/owner/contacts"},
-			{Key: "users", Label: "Users", Value: totalUsers, Hint: activeHint(activeIdentities, suspendedIdentities), Path: "/crm/owner/users"},
+			{Key: "calls", Label: "Call requests", Value: calls, Hint: countsHint(calls, [][2]any{{newCalls, "new"}, {pendingCalls, "pending"}, {doneCalls, "completed"}}), Path: "/crm/owner/leads?requestType=call"},
+			{Key: "enquiries", Label: "Website enquiries", Value: enquiries, Hint: countsHint(enquiries, [][2]any{{newEnquiries, "new"}, {openEnquiries, "pending"}, {convertedEnquiries, "converted"}}), Path: "/crm/owner/leads?requestType=enquiry"},
 			{Key: "invites", Label: "Invitations", Value: pendingInvites, Hint: "pending", Path: "/crm/owner/users?status=invited"},
 		},
 		Checklist: []ChecklistStep{
@@ -291,4 +307,16 @@ func (h *Handler) handleListApps(w http.ResponseWriter, r *http.Request) {
 		out = append(out, a)
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{"data": out})
+}
+
+// countsHint: "2 new · 1 pending · 3 completed", or a word on where they come from.
+func countsHint(total int, parts [][2]any) string {
+	if total == 0 {
+		return "from the website"
+	}
+	out := []string{}
+	for _, p := range parts {
+		out = append(out, fmt.Sprintf("%d %s", p[0].(int), p[1].(string)))
+	}
+	return strings.Join(out, " · ")
 }

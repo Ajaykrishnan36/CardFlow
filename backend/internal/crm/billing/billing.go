@@ -509,6 +509,9 @@ func (s *Service) PublicRoutes(r chi.Router) {
 type Offline struct {
 	Workspace   uuid.UUID
 	Identity    uuid.UUID // the person it pays for (the applicant, the business's Super Admin)
+	// Memberships, when set, are the members it pays for instead (the owner renewing several
+	// people of one business in one go); AmountPaise is then the total received.
+	Memberships []uuid.UUID
 	Period      string    // 1m, 3m, 6m, 12m
 	AmountPaise int64     // what was received; 0 means the plan's price
 	Method      string    // cash, upi, bank, cheque
@@ -528,27 +531,40 @@ func (s *Service) RecordOffline(ctx context.Context, p Offline) (time.Time, erro
 	default:
 		return time.Time{}, shared.Validation(map[string]string{"method": "Say how they paid: cash, UPI, bank transfer or cheque."})
 	}
+	var ids []uuid.UUID
+	if len(p.Memberships) > 0 {
+		if err := s.pool.QueryRow(ctx, `SELECT COALESCE(array_agg(id), '{}') FROM crm.memberships
+			WHERE workspace_id = $1 AND id = ANY($2) AND status <> 'revoked'`, p.Workspace, p.Memberships).Scan(&ids); err != nil {
+			return time.Time{}, err
+		}
+		if len(ids) == 0 || len(ids) != len(dedupe(p.Memberships)) {
+			return time.Time{}, shared.Validation(map[string]string{"membershipIds": "Someone you chose isn't a member of this business."})
+		}
+	} else {
+		var membership uuid.UUID
+		if err := s.pool.QueryRow(ctx, `SELECT id FROM crm.memberships WHERE workspace_id = $1 AND identity_id = $2`, p.Workspace, p.Identity).Scan(&membership); err != nil {
+			return time.Time{}, shared.Validation(map[string]string{"plan": "The applicant isn't a member of this business."})
+		}
+		ids = []uuid.UUID{membership}
+	}
 	price := s.Settings(ctx).Prices[p.Period]
 	amount := p.AmountPaise
 	if amount <= 0 {
-		amount = int64(price) * 100
+		amount = int64(price) * 100 * int64(len(ids))
 	}
 	if amount <= 0 {
 		return time.Time{}, shared.Validation(map[string]string{"amount": "Enter the amount received."})
 	}
-	var membership uuid.UUID
-	if err := s.pool.QueryRow(ctx, `SELECT id FROM crm.memberships WHERE workspace_id = $1 AND identity_id = $2`, p.Workspace, p.Identity).Scan(&membership); err != nil {
-		return time.Time{}, shared.Validation(map[string]string{"plan": "The applicant isn't a member of this business."})
-	}
 	unit := price
 	if unit <= 0 {
-		unit = int(amount / 100)
+		unit = int(amount / 100 / int64(len(ids)))
 	}
 	order := "offline_" + uuid.NewString()
 	if _, err := s.pool.Exec(ctx, `INSERT INTO crm.billing_orders (workspace_id, razorpay_order_id, period, months, unit_price, amount_paise, membership_ids, paid_by, method, reference)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, ''))`, p.Workspace, order, p.Period, months, unit, amount, []uuid.UUID{membership}, p.By, p.Method, strings.TrimSpace(p.Reference)); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULLIF($10, ''))`, p.Workspace, order, p.Period, months, unit, amount, ids, p.By, p.Method, strings.TrimSpace(p.Reference)); err != nil {
 		return time.Time{}, err
 	}
+	membership := ids[0]
 	by := p.By
 	if _, err := s.markPaid(ctx, order, firstNonEmpty(strings.TrimSpace(p.Reference), p.Method), &p.Workspace, &by); err != nil {
 		return time.Time{}, err
@@ -556,6 +572,18 @@ func (s *Service) RecordOffline(ctx context.Context, p Offline) (time.Time, erro
 	var until time.Time
 	err := s.pool.QueryRow(ctx, `SELECT paid_until FROM crm.memberships WHERE id = $1`, membership).Scan(&until)
 	return until, err
+}
+
+func dedupe(ids []uuid.UUID) []uuid.UUID {
+	seen := map[uuid.UUID]bool{}
+	out := []uuid.UUID{}
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func firstNonEmpty(v ...string) string {

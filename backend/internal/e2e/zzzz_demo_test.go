@@ -146,8 +146,10 @@ func TestDevDataFreshStartAndDemo(t *testing.T) {
 			t.Fatal("Ajay Bikes' application is a lead in the owner console")
 		}
 		approve(t, owner, bikes)
-		want(t, call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{
-			"account": map[string]any{"mode": "new", "name": "Ajay Bikes", "kind": "business"}, "createContact": true}), 200, "owner converts Ajay's lead into a contact")
+		// Approving turned Ajay's sign-up lead into a contact.
+		if l := call(t, "GET", crmAPI+"/platform/crm/leads/"+leadID, owner, nil); l.str("record", "values", "convertedContactId") == "" {
+			t.Fatalf("approval converts Ajay's lead into a contact: %s", truncate(l.Raw, 300))
+		}
 
 		// Ajay fills the form again on "/": same answer, nothing new; his URL is sent to him.
 		later(ajay)

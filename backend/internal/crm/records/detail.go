@@ -236,6 +236,18 @@ func (h *Handler) detail(ctx context.Context, sc *Scope, me uuid.UUID, spec *obj
 			return nil, err
 		}
 	}
+	if spec.Key == "leads" && workspaceIsPlatform(ctx, h.store.Pool, ws) {
+		// The owner's leads are sign-up requests: their follow-up only (tasks, meetings,
+		// notes, calls, messages), nothing from any trade (D-180).
+		keep := map[string]bool{"tasks": true, "events": true, "notes": true, "communications": true, "call_logs": true, "activities": true}
+		kept := d.Related[:0:0]
+		for _, l := range d.Related {
+			if keep[l.Object] {
+				kept = append(kept, l)
+			}
+		}
+		d.Related = kept
+	}
 	if spec.Key == "leads" {
 		if d.Conversion, err = h.conversion(ctx, ws, row); err != nil {
 			return nil, err

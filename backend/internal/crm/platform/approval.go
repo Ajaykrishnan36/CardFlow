@@ -76,7 +76,9 @@ func holdForReview(ctx context.Context, tx pgx.Tx, wsID, creator uuid.UUID, code
 	taxType := strings.ToUpper(firstNonEmpty(in.TaxIDType, "ID"))
 	desc := fmt.Sprintf("Applied on Create your own CRM for %s (%s %s, team %s, %s). Business URL /%s/login is reserved and opens when you approve it.",
 		in.Name, taxType, in.TaxID, firstNonEmpty(in.TeamSize, "not given"), firstNonEmpty(tradeText(in), "industry not given"), code)
-	custom, _ := json.Marshal(map[string]any{"signup_workspace_id": wsID, "business_code": code, "tax_id": in.TaxID, "tax_id_type": in.TaxIDType, "team_size": in.TeamSize})
+	custom, _ := json.Marshal(map[string]any{"signup_workspace_id": wsID, "business_code": code, "tax_id": in.TaxID, "tax_id_type": in.TaxIDType, "team_size": in.TeamSize,
+		// The owner's lead form shows these (D-180).
+		"requestType": "signup", "taxId": in.TaxID, "taxIdType": in.TaxIDType, "teamSize": in.TeamSize, "plan": in.Plan, "businessType": firstNonEmpty(in.BusinessType, in.IndustryOther), "businessEmail": in.Email})
 	var leadID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO crm.leads (workspace_id, code, first_name, last_name, organization, email, mobile, phone, source, status, description,
@@ -172,6 +174,7 @@ func (h *Handler) ApprovalRoutes(r chi.Router) {
 		shared.WriteJSON(w, http.StatusOK, map[string]any{"data": list})
 	})
 	r.Post("/platform/applications/{id}/approve", h.handleApprove)
+	r.Post("/platform/leads/{id}/approve", h.handleApproveLead)
 	r.Get("/platform/customers", h.handleCustomers)
 	r.Get("/platform/customers/{id}", h.handleCustomer)
 	r.Get("/platform/records/{object}/{id}/businesses", h.handleRecordBusinesses)
@@ -301,23 +304,35 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, shared.NotFound("business_not_found"))
 		return
 	}
-	ctx := r.Context()
-	me := actorID(r)
-	// The plan (D-172): approve on a plan, either paid to the owner outside the CRM (cash,
-	// UPI, bank) — then the applicant is paid for at once — or to be paid online by them.
-	var in struct {
-		Plan      string  `json:"plan"`
-		Payment   string  `json:"payment"` // offline | online | "" (decide later)
-		Method    string  `json:"method"`  // offline: cash | upi | bank | cheque
-		Amount    float64 `json:"amount"`  // offline: rupees received (0 = the plan's price)
-		Reference string  `json:"reference"`
-	}
+	var in approveInput
 	if r.ContentLength != 0 {
 		if err := shared.DecodeJSON(w, r, &in); err != nil {
 			shared.WriteError(w, r, err)
 			return
 		}
 	}
+	res, err := h.approveBusiness(r, wsID, in)
+	if err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
+	shared.WriteJSON(w, http.StatusOK, res)
+}
+
+// approveInput — the plan (D-172): approve on a plan, either paid to the owner outside the
+// CRM (cash, UPI, bank) — then the applicant is paid for at once — or to be paid online.
+type approveInput struct {
+	Plan      string  `json:"plan"`
+	Payment   string  `json:"payment"` // offline | online | "" (decide later)
+	Method    string  `json:"method"`  // offline: cash | upi | bank | cheque
+	Amount    float64 `json:"amount"`  // offline: rupees received (0 = the plan's price)
+	Reference string  `json:"reference"`
+}
+
+// approveBusiness opens a pending business, settles its plan and sends its URL.
+func (h *Handler) approveBusiness(r *http.Request, wsID uuid.UUID, in approveInput) (map[string]any, error) {
+	ctx := r.Context()
+	me := actorID(r)
 	fe := map[string]string{}
 	if in.Plan != "" && !Plans[in.Plan] {
 		fe["plan"] = "Choose a plan."
@@ -340,34 +355,29 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		fe["payment"] = "Choose paid offline or pay online."
 	}
 	if len(fe) > 0 {
-		shared.WriteError(w, r, shared.Validation(fe))
-		return
+		return nil, shared.Validation(fe)
 	}
 	if in.Payment == "offline" {
 		if h.billing == nil {
-			shared.WriteError(w, r, shared.NewError(http.StatusConflict, "billing_off", "Payments aren't set up on this server."))
-			return
+			return nil, shared.NewError(http.StatusConflict, "billing_off", "Payments aren't set up on this server.")
 		}
 		var status string
 		var by *uuid.UUID
 		if err := h.store.Pool.QueryRow(ctx, `SELECT status, created_by_identity FROM crm.workspaces WHERE id = $1 AND NOT is_platform`, wsID).Scan(&status, &by); err != nil {
-			shared.WriteError(w, r, shared.NotFound("business_not_found"))
-			return
+			return nil, shared.NotFound("business_not_found")
 		}
 		if status != "pending" || by == nil {
-			shared.WriteError(w, r, shared.NewError(http.StatusConflict, "not_pending", "This business isn't waiting for approval."))
-			return
+			return nil, shared.NewError(http.StatusConflict, "not_pending", "This business isn't waiting for approval.")
 		}
 		if _, err := h.billing.RecordOffline(ctx, billing.Offline{Workspace: wsID, Identity: *by, Period: in.Plan,
 			AmountPaise: int64(in.Amount*100 + 0.5), Method: in.Method, Reference: in.Reference, By: me}); err != nil {
-			shared.WriteError(w, r, err)
-			return
+			return nil, err
 		}
 	}
 	var creator uuid.UUID
 	var name, slug string
 	var profile []byte
-	err = h.store.WithTx(ctx, func(tx pgx.Tx) error {
+	err := h.store.WithTx(ctx, func(tx pgx.Tx) error {
 		var status string
 		var by *uuid.UUID
 		if err := tx.QueryRow(ctx, `
@@ -393,18 +403,15 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		if _, err := tx.Exec(ctx, `UPDATE crm.tenants SET status = 'active', updated_at = now() WHERE id = (SELECT tenant_id FROM crm.workspaces WHERE id = $1) AND status = 'pending'`, wsID); err != nil {
 			return err
 		}
-		// The lead moves on; converting it into a contact stays the owner's choice.
-		if _, err := tx.Exec(ctx, `
-			UPDATE crm.leads SET status = 'qualified', updated_at = now(), updated_by = $2
-			WHERE id = (SELECT application_lead_id FROM crm.workspaces WHERE id = $1) AND converted_at IS NULL AND status IN ('new', 'contacted')`, wsID, me); err != nil {
+		// Approved: the sign-up lead becomes a contact in the owner's Platform CRM.
+		if err := convertApplicationLead(ctx, tx, wsID, creator, me); err != nil {
 			return err
 		}
 		return shared.WriteAudit(ctx, tx, auditEvent(r, "business.approved", "workspace", &wsID, &wsID, map[string]any{"status": "pending"},
 			map[string]any{"status": "active", "code": slug, "plan": in.Plan, "payment": in.Payment, "method": in.Method, "amount": in.Amount}))
 	})
 	if err != nil {
-		shared.WriteError(w, r, err)
-		return
+		return nil, err
 	}
 	// Its public listing (directory, card, QR) is made now that it is open.
 	if AfterBusinessCreated != nil {
@@ -426,10 +433,9 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	})
 	list, err := h.queryApplications(ctx, " AND w.id = $1", wsID)
 	if err != nil || len(list) == 0 {
-		shared.WriteJSON(w, http.StatusOK, map[string]any{"approved": true, "notified": sent})
-		return
+		return map[string]any{"approved": true, "notified": sent}, nil
 	}
-	shared.WriteJSON(w, http.StatusOK, map[string]any{"approved": true, "application": list[0], "notified": sent})
+	return map[string]any{"approved": true, "application": list[0], "notified": sent}, nil
 }
 
 // planNames are the plans as people say them.
@@ -536,4 +542,64 @@ func tradeText(in CreateBusinessInput) string {
 		}
 	}
 	return strings.Join(parts, " · ")
+}
+
+// convertApplicationLead turns an approved business's sign-up lead into a Platform CRM
+// contact (linked to the applicant's sign-in) and marks the lead converted. A lead that is
+// missing, deleted or already converted is left as it is.
+func convertApplicationLead(ctx context.Context, tx pgx.Tx, wsID, applicant, me uuid.UUID) error {
+	var (
+		leadID, platformWS                     uuid.UUID
+		first, last, email, mobile, phone, src *string
+		desc                                   *string
+		owner                                  *uuid.UUID
+	)
+	err := tx.QueryRow(ctx, `
+		SELECT l.id, l.workspace_id, l.first_name, l.last_name, l.email, l.mobile, l.phone, l.source, l.description, l.owner_id
+		FROM crm.leads l JOIN crm.workspaces w ON w.application_lead_id = l.id
+		WHERE w.id = $1 AND l.deleted_at IS NULL AND l.converted_at IS NULL FOR UPDATE OF l`, wsID).
+		Scan(&leadID, &platformWS, &first, &last, &email, &mobile, &phone, &src, &desc, &owner)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var n int64
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO crm.code_counters (workspace_id, prefix, next_value) VALUES ($1, 'C', 2)
+		ON CONFLICT (workspace_id, prefix) DO UPDATE SET next_value = crm.code_counters.next_value + 1
+		RETURNING next_value - 1`, platformWS).Scan(&n); err != nil {
+		return err
+	}
+	lastName := deref(last)
+	if lastName == "" {
+		lastName = firstNonEmpty(deref(first), "Applicant")
+	}
+	var contactID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO crm.contacts (workspace_id, code, first_name, last_name, email, mobile, phone, lead_source, description,
+		                          owner_id, identity_id, created_by, updated_by, custom)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, jsonb_build_object('business_workspace_id', $13::text))
+		RETURNING id`, platformWS, fmt.Sprintf("C-%06d", n), first, lastName, email, mobile, phone, src, desc,
+		owner, applicant, me, wsID.String()).Scan(&contactID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE crm.leads SET status = 'converted', converted_at = now(), converted_contact_id = $2, identity_id = COALESCE(identity_id, $3),
+		       version = version + 1, updated_at = now(), updated_by = $4
+		WHERE id = $1`, leadID, contactID, applicant, me); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO crm.lead_conversions (workspace_id, lead_id, contact_id, workspace_provisioned_id, converted_by)
+		VALUES ($1, $2, $3, $4, $5)`, platformWS, leadID, contactID, wsID, me)
+	return err
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

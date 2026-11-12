@@ -107,9 +107,16 @@ function RecordListView({ object }: { object: ObjectKey }) {
     }
   }, [effectiveViewId, scope.prefix, object]);
 
+  // A preset list (Call requests, Website enquiries) brings its own columns.
+  const presetColumns = listPreset(object, sp)?.columns;
+  const presetColumnsKey = presetColumns?.join(',') ?? '';
   const baseDef = useMemo<ViewDefinition>(
-    () => view?.definition ?? { sorts: binMode ? [] : [{ field: 'createdAt', dir: 'desc' }], columns: meta?.listColumns.filter((k) => k !== 'code') ?? [] },
-    [view, meta, binMode]
+    () =>
+      view?.definition ?? {
+        sorts: binMode ? [] : [{ field: 'createdAt', dir: 'desc' }],
+        columns: (presetColumns && meta ? presetColumns.filter((k) => meta.fields.some((f) => f.key === k)) : meta?.listColumns.filter((k) => k !== 'code')) ?? []
+      },
+    [view, meta, binMode, presetColumnsKey] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const baseKind: ViewKind = binMode ? 'table' : view?.kind ?? 'table';
   const [draft, setDraft] = useState<ViewDefinition>(baseDef);
@@ -125,7 +132,10 @@ function RecordListView({ object }: { object: ObjectKey }) {
   const ownerFilter = useOwnerFilter();
   const changeOwnerFilter = useChangeOwnerFilter();
   const { products: ownerProducts, apps: ownerApps } = useOwnerProducts(isOwner);
-  const ws = isOwner ? sp.get('ws') || ownerFilter.productCode || ALL_WS : undefined;
+  // The owner's Leads and Contacts are their own (Platform CRM): sign-up requests and
+  // enquiries, never the businesses' customers.
+  const platformOnly = isOwner && (object === 'leads' || object === 'contacts');
+  const ws = platformOnly ? PLATFORM_WS : isOwner ? sp.get('ws') || ownerFilter.productCode || ALL_WS : undefined;
   // App picker (D-89): opens once a product is chosen and lists that product's apps.
   const productPicked = Boolean(ws && ws !== ALL_WS && ws !== PLATFORM_WS);
   const appChoices = productPicked ? ownerApps.filter((a) => a.workspaceCode === ws) : [];
@@ -160,7 +170,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
   const byKey = useMemo(() => fieldIndex(meta), [meta]);
   const ownFilter = useMemo(() => cleanFilter(draft.filter, byKey), [draft.filter, byKey]);
   // A menu entry such as Vendors is this list through a fixed filter carried in the address (D-117).
-  const presetQuery = sp.get('type') ?? sp.get('itemType') ?? '';
+  const presetQuery = sp.get('type') ?? sp.get('itemType') ?? sp.get('requestType') ?? '';
   const preset = useMemo(() => listPreset(object, sp), [object, presetQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const filter = useMemo<FilterGroup | undefined>(
     () => (preset ? { op: 'and', filters: [preset.filter as unknown as FilterCondition, ...(ownFilter ? [ownFilter] : [])] } : ownFilter),
@@ -288,7 +298,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
           meta ? (
             preset ? (
               <>
-                {meta.labelPlural} of type {preset.singular}.{' '}
+                {object === 'leads' ? `${preset.label} from the website, newest first.` : `${meta.labelPlural} of type ${preset.singular}.`}{' '}
                 <Link to={listHref(scope, object)} className="font-medium text-primary hover:underline">
                   Show all {meta.labelPlural.toLowerCase()}
                 </Link>
@@ -346,7 +356,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
         }
       />
 
-      {isOwner ? (
+      {isOwner && !platformOnly ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Select className="h-9 w-full text-[13px] sm:w-56" aria-label={t('records.list.workspaceFilter')} value={ws} onChange={(e) => pickProduct(e.target.value)}>
             <option value={ALL_WS}>{t('records.list.allWorkspaces')}</option>

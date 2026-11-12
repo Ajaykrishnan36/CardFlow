@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Activity, XCircle, ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, Ellipsis, GitMerge, KeyRound, LayoutTemplate, Lock, Mail, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
+import { Activity, XCircle, ArrowRightLeft, BadgeCheck, ChevronDown, ChevronLeft, ChevronRight, Copy, Ellipsis, GitMerge, KeyRound, LayoutTemplate, Lock, Mail, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react';
 import { isApiError } from '@crm/api/client';
 import type { FieldDef, ObjectKey, ObjectMeta, RecordDetail, RecordRow, RelatedList } from '@crm/api/types';
 import { Alert, Badge, Card, CardHeader } from '@crm/components/ui/card';
@@ -19,6 +19,7 @@ import { plainKey, recordNeighbours } from '@crm/features/shell/shortcuts';
 import { GiveLoginDialog } from '@crm/features/access/give-login-dialog';
 import { TicketConversation } from './ticket-conversation';
 import { ConvertLeadDialog } from './convert-dialog';
+import { LeadApproveDialog } from '@crm/features/owner/lead-approve-dialog';
 import { RecordTimeline } from './record-timeline';
 import { RecordEmails } from './record-emails';
 import { EmailDialog, MergeDialog, RecordFiles, useDuplicates } from './record-extras';
@@ -296,6 +297,8 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
   const isLead = object === 'leads';
   const converted = isLead && Boolean(detail.conversion || record.values.convertedAt || record.values.status === 'converted');
   const canConvert = isLead && !converted && scope.can('leads', 'convert');
+  // The owner's own leads (sign-up requests) are converted by approving them on a plan (D-180).
+  const platformLead = isOwner && isLead && byKey.has('taxId');
   // Owner only: give the person behind this record a login.
   const email = typeof record.values.email === 'string' ? record.values.email.trim() : '';
   const identityId = typeof record.values.identityId === 'string' && record.values.identityId ? record.values.identityId : null;
@@ -395,7 +398,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
                 <Pencil /> {t('records.detail.edit')}
               </Button>
             ) : null}
-            {isOwner && !identityId ? (
+            {isOwner && !identityId && !platformLead ? (
               email ? (
                 <Button variant="outline" size="sm" className="border-primary/40 text-primary hover:bg-primary-soft" onClick={() => setLoginOpen(true)} disabled={editing}>
                   <KeyRound /> {t('records.detail.giveLogin')}
@@ -426,7 +429,11 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
             {object === 'contracts' ? <RenewContractButton record={record} disabled={editing} /> : null}
             {inWorkspace && object === 'cases' ? <CaseWorkOrderButton record={record} disabled={editing} /> : null}
             {inWorkspace && (object === 'work_orders' || object === 'appointments' || object === 'cases') ? <BookAppointmentButton record={record} object={object as 'work_orders' | 'appointments' | 'cases'} disabled={editing} /> : null}
-            {canConvert ? (
+            {canConvert && platformLead ? (
+              <Button size="sm" onClick={() => setConvertOpen(true)} disabled={editing}>
+                <BadgeCheck /> Approve
+              </Button>
+            ) : canConvert ? (
               <Button size="sm" onClick={() => setConvertOpen(true)} disabled={editing}>
                 <ArrowRightLeft /> {t('records.detail.convert')}
               </Button>
@@ -690,7 +697,17 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
       {canEmail ? <EmailDialog object={object} record={record} open={emailOpen} onOpenChange={setEmailOpen} defaultTo={email} /> : null}
       {canEdit && canDelete ? <MergeDialog object={object} meta={meta} record={record} open={mergeOpen} onOpenChange={setMergeOpen} /> : null}
       {/* Stays mounted after conversion so its success view survives the lead refetch. */}
-      {isLead && scope.can('leads', 'convert') ? <ConvertLeadDialog lead={record} open={convertOpen} onOpenChange={setConvertOpen} /> : null}
+      {platformLead ? (
+        <LeadApproveDialog
+          open={convertOpen}
+          onOpenChange={setConvertOpen}
+          leadId={record.id}
+          name={String(record.values.organization || record.title)}
+          askedPlan={typeof record.values.plan === 'string' ? record.values.plan : undefined}
+        />
+      ) : isLead && scope.can('leads', 'convert') ? (
+        <ConvertLeadDialog lead={record} open={convertOpen} onOpenChange={setConvertOpen} />
+      ) : null}
       {isOwner ? (
         <GiveLoginDialog
           open={loginOpen}

@@ -190,6 +190,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	// secret (D-165); a problem here never stops the CRM.
 	platform.SetCodeKey(m.cfg.EncryptionKey)
 	addrCtx, cancelAddr := context.WithTimeout(context.Background(), startupTimeout)
+	if err := platform.MigrateApplicationLeads(addrCtx, st.Pool); err != nil {
+		slog.Warn("crm: sign-up leads not given the lead form's keys", "error", err)
+	}
 	if err := platform.MigrateBusinessAddresses(addrCtx, st.Pool); err != nil {
 		slog.Error("giving businesses their own addresses failed", "err", err)
 	}

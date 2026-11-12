@@ -276,6 +276,8 @@ export interface WorkspaceMember {
   roleName?: string;
   lastLoginAt?: string;
   createdAt: string;
+  /** When the member's paid access ends; missing = never paid. */
+  paidUntil?: string;
 }
 
 export interface Invitation {

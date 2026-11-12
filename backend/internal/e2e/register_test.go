@@ -161,9 +161,14 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 	want(t, call(t, "POST", crmAPI+"/platform/applications/"+workspaceID(t, tradersSlug)+"/approve", "", map[string]any{}), 401, "approve without the owner")
 	approve(t, owner, tradersSlug)
 	want(t, call(t, "POST", crmAPI+"/platform/applications/"+workspaceID(t, tradersSlug)+"/approve", owner, map[string]any{}), 409, "approve twice")
-	// The owner converts the lead into a contact (and account).
-	converted := call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{"account": map[string]any{"mode": "new", "name": "Ajay Traders", "kind": "business"}, "createContact": true})
-	want(t, converted, 200, "owner converts the application lead")
+	// Approving converts the application lead into a Platform CRM contact.
+	approved := call(t, "GET", crmAPI+"/platform/crm/leads/"+leadID, owner, nil)
+	want(t, approved, 200, "owner opens the approved lead")
+	contactID := approved.str("record", "values", "convertedContactId")
+	if approved.str("record", "values", "status") != "converted" || contactID == "" {
+		t.Fatalf("approval converts the lead into a contact: %s", truncate(approved.Raw, 600))
+	}
+	want(t, call(t, "POST", crmAPI+"/platform/crm/leads/"+leadID+"/convert", owner, map[string]any{"createContact": true}), 422, "a converted lead isn't converted twice")
 
 	// 2. Step 4a: Ajay, who already has a CRM, fills the form again. The page says the
 	// same; nothing is created; his URLs go to him by SMS, WhatsApp and email.
@@ -283,7 +288,7 @@ func TestCreateYourOwnCRMRegistersAndOnlyBusinessURLsSignIn(t *testing.T) {
 		t.Fatalf("Ajay runs 3 apps and Ram 1: %v", appsOf)
 	}
 	// Lead, contact and account show the person's businesses (D-162).
-	for object, id := range map[string]string{"leads": leadID, "contacts": converted.str("contactId"), "accounts": converted.str("accountId")} {
+	for object, id := range map[string]string{"leads": leadID, "contacts": contactID} {
 		x := call(t, "GET", crmAPI+"/platform/records/"+object+"/"+id+"/businesses", owner, nil)
 		want(t, x, 200, "businesses on the "+object+" record")
 		if x.str("person", "phone") != "+91"+ajay || len(x.list("apps")) != 3 {

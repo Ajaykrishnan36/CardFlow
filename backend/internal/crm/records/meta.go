@@ -104,6 +104,9 @@ func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSp
 		return nil, err
 	}
 	fields = forTrade(ctx, q, wsID, fields)
+	if spec.Key == "leads" && workspaceIsPlatform(ctx, q, wsID) {
+		fields = platformLeadFields(fields)
+	}
 	// A dealer's case is about a customer's vehicle (D-173): pick the vehicle and the
 	// customer comes with it.
 	if spec.Key == "cases" {
@@ -133,6 +136,9 @@ func forTrade(ctx context.Context, q querier, wsID uuid.UUID, fields []Field) []
 	mods, err := access.WorkspaceModules(ctx, q, wsID)
 	if err != nil {
 		mods = map[string]bool{}
+	}
+	if workspaceIsPlatform(ctx, q, wsID) {
+		mods = map[string]bool{"platform": true} // the owner's own CRM: no trade's fields
 	}
 	bike, car := access.WorkspaceTrade(ctx, q, wsID).Vehicles()
 	out := fields[:0:0]
@@ -318,11 +324,16 @@ func (h *Handler) meta(ctx context.Context, wsID uuid.UUID, spec *objectSpec) (*
 		}
 		layout.Sections = kept
 	}
+	defaultLayout, listColumns := cloneLayout(spec.Layout), spec.ListColumns
+	if spec.Key == "leads" && workspaceIsPlatform(ctx, h.store.Pool, wsID) {
+		layout = sanitizeLayout(cloneLayout(platformLeadLayout), fields)
+		defaultLayout, listColumns = cloneLayout(platformLeadLayout), platformLeadColumns
+	}
 	return &Meta{
 		Defaults: defaults, CreateHidden: laterFields[spec.Key],
 		Object: spec.Key, LabelSingular: singular, LabelPlural: plural, CodePrefix: spec.Prefix,
-		Fields: fields, Layout: layout, DefaultLayout: sanitizeLayout(cloneLayout(spec.Layout), fields),
-		ListColumns: spec.ListColumns, StatusField: spec.StatusField, Statuses: statusesFor(ctx, h.store.Pool, wsID, spec), Icon: spec.Icon, Custom: spec.Custom,
+		Fields: fields, Layout: layout, DefaultLayout: sanitizeLayout(defaultLayout, fields),
+		ListColumns: listColumns, StatusField: spec.StatusField, Statuses: statusesFor(ctx, h.store.Pool, wsID, spec), Icon: spec.Icon, Custom: spec.Custom,
 		LookupTargets: h.lookupTargets(),
 	}, nil
 }
