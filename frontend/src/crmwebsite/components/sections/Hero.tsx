@@ -68,9 +68,9 @@ export function Hero({ onBookCall }: { onBookCall: () => void }) {
         <div className="cw-hero-stage" data-reveal>
           <div className="cw-hero-video">
             {still || failed ? (
-              <img src={heroPoster} alt="A salesperson writes a quotation by hand and sends a photo the customer cannot read, so the customer leaves. With Cogniz CRM he adds the lead and sends a clear quotation, and the customer confirms. The owner relaxes, adds a team member and checks the business in one click" width={1280} height={800} />
+              <img src={heroPoster} alt="A salesperson writes a quotation by hand and sends a photo the customer cannot read, so the customer leaves. A colleague shows him Cogniz CRM on a laptop; he adds the same lead and sends a clear quotation, and the customer confirms. The owner relaxes, adds a team member and checks the business in one click" width={1280} height={800} />
             ) : (
-              <video ref={video} muted loop playsInline autoPlay preload="metadata" poster={heroPoster} aria-label="Animation: a salesperson writes a quotation by hand and sends a photo the customer cannot read, so the customer leaves. With Cogniz CRM he adds the lead and sends a clear quotation, and the customer confirms. The owner relaxes, adds a team member and checks the business in one click" onError={() => setFailed(true)}>
+              <video ref={video} muted loop playsInline autoPlay preload="metadata" poster={heroPoster} aria-label="Animation: a salesperson writes a quotation by hand and sends a photo the customer cannot read, so the customer leaves. A colleague shows him Cogniz CRM on a laptop; he adds the same lead and sends a clear quotation, and the customer confirms. The owner relaxes, adds a team member and checks the business in one click" onError={() => setFailed(true)}>
                 <source src={heroWebm} type="video/webm" />
                 <source src={heroMp4} type="video/mp4" />
               </video>

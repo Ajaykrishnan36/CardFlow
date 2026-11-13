@@ -44,8 +44,8 @@ follow-ups and approve them like any other owner lead.
 
 * Words: `data/content.ts`.
 * Screens: replace a file in `assets/images` (1440 × 900, WebP).
-* Hero video: `assets/videos/hero.mp4`, `hero.webm`, `hero-poster.webp` — our own 36-second
+* Hero video: `assets/videos/hero.mp4`, `hero.webm`, `hero-poster.webp` — our own 45-second
   story: a quotation written by hand is photographed and sent, the customer can't read it and
-  blocks him; with Cogniz CRM the lead is added and a clear quotation (GST worked out) is sent,
+  blocks him; a colleague brings a laptop with Cogniz CRM; the lead is added and a clear quotation (GST worked out) is sent,
   and the customer confirms; the owner relaxes, adds a team member and checks leads, quotations
   and follow-ups in one click each. Replace those three files to change it.
