@@ -801,6 +801,13 @@ func WorkspaceSetup(ctx context.Context, q interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }, wsID uuid.UUID) (ProductConfig, error) {
+	return workspaceSetup(ctx, q, wsID, true)
+}
+
+func workspaceSetup(ctx context.Context, q interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, wsID uuid.UUID, own bool) (ProductConfig, error) {
 	var out ProductConfig
 	var isPlatform bool
 	if err := q.QueryRow(ctx, `SELECT is_platform FROM crm.workspaces WHERE id = $1`, wsID).Scan(&isPlatform); err != nil {
@@ -810,7 +817,7 @@ func WorkspaceSetup(ctx context.Context, q interface {
 		out = DefaultProductConfig()
 		out.LoginMethods.Password, out.LoginMethods.OTP = true, true
 		out.Integrations.APIAccess, out.Integrations.Webhooks = true, true
-		return out, nil
+		return out, applyStageSettings(ctx, q, wsID, &out, own)
 	}
 	rows, err := q.Query(ctx, `
 		SELECT v.config FROM crm.workspace_products wp
@@ -861,5 +868,48 @@ func WorkspaceSetup(ctx context.Context, q interface {
 		// No active product: standard setup (password sign-in, nothing else).
 		out = DefaultProductConfig()
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	rows.Close()
+	return out, applyStageSettings(ctx, q, wsID, &out, own)
+}
+
+// WorkspaceSetupWithoutStages is the setup the products give, before the business's own
+// statuses and stages are put over it (what "go back to the standard stages" returns to).
+func WorkspaceSetupWithoutStages(ctx context.Context, q interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, wsID uuid.UUID) (ProductConfig, error) {
+	return workspaceSetup(ctx, q, wsID, false)
+}
+
+// StageSettings are a business's own lead statuses and deal stages (D-182).
+type StageSettings struct {
+	LeadStatuses   []Option `json:"leadStatuses,omitempty"`
+	PipelineStages []Stage  `json:"pipelineStages,omitempty"`
+}
+
+// applyStageSettings puts the business's own statuses and stages over the product's.
+func applyStageSettings(ctx context.Context, q interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}, wsID uuid.UUID, out *ProductConfig, own bool) error {
+	if !own {
+		return nil
+	}
+	var raw []byte
+	if err := q.QueryRow(ctx, `SELECT COALESCE(stage_settings, '{}'::jsonb) FROM crm.workspaces WHERE id = $1`, wsID).Scan(&raw); err != nil {
+		return err
+	}
+	var st StageSettings
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return nil // unreadable settings: the product's own lists apply
+	}
+	if len(st.LeadStatuses) >= 2 {
+		out.LeadStatuses = st.LeadStatuses
+	}
+	if len(st.PipelineStages) >= 2 {
+		out.PipelineStages = st.PipelineStages
+	}
+	return nil
 }

@@ -8,9 +8,19 @@ import { formatMoney } from '@crm/lib/money';
 // The CRM's chart colours (D-176): teal first, then navy blue and mint, then the rest.
 const PALETTE = ['#14b8a6', '#3451b2', '#6ee7b7', '#f59e0b', '#0ea5e9', '#f43f5e', '#64748b', '#84cc16', '#f97316', '#a3a3a3'];
 
-export function formatValue(v: number, currency?: boolean) {
-  if (currency) return formatMoney(Math.round(v)).replace(/\.00$/, '');
+export function formatValue(v: number, currency?: boolean, code?: string) {
+  if (currency) return formatMoney(Math.round(v), code).replace(/\.00$/, '');
   return Number.isInteger(v) ? v.toLocaleString('en-IN') : v.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+}
+
+/** A row's value: in the row's own currency when the report is split by currency. */
+function rowValue(result: ReportResult, r: { key: string; value: number }) {
+  return formatValue(r.value, result.currency, result.byCurrency ? r.key : undefined);
+}
+
+/** The grand total, or a note when it would add different currencies together. */
+function totalValue(result: ReportResult, mixed: string) {
+  return result.byCurrency && result.rows.length > 1 ? mixed : formatValue(result.total, result.currency, result.byCurrency ? result.rows[0]?.key : undefined);
 }
 
 export function ReportChart({ result, chart, compact }: { result: ReportResult; chart?: ChartType; compact?: boolean }) {
@@ -20,7 +30,7 @@ export function ReportChart({ result, chart, compact }: { result: ReportResult; 
   if (kind === 'number' || !result.groupLabel) {
     return (
       <div className={cn('flex flex-col justify-center', compact ? 'py-2' : 'py-6')}>
-        <p className={cn('font-semibold tabular-nums tracking-tight text-foreground', compact ? 'text-3xl' : 'text-5xl')}>{formatValue(result.total, result.currency)}</p>
+        <p className={cn('font-semibold tabular-nums tracking-tight text-foreground', compact ? 'text-3xl' : 'text-5xl')}>{totalValue(result, t('reports.mixedCurrencies'))}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {result.measureLabel} · {t('reports.recordsCount', { count: result.count })}
         </p>
@@ -47,7 +57,7 @@ function Bars({ result, compact }: { result: ReportResult; compact?: boolean }) 
           <span className="h-5 overflow-hidden rounded bg-muted">
             <span className="block h-full rounded bg-primary transition-[width] duration-500" style={{ width: `${Math.max(2, (r.value / max) * 100)}%` }} />
           </span>
-          <span className="w-16 text-right font-medium tabular-nums text-foreground">{formatValue(r.value, result.currency)}</span>
+          <span className="w-16 text-right font-medium tabular-nums text-foreground">{rowValue(result, r)}</span>
         </li>
       ))}
     </ul>
@@ -70,7 +80,7 @@ function Line({ result, compact }: { result: ReportResult; compact?: boolean }) 
         <g key={f}>
           <line x1={pad} x2={w - pad} y1={y(max * f)} y2={y(max * f)} className="stroke-border" strokeDasharray="3 3" />
           <text x={4} y={y(max * f) + 4} className="fill-muted-foreground" fontSize="10">
-            {formatValue(Math.round(max * f), result.currency)}
+            {formatValue(Math.round(max * f), result.currency && !result.byCurrency)}
           </text>
         </g>
       ))}
@@ -79,7 +89,7 @@ function Line({ result, compact }: { result: ReportResult; compact?: boolean }) 
       {rows.map((r, i) => (
         <g key={r.key + i}>
           <circle cx={x(i)} cy={y(r.value)} r="3.5" className="fill-background stroke-primary" strokeWidth="2">
-            <title>{`${r.label}: ${formatValue(r.value, result.currency)}`}</title>
+            <title>{`${r.label}: ${rowValue(result, r)}`}</title>
           </circle>
           {i % every === 0 ? (
             <text x={x(i)} y={h - 8} textAnchor="middle" className="fill-muted-foreground" fontSize="10">
@@ -93,6 +103,7 @@ function Line({ result, compact }: { result: ReportResult; compact?: boolean }) 
 }
 
 function Donut({ result, compact }: { result: ReportResult; compact?: boolean }) {
+  const { t } = useTranslation();
   const top = result.rows.slice(0, 9);
   const rest = result.rows.slice(9).reduce((n, r) => n + r.value, 0);
   const slices = rest > 0 ? [...top, { key: '_other', label: 'Other', value: rest, count: 0 }] : top;
@@ -119,14 +130,14 @@ function Donut({ result, compact }: { result: ReportResult; compact?: boolean })
               strokeDashoffset={-offset}
               transform="rotate(-90 80 80)"
             >
-              <title>{`${s.label}: ${formatValue(s.value, result.currency)}`}</title>
+              <title>{`${s.label}: ${rowValue(result, s)}`}</title>
             </circle>
           );
           offset += len;
           return el;
         })}
         <text x="80" y="78" textAnchor="middle" className="fill-foreground" fontSize="18" fontWeight="600">
-          {formatValue(result.total, result.currency)}
+          {totalValue(result, t('reports.mixedCurrencies'))}
         </text>
         <text x="80" y="96" textAnchor="middle" className="fill-muted-foreground" fontSize="9">
           {result.measureLabel}
@@ -137,7 +148,7 @@ function Donut({ result, compact }: { result: ReportResult; compact?: boolean })
           <li key={s.key + i} className="flex items-center gap-2">
             <span className="size-2.5 shrink-0 rounded-sm" style={{ background: PALETTE[i % PALETTE.length] }} />
             <span className="min-w-0 flex-1 truncate text-muted-foreground">{s.label}</span>
-            <span className="font-medium tabular-nums">{formatValue(s.value, result.currency)}</span>
+            <span className="font-medium tabular-nums">{rowValue(result, s)}</span>
             <span className="w-10 text-right tabular-nums text-muted-foreground">{Math.round((s.value / total) * 100)}%</span>
           </li>
         ))}
@@ -163,7 +174,7 @@ export function ResultTable({ result }: { result: ReportResult }) {
             <tr key={r.key + i}>
               <td className="px-3 py-1.5">{r.label}</td>
               <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">{r.count}</td>
-              <td className="px-3 py-1.5 text-right font-medium tabular-nums">{formatValue(r.value, result.currency)}</td>
+              <td className="px-3 py-1.5 text-right font-medium tabular-nums">{rowValue(result, r)}</td>
             </tr>
           ))}
         </tbody>
@@ -171,7 +182,7 @@ export function ResultTable({ result }: { result: ReportResult }) {
           <tr>
             <td className="px-3 py-2">{t('reports.total')}</td>
             <td className="px-3 py-2 text-right tabular-nums">{result.count}</td>
-            <td className="px-3 py-2 text-right tabular-nums">{formatValue(result.total, result.currency)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{totalValue(result, t('reports.mixedCurrencies'))}</td>
           </tr>
         </tfoot>
       </table>

@@ -47,7 +47,7 @@ func cachedSetup(ctx context.Context, q querier, ws uuid.UUID) (platform.Product
 	return cfg, true
 }
 
-var leadTones = map[string]string{"new": "primary", "working": "warning", "qualified": "success", "converted": "success", "lost": "danger"}
+var leadTones = map[string]string{"new": "primary", "working": "warning", "contacted": "warning", "nurturing": "warning", "qualified": "success", "converted": "success", "lost": "danger", "unqualified": "danger"}
 
 // statusesFor is an object's status options in a workspace: the setup's list for leads
 // and opportunities, otherwise the object's own.

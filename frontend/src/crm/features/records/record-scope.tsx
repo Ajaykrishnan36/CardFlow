@@ -108,6 +108,10 @@ export function rulesHref(scope: RecordScope, object: ObjectKey): string {
   return `${scope.routeBase}/setup/${object}/rules`;
 }
 
+export function stagesHref(scope: RecordScope, object: ObjectKey): string {
+  return `${scope.routeBase}/setup/${object}/stages`;
+}
+
 const NON_RECORD_TARGETS: readonly string[] = ['users', 'workspaces', 'products'];
 
 /**

@@ -1446,6 +1446,18 @@ func (h *Handler) createObject(w http.ResponseWriter, r *http.Request, ws *uuid.
 				return err
 			}
 		}
+		// "Admin access" means every record of the business, so a business's own new object
+		// belongs to it at once; other sets get it when an admin adds it (as in Salesforce).
+		if ws != nil {
+			if _, err := tx.Exec(ctx, `
+				UPDATE crm.permission_sets
+				SET rules = jsonb_set(jsonb_set(rules, ARRAY['objects', $2::text], '["read","create","update","delete","import"]'::jsonb, true),
+				                      ARRAY['rows', $2::text], '{"scope":"workspace"}'::jsonb, true),
+				    updated_at = now()
+				WHERE workspace_id = $1 AND system_key = 'ADMIN' AND rules ? 'objects' AND rules ? 'rows'`, *ws, d.Key); err != nil {
+				return err
+			}
+		}
 		meta := identity.Meta(r)
 		return shared.WriteAudit(ctx, tx, shared.AuditEvent{WorkspaceID: ws, ActorID: &actor, Action: "object.created", EntityType: "object",
 			After: map[string]any{"key": d.Key, "label": d.Plural, "fields": len(d.Fields)}, IP: meta.IP, RequestID: meta.RequestID})

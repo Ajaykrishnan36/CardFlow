@@ -53,6 +53,8 @@ import type {
   ConvertBody,
   ConvertResult,
   FieldCreateBody,
+  StageSettings,
+  StageSettingItem,
   FieldUpdateBody,
   Invitation,
   InvitationPreview,
@@ -408,6 +410,10 @@ export function recordsApiFor(prefix: string) {
     api<ObjectMeta>(`${prefix}/crm/meta/${object}/fields/${enc(key)}`, { method: 'PATCH', body }),
   deleteField: (object: ObjectKey, key: string) => api<ObjectMeta>(`${prefix}/crm/meta/${object}/fields/${enc(key)}`, { method: 'DELETE' }),
   rules: (object: ObjectKey) => api<ObjectRules>(`${prefix}/crm/meta/${object}/rules`),
+  /** The business's own lead statuses / deal stages (D-182). */
+  stages: (object: ObjectKey) => api<StageSettings>(`${prefix}/crm/meta/${object}/stages`),
+  saveStages: (object: ObjectKey, stages: StageSettingItem[]) =>
+    api<StageSettings>(`${prefix}/crm/meta/${object}/stages`, { method: 'PUT', body: { stages } }),
   createRule: (object: ObjectKey, body: RuleBody) => api<ObjectRules>(`${prefix}/crm/meta/${object}/rules`, { method: 'POST', body }),
   updateRule: (object: ObjectKey, id: string, body: Partial<RuleBody>) =>
     api<ObjectRules>(`${prefix}/crm/meta/${object}/rules/${enc(id)}`, { method: 'PATCH', body }),

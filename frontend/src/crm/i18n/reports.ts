@@ -61,6 +61,7 @@ const strings = {
   records: 'Records',
   group: 'Group',
   total: 'Total',
+  mixedCurrencies: 'Mixed currencies',
   addToDashboard: 'Add to dashboard',
   addedToDashboard: 'Added to “{{name}}”',
   newDashboard: 'New dashboard',

@@ -1941,6 +1941,30 @@ From Govardhan's flow and Ajay's "Ajays-CRM-Flow-v2" (2026-11-03):
 - Pictures on the site are real CRM screens from the demonstration business, labelled as
   sample data.
 
+## D-182 — A business runs its own sales team: stages, roles, invites, currencies
+
+Found while testing a staffing business end to end (Cloudlight QA run, 2026-11-16).
+
+- **Own stages.** Whoever may customise a business sets its own deal stages (with win
+  probabilities) and lead statuses in *Leads / Opportunities › ⋯ › Deal stages / Lead
+  statuses* (`/setup/:object/stages`, `GET|PUT /crm/meta/:object/stages`). They replace the
+  product setup's lists for that business only (`workspaces.stage_settings`). The closing
+  steps keep their keys — `converted`, `lost`, `closed_won` (100%), `closed_lost` (0%) — and
+  can be renamed. A stage records are still at can't be removed; an empty list goes back to
+  the standard one.
+- **Custom roles can be given.** A role the business made counts as its nearest built-in role
+  for the user-type check (Sales Manager under Admin → Admin); built-in roles still match exactly.
+- **Phone invites.** A business admin's invite keeps the phone number, and the invited person
+  can sign in on the business's own address — the code accepts the invitation. A number is
+  never added to someone who can already sign in.
+- **Money is never mixed.** Reports and dashboards add deal amounts in the base currency
+  (the stored base amount; other money fields at the record's rate). A report split by
+  currency shows each row in its own currency and no grand total.
+- **Billing page** lists only the seats you may pay for (yourself and people below you).
+- **Lead conversion** carries the lead's custom values to the new deal too.
+- **A business's own object** is added to its *Admin access* set when it's created; other
+  sets get it when an admin adds it.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

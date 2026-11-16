@@ -569,7 +569,7 @@ func (h *Handler) GiveLoginTx(ctx context.Context, tx pgx.Tx, actor uuid.UUID, p
 			return nil, nil, err
 		}
 		sent, err := h.InviteTx(ctx, tx, actor, res.WorkspaceID, InviteInput{
-			Name: name, Email: email, RoleKey: in.RoleKey, ProductIDs: in.ProductIDs, PermissionSetIDs: in.PermissionSetIDs,
+			Name: name, Email: email, Phone: p.Phone, RoleKey: in.RoleKey, ProductIDs: in.ProductIDs, PermissionSetIDs: in.PermissionSetIDs,
 		}, fieldPrefix)
 		if err != nil {
 			return nil, nil, err
@@ -818,8 +818,25 @@ func checkUserType(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, userType, rol
 		if ut.Key != userType {
 			continue
 		}
+		// A role the business made itself (Sales Manager, Sales Exec – Europe) counts as the
+		// allowed role it sits under in the hierarchy, so custom roles can be given to people.
+		// System roles must match exactly; a custom role counts as its nearest system ancestor.
+		effective := roleKey
+		var nearest *string
+		if err := tx.QueryRow(ctx, `
+			WITH RECURSIVE up AS (
+			  SELECT id, key, is_system, parent_role_id, 0 AS depth FROM crm.roles WHERE workspace_id = $1 AND key = $2
+			  UNION ALL
+			  SELECT p.id, p.key, p.is_system, p.parent_role_id, up.depth + 1 FROM crm.roles p JOIN up ON p.id = up.parent_role_id
+			  WHERE NOT up.is_system AND up.depth < 20)
+			SELECT key FROM up WHERE is_system ORDER BY depth LIMIT 1`, wsID, roleKey).Scan(&nearest); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if nearest != nil {
+			effective = *nearest
+		}
 		for _, r := range ut.AllowedRoles {
-			if r == roleKey {
+			if r == effective {
 				return nil
 			}
 		}

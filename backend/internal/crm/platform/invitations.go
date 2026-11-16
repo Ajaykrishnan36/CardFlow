@@ -146,6 +146,19 @@ func (h *Handler) InviteTx(ctx context.Context, tx pgx.Tx, actor, workspaceID uu
 		if other {
 			return nil, shared.Validation(map[string]string{fieldPrefix + "phone": "This phone number already belongs to another person."})
 		}
+		// Invited before without a number and never signed in: keep this one so they can sign
+		// in with a code. Anyone who can already sign in keeps only the numbers they proved —
+		// otherwise an admin could add their own number to someone else's login.
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO crm.verified_identifiers (identity_id, kind, value_normalized)
+			SELECT $1, 'phone', $2
+			WHERE NOT EXISTS (SELECT 1 FROM crm.verified_identifiers WHERE identity_id = $1 AND (kind = 'phone' OR verified_at IS NOT NULL))
+			  AND NOT EXISTS (SELECT 1 FROM crm.password_credentials WHERE identity_id = $1)
+			  AND NOT EXISTS (SELECT 1 FROM crm.sso_links WHERE identity_id = $1)
+			  AND NOT EXISTS (SELECT 1 FROM crm.memberships WHERE identity_id = $1 AND status = 'active')
+			ON CONFLICT DO NOTHING`, identityID, phone); err != nil {
+			return nil, err
+		}
 	}
 
 	var membershipID uuid.UUID

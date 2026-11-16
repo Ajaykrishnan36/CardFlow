@@ -73,6 +73,9 @@ type ReportResult struct {
 	Total        float64     `json:"total"`
 	Count        int         `json:"count"`
 	Currency     bool        `json:"currency,omitempty"`
+	// ByCurrency: grouped by currency — each row is in the currency it names; the total
+	// would add different currencies, so it isn't shown.
+	ByCurrency bool `json:"byCurrency,omitempty"`
 }
 
 var (
@@ -225,8 +228,31 @@ func (h *Handler) runReport(ctx context.Context, sc *Scope, me uuid.UUID, spec *
 			fe["measure"] = "Pick a number field to add up."
 		} else {
 			expr, _ := fieldSQL(f)
+			suffix := ""
+			// Amounts in different currencies are never added up as they are: unless the
+			// report is split by currency, it measures the amount in the base currency.
+			if mf, ok := moneyFields[spec.Key]; ok && f.Type == "currency" {
+				switch {
+				case def.GroupBy == sourceCurrency:
+					// One row per currency: each row is in its own currency; no grand total.
+					res.ByCurrency = true
+				case mf[0] == f.Key:
+					if bf, ok := byKey[mf[1]]; ok {
+						bexpr, _ := fieldSQL(bf)
+						expr = "COALESCE(" + bexpr + ", " + expr + ")"
+						suffix = " (" + h.baseCurrency(ctx, h.store.Pool, sc.WS) + ")"
+					}
+				case mf[1] != f.Key:
+					// Another money field of the record (Monthly billing, …): at the record's own rate.
+					if rf, ok := byKey["exchangeRate"]; ok {
+						rexpr, _ := fieldSQL(rf)
+						expr = "(" + expr + ") * COALESCE(NULLIF(" + rexpr + ", 0), 1)"
+						suffix = " (" + h.baseCurrency(ctx, h.store.Pool, sc.WS) + ")"
+					}
+				}
+			}
 			measure = "COALESCE(" + def.Measure.Fn + "(" + expr + "), 0)::numeric"
-			measureLabel = map[string]string{"sum": "Total", "avg": "Average", "min": "Lowest", "max": "Highest"}[def.Measure.Fn] + " " + strings.ToLower(f.Label)
+			measureLabel = map[string]string{"sum": "Total", "avg": "Average", "min": "Lowest", "max": "Highest"}[def.Measure.Fn] + " " + strings.ToLower(f.Label) + suffix
 			res.Currency = f.Type == "currency"
 		}
 	}

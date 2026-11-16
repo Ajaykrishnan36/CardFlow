@@ -184,7 +184,8 @@ func (h *Handler) handleDashboardSummary(w http.ResponseWriter, r *http.Request)
 		}
 		out.Metrics[o.active], out.Metrics[o.fresh] = total, fresh
 	}
-	amount := numeric(`t.custom->>'amount'`)
+	// Money in the base currency: deals in other currencies are converted, never added as they are.
+	amount := numeric(`COALESCE(NULLIF(t.custom->>'baseAmount', ''), t.custom->>'amount')`)
 	if can("opportunities") {
 		args := []any{}
 		where := scope("opportunities", "t", &args)

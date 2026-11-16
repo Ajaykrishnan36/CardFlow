@@ -278,10 +278,18 @@ func (s *Service) priceList(ctx context.Context) []priceRow {
 
 func (s *Service) handleOverview(w http.ResponseWriter, r *http.Request, sc Scope) {
 	ctx := r.Context()
-	members, err := s.members(ctx, sc)
+	all, err := s.members(ctx, sc)
 	if err != nil {
 		shared.WriteError(w, r, err)
 		return
+	}
+	// Only the people you may pay for: yourself and those below you. A sales person sees
+	// their own seat, not every colleague's phone number and paid-until date.
+	members := make([]Member, 0, len(all))
+	for _, m := range all {
+		if m.CanPay {
+			members = append(members, m)
+		}
 	}
 	shared.WriteJSON(w, http.StatusOK, map[string]any{
 		"status":   s.StatusFor(ctx, sc),
@@ -507,14 +515,14 @@ func (s *Service) PublicRoutes(r chi.Router) {
 
 // Offline is a payment the owner took outside Razorpay when approving a business (D-172).
 type Offline struct {
-	Workspace   uuid.UUID
-	Identity    uuid.UUID // the person it pays for (the applicant, the business's Super Admin)
+	Workspace uuid.UUID
+	Identity  uuid.UUID // the person it pays for (the applicant, the business's Super Admin)
 	// Memberships, when set, are the members it pays for instead (the owner renewing several
 	// people of one business in one go); AmountPaise is then the total received.
 	Memberships []uuid.UUID
-	Period      string    // 1m, 3m, 6m, 12m
-	AmountPaise int64     // what was received; 0 means the plan's price
-	Method      string    // cash, upi, bank, cheque
+	Period      string // 1m, 3m, 6m, 12m
+	AmountPaise int64  // what was received; 0 means the plan's price
+	Method      string // cash, upi, bank, cheque
 	Reference   string
 	By          uuid.UUID // the owner
 }

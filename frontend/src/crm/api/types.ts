@@ -517,6 +517,27 @@ export interface ValidationRule {
   updatedAt: string;
 }
 
+/** One lead status or deal stage of a business (D-182). */
+export interface StageSettingItem {
+  value: string;
+  label: string;
+  /** Deals only: the win probability at this stage. */
+  probability?: number;
+  tone?: StatusOption['tone'];
+  /** The closing steps the CRM relies on: renamed, never removed. */
+  fixed?: boolean;
+  /** Records at this stage now (a stage in use can't be removed). */
+  inUse?: number;
+}
+
+export interface StageSettings {
+  object: ObjectKey;
+  stages: StageSettingItem[];
+  /** True when the business set its own list (false = the product's standard list). */
+  custom: boolean;
+  canEdit: boolean;
+}
+
 export interface ObjectRules {
   rules: ValidationRule[];
   defaults: Record<string, unknown>;
@@ -993,6 +1014,8 @@ export interface ReportResult {
   total: number;
   count: number;
   currency?: boolean;
+  /** Grouped by currency: each row is in the currency it names, and there is no total. */
+  byCurrency?: boolean;
 }
 
 export interface ReportObject {

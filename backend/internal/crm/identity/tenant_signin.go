@@ -50,7 +50,9 @@ func (s *Service) tenantAllows(ctx context.Context, slug, identifier string) err
 		           WHERE t.status IN ('active', 'pending') LIMIT 1)
 		SELECT t.status, EXISTS (
 			SELECT 1 FROM crm.verified_identifiers v
-			JOIN crm.memberships m ON m.identity_id = v.identity_id AND m.status = 'active'
+			-- An invited person signs in here too: the code they get accepts the invitation.
+			JOIN crm.memberships m ON m.identity_id = v.identity_id AND (m.status = 'active' OR (m.status = 'invited' AND EXISTS (
+			  SELECT 1 FROM crm.invitations iv WHERE iv.membership_id = m.id AND iv.status IN ('pending', 'delivered', 'delivery_failed') AND iv.expires_at > now())))
 			JOIN crm.workspaces w ON w.id = m.workspace_id AND w.status = 'active' AND w.tenant_id = t.id
 			JOIN crm.identities i ON i.id = v.identity_id AND i.status = 'active'
 			WHERE v.kind = $2 AND v.value_normalized = $3)

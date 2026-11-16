@@ -170,7 +170,8 @@ func (h *Handler) handleOverview(w http.ResponseWriter, r *http.Request) {
 		return m(from, end), m(prevFrom, prevTo), tr
 	}
 	day := func(t time.Time) string { return t.Format("2006-01-02") }
-	amount := numeric(`t.custom->>'amount'`)
+	// Money in the base currency: deals in other currencies are converted, never added as they are.
+	amount := numeric(`COALESCE(NULLIF(t.custom->>'baseAmount', ''), t.custom->>'amount')`)
 
 	out := struct {
 		Range      string        `json:"range"`
@@ -607,7 +608,7 @@ func (h *Handler) handleForecastTrend(w http.ResponseWriter, r *http.Request) {
 		args = append(args, sc.OwnersFor("opportunities", me))
 		own = " AND t.owner_id = ANY($4::uuid[])"
 	}
-	rows, err := h.store.Pool.Query(ctx, `SELECT COALESCE(NULLIF(t.custom->>'closeDate', ''), to_char(t.updated_at, 'YYYY-MM-DD')), COALESCE(sum(`+numeric(`t.custom->>'amount'`)+`), 0)::float8
+	rows, err := h.store.Pool.Query(ctx, `SELECT COALESCE(NULLIF(t.custom->>'closeDate', ''), to_char(t.updated_at, 'YYYY-MM-DD')), COALESCE(sum(`+numeric(`COALESCE(NULLIF(t.custom->>'baseAmount', ''), t.custom->>'amount')`)+`), 0)::float8
 		FROM crm.object_records t WHERE t.workspace_id = $1 AND t.deleted_at IS NULL AND t.object_key = 'opportunities' AND t.status = 'closed_won'
 		  AND COALESCE(NULLIF(t.custom->>'closeDate', ''), to_char(t.updated_at, 'YYYY-MM-DD')) BETWEEN $2 AND $3`+own+` GROUP BY 1`, args...)
 	if err != nil {

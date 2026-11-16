@@ -129,6 +129,8 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 	r.Post(prefix+"/crm/meta/{object}/fields", h.handleCreateField)
 	r.Patch(prefix+"/crm/meta/{object}/fields/{key}", h.handleUpdateField)
 	r.Delete(prefix+"/crm/meta/{object}/fields/{key}", h.handleDeleteField)
+	r.Get(prefix+"/crm/meta/{object}/stages", h.handleGetStages)
+	r.Put(prefix+"/crm/meta/{object}/stages", h.handleSaveStages)
 	r.Get(prefix+"/crm/meta/{object}/rules", h.handleListValidationRules)
 	r.Post(prefix+"/crm/meta/{object}/rules", h.handleSaveValidationRule)
 	r.Patch(prefix+"/crm/meta/{object}/rules/{ruleId}", h.handleSaveValidationRule)

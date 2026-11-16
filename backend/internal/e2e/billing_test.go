@@ -133,8 +133,12 @@ func TestMembersArePaidForWithRazorpay(t *testing.T) {
 		ids[mm["name"].(string)] = mm["membershipId"].(string)
 		canPay[mm["name"].(string)] = mm["canPay"].(bool)
 	}
-	if !canPay["Pay Staff"] || canPay["Pay Admin"] || canPay["Billing Boss"] {
-		t.Fatalf("staff may pay only for themselves: %v", canPay)
+	if !canPay["Pay Staff"] || len(canPay) != 1 {
+		t.Fatalf("staff see and pay only for themselves (D-182): %v", canPay)
+	}
+	for _, m := range call(t, "GET", crmAPI+"/w/"+ws+"/billing", boss, nil).list("members") {
+		mm := m.(map[string]any)
+		ids[mm["name"].(string)] = mm["membershipId"].(string)
 	}
 	if r := call(t, "POST", crmAPI+"/w/"+ws+"/billing/orders", staff, map[string]any{"period": "1m", "membershipIds": []string{ids["Pay Admin"]}}); r.Status != 403 {
 		t.Fatalf("staff can't pay for an admin: %d", r.Status)

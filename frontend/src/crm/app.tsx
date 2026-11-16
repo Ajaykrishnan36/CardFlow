@@ -73,6 +73,7 @@ const RecordDetailPage = lazy(() => import('@crm/features/records/record-detail-
 const UpcomingPage = lazy(() => import('@crm/features/care/upcoming-page').then((m) => ({ default: m.UpcomingPage })));
 const WebFormsPage = lazy(() => import('@crm/features/tools/web-forms-page').then((m) => ({ default: m.WebFormsPage })));
 const RulesPage = lazy(() => import('@crm/features/records/rules-page').then((m) => ({ default: m.RulesPage })));
+const StagesPage = lazy(() => import('@crm/features/records/stages-page').then((m) => ({ default: m.StagesPage })));
 const LayoutEditorPage = lazy(() => import('@crm/features/records/layout-editor-page').then((m) => ({ default: m.LayoutEditorPage })));
 const UsersPage = lazy(() => import('@crm/features/users/users-page').then((m) => ({ default: m.UsersPage })));
 const UserDetailPage = lazy(() => import('@crm/features/users/user-detail-page').then((m) => ({ default: m.UserDetailPage })));
@@ -266,6 +267,7 @@ function workspaceRoutes(prefix: string) {
               <Route path=":object/:id" element={<ObjectRoute page="detail" />} />
               <Route path="setup/:object/layout" element={<ObjectRoute page="layout" />} />
               <Route path="setup/:object/rules" element={<ObjectRoute page="rules" />} />
+              <Route path="setup/:object/stages" element={<ObjectRoute page="stages" />} />
               <Route path="*" element={<NotFoundPage />} />
     </>
   );
@@ -277,12 +279,13 @@ function KeepSearch({ to }: { to: string }) {
 }
 
 /** Record pages for an object named in the URL (keyed so switching objects resets state). */
-function ObjectRoute({ page }: { page: 'list' | 'detail' | 'layout' | 'rules' }) {
+function ObjectRoute({ page }: { page: 'list' | 'detail' | 'layout' | 'rules' | 'stages' }) {
   const { object = '' } = useParams();
   if (!/^[a-z][a-z0-9_]{1,40}$/.test(object)) return <NotFoundPage />;
   if (page === 'list') return <RecordListPage key={object} object={object} />;
   if (page === 'detail') return <RecordDetailPage key={object} object={object} />;
   if (page === 'rules') return <RulesPage key={object} object={object} />;
+  if (page === 'stages') return <StagesPage key={object} object={object} />;
   return <LayoutEditorPage key={object} object={object} />;
 }
 

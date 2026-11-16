@@ -338,6 +338,10 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			if mods["opportunities"] {
 				name := ""
 				vals := map[string]any{"leadSource": l.source, "ownerId": owner.String()}
+				// The deal keeps the lead's custom values too (Region, …), like the account and contact.
+				for k, v := range carry("opportunities") {
+					vals[k] = v
+				}
 				if in.Opportunity != nil {
 					name = strings.TrimSpace(in.Opportunity.Name)
 					if in.Opportunity.Amount != nil {
