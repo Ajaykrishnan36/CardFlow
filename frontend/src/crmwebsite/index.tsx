@@ -32,7 +32,7 @@ const META: Array<[string, string, string]> = [
 function Website() {
   const root = useRef<HTMLDivElement>(null);
   useReveal(root);
-  const [tab, setTab] = useState<'call' | 'enquiry'>('call');
+  const [tab, setTab] = useState<'call' | 'enquiry'>('enquiry');
 
   // Page title, description and sharing tags while the website is open; put back on leaving.
   useEffect(() => {

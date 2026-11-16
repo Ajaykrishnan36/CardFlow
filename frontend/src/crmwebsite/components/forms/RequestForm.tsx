@@ -82,7 +82,6 @@ export function RequestForm({ kind, idPrefix, onDone }: { kind: Kind; idPrefix: 
       else if (v.preferredDate < today() || v.preferredDate > inMonths(3)) fe.preferredDate = 'Choose a date from today up to three months ahead.';
       if (!v.preferredTime) fe.preferredTime = 'Choose a time for the call.';
     } else {
-      if (v.subject.trim().length < 3) fe.subject = 'Enter a subject.';
       if (!v.category) fe.category = 'Choose what your enquiry is about.';
       if (v.message.trim().length < 5) fe.message = 'Write your message.';
     }
@@ -110,7 +109,7 @@ export function RequestForm({ kind, idPrefix, onDone }: { kind: Kind; idPrefix: 
       website: v.website,
       ...(kind === 'call'
         ? { teamSize: v.teamSize, currentMethod: v.currentMethod, challenge: v.challenge.trim(), preferredDate: v.preferredDate, preferredTime: v.preferredTime }
-        : { subject: v.subject.trim(), category: v.category })
+        : { category: v.category })
     };
     try {
       const res = await sendRequest(body);
@@ -193,9 +192,9 @@ export function RequestForm({ kind, idPrefix, onDone }: { kind: Kind; idPrefix: 
           { required: true }
         )}
         {field('email', 'Email address', <input {...aria('email', kind === 'call')} type="email" autoComplete="email" placeholder="you@business.com" value={v.email} onChange={set('email')} />, { required: kind === 'call' })}
-        {field('industry', 'Industry', select('industry', industries.map((i) => [i.label, i.label]), 'Choose your industry', kind === 'call'), { required: kind === 'call' })}
         {kind === 'call' ? (
           <>
+            {field('industry', 'Industry', select('industry', industries.map((i) => [i.label, i.label]), 'Choose your industry', true), { required: true })}
             {field('teamSize', 'Team / sales team size', select('teamSize', teamSizes, 'Choose', true), { required: true })}
             {field('currentMethod', 'How do you manage leads today?', select('currentMethod', methods, 'Choose one'))}
             {field('preferredDate', 'Preferred date', <input {...aria('preferredDate', true)} type="date" min={today()} max={inMonths(3)} value={v.preferredDate} onChange={set('preferredDate')} />, { required: true })}
@@ -205,8 +204,7 @@ export function RequestForm({ kind, idPrefix, onDone }: { kind: Kind; idPrefix: 
           </>
         ) : (
           <>
-            {field('category', 'Enquiry category', select('category', categories, 'Choose one', true), { required: true })}
-            {field('subject', 'Subject', <input {...aria('subject', true)} placeholder="What is it about?" value={v.subject} onChange={set('subject')} />, { required: true })}
+            {field('category', 'What is it about?', select('category', categories, 'Choose one', true), { required: true, wide: true })}
             {field('message', 'Message', <textarea {...aria('message', true)} rows={4} placeholder="Write your question or request" value={v.message} onChange={set('message')} />, { required: true, wide: true })}
           </>
         )}

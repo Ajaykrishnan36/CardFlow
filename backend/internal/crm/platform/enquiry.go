@@ -163,9 +163,7 @@ func (in *websiteRequest) normalize() (string, map[string]string) {
 		}
 	default:
 		in.PreferredDate, in.PreferredTime, in.TeamSize, in.CurrentMethod, in.Challenge = "", "", "", "", ""
-		if len(in.Subject) < 3 {
-			fe["subject"] = "Enter a subject."
-		}
+		// The website no longer asks for a subject; the category says what it is about.
 		if in.Category = strings.TrimSpace(in.Category); !enquiryCategories[in.Category] {
 			fe["category"] = "Choose what your enquiry is about."
 		}

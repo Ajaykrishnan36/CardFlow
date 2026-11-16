@@ -18,9 +18,9 @@
 .cw h1 { font-size: clamp(2.2rem, 4.6vw, 3.7rem); font-weight: 800; }
 .cw h2 { font-size: clamp(1.75rem, 3.4vw, 2.65rem); font-weight: 800; }
 .cw h3 { font-size: 1.15rem; font-weight: 700; }
-.cw p { margin: 0; }
+:where(.cw) p { margin: 0; }
 .cw a { color: inherit; text-decoration: none; }
-.cw ul, .cw ol { list-style: none; margin: 0; padding: 0; }
+:where(.cw) ul, :where(.cw) ol { list-style: none; margin: 0; padding: 0; }
 .cw button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 .cw svg { flex: none; }
 .cw img { display: block; max-width: 100%; height: auto; }
@@ -102,7 +102,7 @@
 .cw-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 10px; border-radius: 99px; background: #fff; box-shadow: var(--shadow); font-size: .82rem; font-weight: 600; color: var(--navy); margin-bottom: 20px; }
 .cw-live { width: 8px; height: 8px; border-radius: 50%; background: var(--teal-2); animation: cw-pulse 2s infinite; }
 .cw-hero-lead { margin-top: 20px; font-size: 1.12rem; color: var(--muted); max-width: 54ch; }
-.cw-ticks { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 24px; font-size: .9rem; color: var(--muted); }
+.cw-ticks { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 28px; font-size: .9rem; color: var(--muted); }
 .cw-ticks li { display: inline-flex; align-items: center; gap: 6px; }
 .cw-ticks svg { width: 16px; height: 16px; color: var(--teal); }
 .cw-hero-stage { position: relative; padding: 28px 0; }
@@ -285,10 +285,10 @@
 .cw-contact-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 5px; border-radius: 14px; background: var(--bg); }
 .cw-contact-tabs button { justify-content: center; background: transparent; }
 .cw-contact-tabs button.is-on { background: #fff; color: var(--navy); box-shadow: 0 2px 8px rgba(17, 26, 51, .1); }
-.cw-contact-sub { margin: 16px 0; color: var(--muted); font-size: .93rem; }
+.cw-contact-sub { margin: 20px 0 22px; color: var(--muted); font-size: .95rem; }
 
 /* Forms */
-.cw-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cw-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; }
 .cw-field { display: grid; gap: 6px; align-content: start; }
 .cw-field.is-wide { grid-column: 1 / -1; }
 .cw-field label { font-size: .86rem; font-weight: 600; color: var(--ink); }

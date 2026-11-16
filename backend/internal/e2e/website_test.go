@@ -28,7 +28,7 @@ func TestWebsiteFormsFileOwnerLeads(t *testing.T) {
 	want(t, c, 201, "visitor asks for a call")
 	callCode := c.str("reference")
 	again := call(t, "POST", api, "", map[string]any{"kind": "enquiry", "name": "Call Visitor", "business": "Call Visitor Traders", "phone": "+919811100002",
-		"subject": "Price for ten", "category": "pricing", "message": "What does it cost for ten people?"})
+		"category": "pricing", "message": "What does it cost for ten people?"})
 	want(t, again, 201, "the same visitor sends an enquiry")
 	if again.str("reference") != callCode {
 		t.Fatalf("the same visitor is not filed twice: %s then %s", callCode, again.str("reference"))
