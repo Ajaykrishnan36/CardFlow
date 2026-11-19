@@ -237,6 +237,19 @@ func (h *Handler) issuePolicy(ctx context.Context, tx pgx.Tx, ws uuid.UUID, p *R
 		_ = tx.QueryRow(ctx, `SELECT COALESCE(max((custom->>'policyYear')::numeric), 0) + 1 FROM crm.object_records WHERE workspace_id = $1
 			AND object_key = 'commissions' AND deleted_at IS NULL AND custom->>'policyId' = $2`, ws, prev.String()).Scan(&year)
 	}
+	// The sale is made when the insurer issues the policy (B14): its deal closes as won,
+	// dated the day of issue so targets count it then, not on a guessed close date.
+	if oid := p.id("opportunityId"); oid != uuid.Nil && specFor("opportunities") != nil {
+		if o, _, err := h.getRow(ctx, tx, ws, specFor("opportunities"), oid, nil); err == nil && o.text("status") != "closed_won" && o.text("status") != "closed_lost" {
+			won := map[string]any{"status": "closed_won", "closeDate": today()}
+			if !o.has("amount") || o.num("amount") <= 0 {
+				won["amount"] = p.num("totalToCollect")
+			}
+			if _, err := h.updateValues(ctx, tx, ws, specFor("opportunities"), oid, sys, won, nil, nil); err != nil {
+				return err
+			}
+		}
+	}
 	if p.num("commissionAmount") > 0 {
 		c := map[string]any{"status": "expected", "ownerId": p.text("ownerId"), "policyId": p.ID, "insurerId": p.text("insurerId"), "policyYear": year,
 			"kind": kind, "expectedAmount": p.num("commissionAmount"), "expectedOn": start.AddDate(0, 1, 0).Format("2006-01-02")}
@@ -295,6 +308,11 @@ func (h *Handler) renewPolicy(ctx context.Context, tx pgx.Tx, ws uuid.UUID, p *R
 	for _, k := range []string{"contactId", "accountId", "insurerId", "itemId", "policyClass", "sumAssured", "frequency", "premium", "taxOnPremium",
 		"agentFee", "collectionMode", "commissionRate", "directCosts", "graceDays", "nominee", "assetId"} {
 		next[k] = p.Values[k]
+	}
+	// Each policy year has its own rate on the rate card (J9: 25% in year 1, 7.5% in year 2…);
+	// the old term's rate is kept only when the card has no rule for the new year.
+	if rate, ok := h.ruleRate(ctx, tx, ws, next, h.policyYearOf(ctx, tx, ws, p.ID)); ok {
+		next["commissionRate"] = rate
 	}
 	clean(next)
 	h.autoName(ctx, tx, ws, specFor("insurance_policies"), next)

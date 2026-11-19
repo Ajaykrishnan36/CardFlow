@@ -778,6 +778,10 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, err)
 		return
 	}
+	if err := h.checkLinkAccess(r, ws, spec, in.Values); err != nil {
+		shared.WriteError(w, r, err)
+		return
+	}
 	// A retried request (flaky mobile network) with the same Idempotency-Key creates once.
 	status, resp, err := shared.Idempotent(r.Context(), h.store.Pool, actor(r), r.Header.Get("Idempotency-Key"),
 		map[string]any{"ws": ws, "object": spec.Key, "values": in.Values}, func() (int, any, error) {
@@ -816,6 +820,10 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.ExpectedVersion == nil {
 		shared.WriteError(w, r, shared.Validation(map[string]string{"expectedVersion": "expectedVersion is required."}))
+		return
+	}
+	if err := h.checkLinkAccess(r, ws, spec, in.Values); err != nil {
+		shared.WriteError(w, r, err)
 		return
 	}
 	var row *Row
@@ -926,4 +934,57 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 		out = append(out, v)
 	}
 	respond(w, r, http.StatusOK, map[string]any{"data": out}, rows.Err())
+}
+
+// checkLinkAccess refuses a save that links to a record the person may not open (a sales
+// person attaching a call or a task to a colleague's lead by its id). Answered like a
+// missing record, so nothing about the other record leaks.
+func (h *Handler) checkLinkAccess(r *http.Request, ws uuid.UUID, spec *objectSpec, values map[string]any) error {
+	if len(values) == 0 {
+		return nil
+	}
+	fields, err := allFields(r.Context(), h.store.Pool, ws, spec)
+	if err != nil {
+		return err
+	}
+	sc := scopeFrom(r.Context())
+	fe := map[string]string{}
+	for _, f := range fields {
+		if f.Type != "lookup" {
+			continue
+		}
+		raw, ok := values[f.Key]
+		if !ok || raw == nil {
+			continue
+		}
+		s := asString(raw)
+		if m, ok := raw.(map[string]any); ok {
+			s = asString(m["id"])
+		}
+		id, err := uuid.Parse(s)
+		if err != nil {
+			continue // the save itself reports a bad value
+		}
+		target := specFor(f.Lookup)
+		// Shared pick lists (plans, price books, stock…) anyone may choose from, as the picker allows.
+		if target == nil || pickedByAll[f.Lookup] || f.Lookup == "users" || f.Lookup == "products" || f.Lookup == "workspaces" {
+			continue
+		}
+		if !sc.Can(target.Key, "read") {
+			// Pick lists such as plans or insurers a person can use without opening them
+			// are still checked to exist by the save; only owner-scoped rows are guarded.
+			continue
+		}
+		owners := sc.OwnersFor(target.Key, actor(r))
+		if owners == nil {
+			continue
+		}
+		if _, _, err := h.getRow(r.Context(), h.store.Pool, ws, target, id, owners); err != nil {
+			fe[f.Key] = "That record doesn't exist."
+		}
+	}
+	if len(fe) > 0 {
+		return shared.Validation(fe)
+	}
+	return nil
 }

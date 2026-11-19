@@ -365,6 +365,18 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 						name += fmt.Sprintf(" + %d more", len(items)-1)
 					}
 				}
+				// An insurance lead says what cover and what premium the person wants: the deal
+				// starts with them instead of a blank "new deal" at zero.
+				if _, ok := vals["amount"]; !ok {
+					if p, ok := l.custom["expectedPremium"].(float64); ok && p > 0 {
+						vals["amount"] = p
+					}
+				}
+				if name == "" {
+					if kind := asString(l.custom["insuranceType"]); kind != "" {
+						name = firstNonEmpty(l.organization, fullName) + " — " + strings.ToUpper(kind[:1]) + kind[1:] + " cover"
+					}
+				}
 				if name == "" {
 					name = firstNonEmpty(l.organization, fullName) + " — new deal"
 				}

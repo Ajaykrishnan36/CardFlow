@@ -835,6 +835,16 @@ func checkUserType(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, userType, rol
 		if nearest != nil {
 			effective = *nearest
 		}
+		// Sales staff and Service staff are built-in roles at Staff level (D-158): wherever
+		// Staff is allowed, so are they.
+		if effective == "SALES_STAFF" || effective == "SERVICE_STAFF" {
+			for _, r := range ut.AllowedRoles {
+				if r == effective {
+					return nil
+				}
+			}
+			effective = "STAFF"
+		}
 		for _, r := range ut.AllowedRoles {
 			if r == effective {
 				return nil

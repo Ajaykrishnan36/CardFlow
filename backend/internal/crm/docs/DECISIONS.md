@@ -1965,6 +1965,21 @@ Found while testing a staffing business end to end (Cloudlight QA run, 2026-11-1
 - **A business's own object** is added to its *Admin access* set when it's created; other
   sets get it when an admin adds it.
 
+## D-183 — Insurance agent QA fixes
+
+Found while running the Insurance Agent use-case catalogue end to end (2026-11-19).
+
+- **Sales staff and Service staff can be given to a Team member** — they are Staff-level
+  built-in roles (D-158), so wherever Staff is allowed, so are they.
+- **Links must point at records you can open.** Creating or editing a record refuses a link
+  (lead, contact, policy…) the person can't see, answered like a missing record. Shared pick
+  lists (plans, price books, stock — `pickedByAll`) stay open to everyone, as in the picker.
+- **A converted insurance lead's deal** starts from its expected premium and is named after
+  the cover ("Kavitha — Health cover").
+- **Issuing a policy wins its deal** on the issue date (B14), so targets count by issue date.
+- **A renewal takes the rate card's rate for the next policy year** (J9: 25% → 7.5%); the old
+  term's rate is kept only when the card has no rule for that year.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

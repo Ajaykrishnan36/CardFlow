@@ -218,7 +218,11 @@ func TestSharedOperationsModules(t *testing.T) {
 	mustRefuse(t, "a checklist for an unknown record type", post("checklist_templates", map[string]any{"name": "X", "objectKey": "nothing", "stage": "closed_won", "items": "a"}), "objectKey")
 	create(t, boss, ws, "checklist_templates", map[string]any{"name": "Before winning a deal", "objectKey": "opportunities", "stage": "closed_won", "allRequired": true,
 		"items": "Customer signed the quote\nAdvance received\nDelivery date agreed"})
-	opp := create(t, staff, ws, "opportunities", map[string]any{"name": "Kumar — 200 bags", "amount": 80000, "closeDate": dayOff(5), "contactId": cust})
+	// Staff link a deal only to a customer they can see (their own); the boss's customer
+	// is refused like a missing record.
+	mustRefuse(t, "a deal on a customer staff can't see", call(t, "POST", base+"/crm/opportunities", staff, map[string]any{"values": map[string]any{"name": "Not mine", "amount": 1, "closeDate": dayOff(5), "contactId": cust}}), "contactId")
+	opp := create(t, staff, ws, "opportunities", map[string]any{"name": "Kumar — 200 bags", "amount": 80000, "closeDate": dayOff(5)})
+	want(t, edit(t, boss, ws, "opportunities", opp, map[string]any{"contactId": cust}), 200, "the boss links the customer")
 	r := edit(t, staff, ws, "opportunities", opp, map[string]any{"status": "closed_won"})
 	if r.Status != 422 || !strings.Contains(r.Raw, "Advance received") {
 		t.Fatalf("winning before the checklist: %d %s", r.Status, truncate(r.Raw, 300))

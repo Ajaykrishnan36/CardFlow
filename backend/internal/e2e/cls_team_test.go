@@ -43,6 +43,8 @@ func TestBusinessTeamWithCustomRolesAndPhoneInvites(t *testing.T) {
 	// 1. Custom roles can be given to a Team member; a built-in role the type doesn't allow can't.
 	execPhone := freshPhone()
 	want(t, invite("Eva Exec", mail("eva"), execPhone, exec.str("key")), 201, "invite with a custom role two levels down")
+	want(t, invite("Sid Sales", mail("sid"), freshPhone(), "SALES_STAFF"), 201, "a Team member can be Sales staff")
+	want(t, invite("Sue Service", mail("sue"), freshPhone(), "SERVICE_STAFF"), 201, "a Team member can be Service staff")
 	if r := invite("End User", mail("end"), "", "END_USER"); r.Status != 422 {
 		t.Fatalf("a Team member still can't be an End user: %d %s", r.Status, truncate(r.Raw, 200))
 	}
