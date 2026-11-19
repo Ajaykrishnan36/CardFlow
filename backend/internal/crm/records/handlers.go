@@ -822,9 +822,11 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, shared.Validation(map[string]string{"expectedVersion": "expectedVersion is required."}))
 		return
 	}
-	if err := h.checkLinkAccess(r, ws, spec, in.Values); err != nil {
-		shared.WriteError(w, r, err)
-		return
+	if cur, _, err := h.getRow(r.Context(), h.store.Pool, ws, spec, id, ownerFilter(r, spec)); err == nil {
+		if err := h.checkLinkChanges(r, ws, spec, in.Values, cur.Values); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
 	}
 	var row *Row
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
@@ -940,6 +942,12 @@ func (h *Handler) handleLookup(w http.ResponseWriter, r *http.Request) {
 // person attaching a call or a task to a colleague's lead by its id). Answered like a
 // missing record, so nothing about the other record leaks.
 func (h *Handler) checkLinkAccess(r *http.Request, ws uuid.UUID, spec *objectSpec, values map[string]any) error {
+	return h.checkLinkChanges(r, ws, spec, values, nil)
+}
+
+// checkLinkChanges checks only the links a save changes: a form that sends back the record
+// as it was (a telecaller completing a task the agent set on the agent's lead) is fine.
+func (h *Handler) checkLinkChanges(r *http.Request, ws uuid.UUID, spec *objectSpec, values map[string]any, before map[string]any) error {
 	if len(values) == 0 {
 		return nil
 	}
@@ -965,22 +973,29 @@ func (h *Handler) checkLinkAccess(r *http.Request, ws uuid.UUID, spec *objectSpe
 		if err != nil {
 			continue // the save itself reports a bad value
 		}
+		if before != nil && asString(before[f.Key]) == id.String() {
+			continue
+		}
 		target := specFor(f.Lookup)
 		// Shared pick lists (plans, price books, stock…) anyone may choose from, as the picker allows.
 		if target == nil || pickedByAll[f.Lookup] || f.Lookup == "users" || f.Lookup == "products" || f.Lookup == "workspaces" {
 			continue
 		}
-		if !sc.Can(target.Key, "read") {
-			// Pick lists such as plans or insurers a person can use without opening them
-			// are still checked to exist by the save; only owner-scoped rows are guarded.
-			continue
-		}
 		owners := sc.OwnersFor(target.Key, actor(r))
+		if !sc.Owner && !sc.Can(target.Key, "read") {
+			owners = []uuid.UUID{uuid.Nil} // can't open any of them: only shared rows pass
+		}
 		if owners == nil {
 			continue
 		}
 		if _, _, err := h.getRow(r.Context(), h.store.Pool, ws, target, id, owners); err != nil {
-			fe[f.Key] = "That record doesn't exist."
+			var partner bool
+			if target.Key == "accounts" {
+				_ = h.store.Pool.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM crm.accounts WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL AND type = 'partner')`, id, ws).Scan(&partner)
+			}
+			if !partner {
+				fe[f.Key] = "That record doesn't exist."
+			}
 		}
 	}
 	if len(fe) > 0 {

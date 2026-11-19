@@ -203,6 +203,12 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			if !ok {
 				return shared.Validation(map[string]string{"account": "Pick an existing account."})
 			}
+			// Only an account the person may open (a household they serve, not a colleague's).
+			if owners := scopeFrom(r.Context()).OwnersFor("accounts", me); owners != nil {
+				if _, _, err := h.getRow(ctx, tx, ws, specFor("accounts"), in.Account.AccountID, owners); err != nil {
+					return shared.Validation(map[string]string{"account": "Pick an existing account."})
+				}
+			}
 			aid := in.Account.AccountID
 			res.AccountID = &aid
 			// What the lead knew is kept: it fills the account's empty fields, never overwrites.

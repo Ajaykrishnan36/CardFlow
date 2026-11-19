@@ -296,6 +296,9 @@ func CreateBusinessTx(ctx context.Context, tx pgx.Tx, creator uuid.UUID, setupID
 	if _, err := tx.Exec(ctx, `UPDATE crm.workspaces SET created_by_identity = $2, origin = 'self_serve', profile = $3 WHERE id = $1`, wsID, creator, rawProfile); err != nil {
 		return uuid.Nil, "", err
 	}
+	if err := tradeAccessDefaults(ctx, tx, wsID, in.Industry); err != nil {
+		return uuid.Nil, "", err
+	}
 	var membershipID uuid.UUID
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO crm.memberships (workspace_id, identity_id, status, created_by) VALUES ($1, $2, 'active', $2) RETURNING id`, wsID, creator).Scan(&membershipID); err != nil {
@@ -520,3 +523,20 @@ func (h *Handler) handleSaveSelfServe(w http.ResponseWriter, r *http.Request) {
 // AfterBusinessCreated is set by the server: it gives a new business its public listing
 // in the directory (D-105). nil = no directory on this server.
 var AfterBusinessCreated func(ctx context.Context, creator, workspaceID uuid.UUID, in CreateBusinessInput)
+
+// tradeAccessDefaults sets a new business's ready-made access to fit its trade, once, when
+// it is created (existing businesses keep what they set). An insurance agent's sales team
+// (POSP, sub-agents) never sees commission (catalogue F13): the Sales staff set leaves out
+// commission records and hides the commission and profit of a policy.
+func tradeAccessDefaults(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, industry string) error {
+	if !strings.EqualFold(strings.TrimSpace(industry), "insurance") {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE crm.permission_sets
+		SET rules = ((rules #- '{objects,commissions}') #- '{rows,commissions}') || jsonb_build_object('fields',
+		            COALESCE(rules->'fields', '{}'::jsonb) || '{"insurance_policies":{"commissionRate":"hidden","commissionAmount":"hidden","profit":"hidden","directCosts":"hidden"}}'::jsonb),
+		    updated_at = now()
+		WHERE workspace_id = $1 AND system_key = 'SALES_STAFF'`, wsID)
+	return err
+}

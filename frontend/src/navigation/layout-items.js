@@ -49,7 +49,10 @@ export const SUMMARY_TILES = {
     { key: 'summary:cases', label: 'Open cases' },
     { key: 'summary:income', label: 'Income' },
     { key: 'summary:expenses', label: 'Expenses' },
-    { key: 'summary:net', label: 'Net income' }
+    { key: 'summary:net', label: 'Net income' },
+    { key: 'summary:commissionReceived', label: 'Commission received' },
+    { key: 'summary:commissionReceivable', label: 'Commission due from insurers' },
+    { key: 'summary:premiumToRemit', label: 'Premium to remit' }
   ],
   mobile: [
     { key: 'summary:finance', label: 'Income and expenses' },

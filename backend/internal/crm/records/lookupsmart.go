@@ -118,7 +118,7 @@ func recordLookupSQL(spec *objectSpec, fields []Field) string {
 	}
 	order = append(order, "t.updated_at DESC")
 	return `SELECT t.id::text, ` + spec.TitleSQL + ` || ' · ' || t.code, ` + hintSQL + ` FROM crm.` + spec.Table + ` t
-		WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)) AND ($4::text IS NOT NULL AND $5::text IS NOT NULL AND $6::text IS NOT NULL)
+		WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)"+sharedRowSQL(spec)+") AND ($4::text IS NOT NULL AND $5::text IS NOT NULL AND $6::text IS NOT NULL)
 		  AND (` + strings.Join(match, " OR ") + `)
 		ORDER BY ` + strings.Join(order, ", ") + ` LIMIT 20`
 }
@@ -275,3 +275,12 @@ var laterFields = map[string][]string{
 // who can be booked — whoever added them. Seeing them in a picker doesn't let anyone
 // open or change a record they otherwise couldn't.
 var pickedByAll = map[string]bool{"catalog_items": true, "price_books": true, "vehicle_stock": true, "service_resources": true, "property_units": true, "makeup_kits": true, "salon_products": true, "stock_lots": true, "business_branches": true, "checklist_templates": true}
+
+// sharedRowSQL: records anyone may pick whoever owns them. Partner accounts (an agent's
+// insurers, a dealer's suppliers) are reference data for the whole team.
+func sharedRowSQL(spec *objectSpec) string {
+	if spec.Key == "accounts" {
+		return " OR t.type = 'partner'"
+	}
+	return ""
+}

@@ -340,6 +340,16 @@ func (h *Handler) premiumSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op 
 	if after.has("remittedOn") && status != "paid" {
 		return nil, refuse("remittedOn", "A premium is remitted only after the customer has paid it.")
 	}
+	// Mode 1: the customer pays the insurer directly, so there is nothing for us to remit.
+	if after.has("remittedOn") && !before.has("remittedOn") {
+		if pid := after.id("policyId"); pid != uuid.Nil {
+			var mode string
+			_ = tx.QueryRow(ctx, `SELECT COALESCE(custom->>'collectionMode', '') FROM crm.object_records WHERE id = $1 AND workspace_id = $2`, pid, ws).Scan(&mode)
+			if mode == "direct" {
+				return nil, refuse("remittedOn", "The customer pays this policy's premium to the insurer directly, so there is nothing to remit.")
+			}
+		}
+	}
 	if len(set) > 0 {
 		var err error
 		if after, err = h.updateValues(ctx, tx, ws, specFor("premium_dues"), after.uuid(), systemActor(sourceInsurance), set, nil, nil); err != nil {

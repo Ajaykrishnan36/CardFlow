@@ -530,6 +530,12 @@ func (h *Handler) handleBulk(w http.ResponseWriter, r *http.Request) {
 		shared.WriteError(w, r, shared.Validation(map[string]string{"values": "Pick a field and a value."}))
 		return
 	}
+	if in.Action == "update" {
+		if err := h.checkLinkAccess(r, ws, spec, in.Values); err != nil {
+			shared.WriteError(w, r, err)
+			return
+		}
+	}
 	in.Query.Deleted = in.Action == "restore" || in.Action == "destroy"
 	p, err := h.paramsFrom(r, spec, in.Query)
 	if err != nil {

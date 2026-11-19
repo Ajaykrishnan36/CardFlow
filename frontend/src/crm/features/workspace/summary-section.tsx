@@ -60,6 +60,26 @@ export function SummarySection({ code, layout }: { code: string; layout?: UILayo
         { key: 'summary:won', label: 'Won', value: money(m('wonValue'), s.currency), hint: `${m('wonDeals')} ${m('wonDeals') === 1 ? 'deal' : 'deals'} · ${Math.round(m('winRate'))}% win rate`, to: `${base}/opportunities`, show: can('opportunities'), tone: 'good' },
         { key: 'summary:tasks', label: 'Tasks due today', value: String(m('tasksDueToday')), hint: `${m('overdueTasks')} overdue`, to: `${base}/tasks`, show: can('tasks'), tone: m('overdueTasks') > 0 ? 'bad' : undefined },
         { key: 'summary:cases', label: 'Open cases', value: String(m('openCases')), hint: `${m('newCases')} new`, to: `${base}/cases`, show: can('cases') },
+        // Insurance agents (catalogue C20): commission is the income; premium held for insurers is owed.
+        { key: 'summary:commissionReceived', label: 'Commission received', value: money(m('commissionReceived'), s.currency), hint: 'from insurers in this period', to: `${base}/commissions`, show: can('commissions'), tone: 'good' },
+        {
+          key: 'summary:commissionReceivable',
+          label: 'Commission due',
+          value: money(m('commissionReceivable'), s.currency),
+          hint: m('commissionClawback') > 0 ? `${money(m('commissionClawback'), s.currency)} clawback to give back` : 'expected or short-paid',
+          to: `${base}/commissions`,
+          show: can('commissions'),
+          tone: m('commissionClawback') > 0 ? 'bad' : undefined
+        },
+        {
+          key: 'summary:premiumToRemit',
+          label: 'Premium to remit',
+          value: money(m('premiumToRemit'), s.currency),
+          hint: `${m('premiumToRemitCount')} collected, not passed to insurers`,
+          to: `${base}/premium_dues`,
+          show: can('premium_dues') && m('premiumToRemit') > 0,
+          tone: 'bad'
+        },
         { key: 'summary:income', label: 'Income', value: money(s.finance?.income ?? 0, s.finance?.currency ?? s.currency), to: `${base}/income`, show: Boolean(s.finance), tone: 'good' },
         { key: 'summary:expenses', label: 'Expenses', value: money(s.finance?.expenses ?? 0, s.finance?.currency ?? s.currency), to: `${base}/expenses`, show: Boolean(s.finance) },
         {

@@ -124,7 +124,7 @@ func (h *Handler) handleDashboardSummary(w http.ResponseWriter, r *http.Request)
 	fromDate, toDate := from.Format("2006-01-02"), to.Format("2006-01-02") // [fromDate, toDate)
 
 	can := func(key string) bool { return specFor(key) != nil && sc.Enabled(key) && sc.Can(key, "read") }
-	for _, k := range []string{"leads", "contacts", "accounts", "opportunities", "tasks", "events", "cases", "income", "expenses", "notes", "communications"} {
+	for _, k := range []string{"leads", "contacts", "accounts", "opportunities", "tasks", "events", "cases", "income", "expenses", "notes", "communications", "commissions", "premium_dues"} {
 		out.Can[k+".read"] = can(k)
 		out.Can[k+".create"] = specFor(k) != nil && sc.Enabled(k) && sc.Can(k, "create")
 	}
@@ -207,6 +207,36 @@ func (h *Handler) handleDashboardSummary(w http.ResponseWriter, r *http.Request)
 		if won+lost > 0 {
 			out.Metrics["winRate"] = won * 100 / (won + lost)
 		}
+	}
+	// An insurance agent's income is commission (catalogue C20): received in the period,
+	// still owed by insurers (expected and short-paid, less what came), and clawbacks owed back.
+	if can("commissions") {
+		args := []any{}
+		where := scope("commissions", "t", &args)
+		f, t := arg(&args, fromDate), arg(&args, toDate)
+		exp, got, tds := numeric(`t.custom->>'expectedAmount'`), numeric(`t.custom->>'receivedAmount'`), numeric(`t.custom->>'tdsDeducted'`)
+		var received, receivable, clawback float64
+		if !scan(`SELECT
+			COALESCE(sum(`+got+`) FILTER (WHERE t.status IN ('received', 'short_paid') AND NULLIF(t.custom->>'receivedOn', '') >= `+f+` AND NULLIF(t.custom->>'receivedOn', '') < `+t+`), 0),
+			COALESCE(sum(GREATEST(`+exp+` - `+got+` - `+tds+`, 0)) FILTER (WHERE t.status IN ('expected', 'short_paid') AND COALESCE(t.custom->>'kind', '') <> 'clawback'), 0),
+			COALESCE(sum(-`+exp+`) FILTER (WHERE t.status = 'clawback'), 0)
+			FROM crm.object_records t WHERE t.object_key = 'commissions' AND`+where, args, &received, &receivable, &clawback) {
+			return
+		}
+		out.Metrics["commissionReceived"], out.Metrics["commissionReceivable"], out.Metrics["commissionClawback"] = received, receivable, clawback
+	}
+	// Premium collected from customers for the insurer and not yet passed on: owed, never income.
+	if can("premium_dues") {
+		args := []any{}
+		where := scope("premium_dues", "t", &args)
+		var held float64
+		var heldCount float64
+		if !scan(`SELECT COALESCE(sum(`+numeric(`t.custom->>'paidAmount'`)+`), 0), count(*)
+			FROM crm.object_records t JOIN crm.object_records p ON p.id::text = t.custom->>'policyId' AND p.deleted_at IS NULL
+			WHERE t.object_key = 'premium_dues' AND t.status = 'paid' AND COALESCE(t.custom->>'remittedOn', '') = '' AND p.custom->>'collectionMode' = 'agent' AND`+where, args, &held, &heldCount) {
+			return
+		}
+		out.Metrics["premiumToRemit"], out.Metrics["premiumToRemitCount"] = held, heldCount
 	}
 	if can("tasks") {
 		args := []any{}

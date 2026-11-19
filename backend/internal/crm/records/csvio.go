@@ -528,6 +528,10 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request) {
 		if len(fe) > 0 {
 			return shared.Validation(fe)
 		}
+		// An imported row links only to records the person importing may open.
+		if err := h.checkLinkAccess(r, ws, spec, values); err != nil {
+			return err
+		}
 		var existing uuid.UUID
 		if in.Mode != "create" && matchValue != "" {
 			var expr string

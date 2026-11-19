@@ -115,6 +115,11 @@ func (h *Handler) createRecord(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spe
 	if values == nil {
 		values = map[string]any{}
 	}
+	if a.Kind == "system" {
+		// The CRM's own work (sums on a policy, a premium schedule) writes every field,
+		// including ones hidden from the person whose save started it.
+		ctx = withAllFields(ctx)
+	}
 	fields, err := allFields(ctx, tx, ws, spec)
 	if err != nil {
 		return nil, err
@@ -203,6 +208,9 @@ func displayValue(r *Row, f Field) any {
 // caller saw; owners limits own-scope members to records they may see.
 func (h *Handler) updateValues(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *objectSpec, id uuid.UUID, a actorInfo, values map[string]any,
 	expected *int, owners []uuid.UUID) (*Row, error) {
+	if a.Kind == "system" {
+		ctx = withAllFields(ctx)
+	}
 	current, fields, err := h.getRow(ctx, tx, ws, spec, id, owners)
 	if err != nil {
 		return nil, err
