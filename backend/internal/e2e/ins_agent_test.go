@@ -65,6 +65,9 @@ func TestInsuranceTeamCommissionAndRemittance(t *testing.T) {
 	if r := call(t, "GET", base+"/crm/commissions", posp, nil); r.Status != 403 {
 		t.Fatalf("a new insurance business's sales staff don't see commission: %d", r.Status)
 	}
+	if l := call(t, "GET", base+"/lookup/accounts?q=Health", posp, nil).list("data"); len(l) != 1 {
+		t.Fatalf("the POSP's insurer picker lists the agent's insurers: %v", l)
+	}
 	cust := create(t, posp, ws, "contacts", map[string]any{"lastName": "Posp Customer", "mobile": "+91 98111 55555"})
 	pol := create(t, posp, ws, "insurance_policies", map[string]any{"contactId": cust, "insurerId": insurer, "policyClass": "health", "premium": 20000, "collectionMode": "direct", "status": "proposal"})
 	if p := get(t, posp, ws, "insurance_policies", pol); p["commissionAmount"] != nil {

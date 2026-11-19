@@ -118,7 +118,7 @@ func recordLookupSQL(spec *objectSpec, fields []Field) string {
 	}
 	order = append(order, "t.updated_at DESC")
 	return `SELECT t.id::text, ` + spec.TitleSQL + ` || ' · ' || t.code, ` + hintSQL + ` FROM crm.` + spec.Table + ` t
-		WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)"+sharedRowSQL(spec)+") AND ($4::text IS NOT NULL AND $5::text IS NOT NULL AND $6::text IS NOT NULL)
+		WHERE t.workspace_id = $2 AND t.deleted_at IS NULL AND ($3::uuid[] IS NULL OR t.owner_id = ANY($3)` + sharedRowSQL(spec) + `) AND ($4::text IS NOT NULL AND $5::text IS NOT NULL AND $6::text IS NOT NULL)
 		  AND (` + strings.Join(match, " OR ") + `)
 		ORDER BY ` + strings.Join(order, ", ") + ` LIMIT 20`
 }
