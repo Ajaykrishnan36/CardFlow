@@ -184,6 +184,9 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 
 // workspaceRoutes are the product-level tools inside /w/{code}.
 func (h *Handler) workspaceRoutes(r chi.Router) {
+	r.Get("/insurance/book-template.csv", h.handleBookTemplate)
+	r.Get("/insurance/report", h.handleInsuranceReport)
+	r.Post("/quotes/{id}/share", h.handleShareQuote)
 	r.Get("/developer/api-keys", h.handleListAPIKeys)
 	r.Post("/developer/api-keys", h.handleCreateAPIKey)
 	r.Delete("/developer/api-keys/{keyId}", h.handleRevokeAPIKey)
@@ -260,6 +263,7 @@ func (h *Handler) PublicRoutes(r chi.Router) {
 	r.Post("/public/forms/{token}", h.HandlePublicForm)
 	r.Get("/public/unsubscribe/{token}", h.HandleUnsubscribe)
 	r.Post("/public/unsubscribe/{token}", h.HandleUnsubscribe)
+	r.Get("/public/shared/{token}", h.HandleSharedDocument)
 }
 
 func (h *Handler) workspace(ctx context.Context) (uuid.UUID, error) {

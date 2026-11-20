@@ -85,7 +85,10 @@ func commonOpsObjects() []ObjectDefinition {
 			ObjectBody: ObjectBody{NameLabel: "Checklist name", StatusLabel: "Status", Statuses: []StatusOption{st("active", "Active", "success"), st("inactive", "Inactive", "neutral")},
 				Fields: []ObjectField{refObj, ofReq(ObjectField{Key: "stage", Label: "Must be done before the stage (status value)", Type: "text", HelpText: "e.g. delivered, completed, ready"}),
 					ofReq(ObjectField{Key: "items", Label: "Steps (one per line)", Type: "textarea"}),
-					of("allRequired", "Every step is required", "boolean"), of("notes", "Notes", "textarea")}}},
+					of("allRequired", "Every step is required", "boolean"),
+					ObjectField{Key: "conditionField", Label: "Only when this field…", Type: "text", HelpText: "Optional field key, e.g. claimType, itemId or policyClass"},
+					ObjectField{Key: "conditionValue", Label: "…has this value", Type: "text", HelpText: "e.g. health_cashless — the checklist applies only to those records"},
+					of("notes", "Notes", "textarea")}}},
 		{Key: "checklist_items", Module: "checklists", Singular: "Checklist step", Plural: "Checklist steps", Icon: "check-square", Prefix: "CLI",
 			Description: "One step of a checklist on one record: done or not, by whom and when.",
 			ObjectBody: ObjectBody{NameLabel: "Step", Statuses: []StatusOption{},
@@ -629,7 +632,7 @@ func (h *Handler) checklistGate(ctx context.Context, tx pgx.Tx, ws uuid.UUID, sp
 	if to == "" || (op == "update" && before.text(spec.StatusField) == to) {
 		return nil
 	}
-	tpls, err := h.checklistsFor(ctx, tx, ws, spec.Key, to)
+	tpls, err := h.checklistsFor(ctx, tx, ws, spec.Key, to, after.Values)
 	if err != nil || len(tpls) == 0 {
 		return err
 	}
@@ -661,8 +664,9 @@ type checklistTpl struct {
 	allRequired bool
 }
 
-func (h *Handler) checklistsFor(ctx context.Context, q querier, ws uuid.UUID, object, stage string) ([]checklistTpl, error) {
-	sql := `SELECT id::text, name, COALESCE(custom->>'stage', ''), COALESCE(custom->>'items', ''), COALESCE((custom->>'allRequired')::boolean, true)
+func (h *Handler) checklistsFor(ctx context.Context, q querier, ws uuid.UUID, object, stage string, rec map[string]any) ([]checklistTpl, error) {
+	sql := `SELECT id::text, name, COALESCE(custom->>'stage', ''), COALESCE(custom->>'items', ''), COALESCE((custom->>'allRequired')::boolean, true),
+		COALESCE(custom->>'conditionField', ''), COALESCE(custom->>'conditionValue', '')
 		FROM crm.object_records WHERE workspace_id = $1 AND object_key = 'checklist_templates' AND deleted_at IS NULL
 		AND COALESCE(status, 'active') = 'active' AND custom->>'objectKey' = $2`
 	args := []any{ws, object}
@@ -678,9 +682,13 @@ func (h *Handler) checklistsFor(ctx context.Context, q querier, ws uuid.UUID, ob
 	out := []checklistTpl{}
 	for rows.Next() {
 		var t checklistTpl
-		var items string
-		if err := rows.Scan(&t.id, &t.name, &t.stage, &items, &t.allRequired); err != nil {
+		var items, condField, condValue string
+		if err := rows.Scan(&t.id, &t.name, &t.stage, &items, &t.allRequired, &condField, &condValue); err != nil {
 			return nil, err
+		}
+		// A checklist for some records only (a claim type, a plan): it applies when the field matches.
+		if condField = strings.TrimSpace(condField); condField != "" && !strings.EqualFold(asString(rec[condField]), strings.TrimSpace(condValue)) {
+			continue
 		}
 		for _, l := range strings.Split(items, "\n") {
 			if l = strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(l), "-•*0123456789.) ")); l != "" {
@@ -778,10 +786,11 @@ func (h *Handler) handleRecordChecklists(w http.ResponseWriter, r *http.Request)
 	}
 	out := []block{}
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
-		if _, _, err := h.getRow(r.Context(), tx, sc.WS, spec, rid, ownerFilter(r, spec)); err != nil {
+		row, _, err := h.getRow(r.Context(), tx, sc.WS, spec, rid, ownerFilter(r, spec))
+		if err != nil {
 			return err
 		}
-		tpls, err := h.checklistsFor(r.Context(), tx, sc.WS, object, "")
+		tpls, err := h.checklistsFor(r.Context(), tx, sc.WS, object, "", row.Values)
 		if err != nil {
 			return err
 		}

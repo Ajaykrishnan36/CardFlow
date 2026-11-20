@@ -47,7 +47,12 @@ func packMoreObjects() []ObjectDefinition {
 					of("intimatedOn", "Intimated on", "date"), of("incidentDate", "Date of the incident", "date"),
 					of("insurerClaimNumber", "Insurer's claim number", "text"), of("amountClaimed", "Amount claimed", "currency"),
 					of("documentsPending", "Documents still needed", "text"), of("amountSettled", "Amount settled", "currency"), of("settledOn", "Settled on", "date"),
-					of("rejectionReason", "Why it was rejected", "text"), of("notes", "Notes", "textarea")}}},
+					of("rejectionReason", "Why it was rejected", "text"), of("notes", "Notes", "textarea"),
+					// The clock (E5, E11): cashless needs a first response within 2 hours, others within a day.
+					of("responseDueAt", "First response due", "datetime"), of("firstResponseAt", "First response at", "datetime"),
+					of("responseBreached", "Response time missed", "boolean"),
+					ofSelect("grievanceStage", "Escalation", opts("none", "Not escalated", "insurer_grievance", "Insurer grievance cell", "ombudsman", "Insurance ombudsman")),
+					of("escalationReference", "Escalation reference", "text"), of("escalationResponseDue", "Escalation response due", "date")}}},
 
 		// ---- salon ----
 		{Key: "salon_products", Module: "salon", Singular: "Product", Plural: "Product stock", Icon: "package", Prefix: "SPR",

@@ -218,14 +218,14 @@ type CreateBusinessInput struct {
 	BusinessType      string `json:"businessType"`
 	BusinessTypeOther string `json:"businessTypeOther"`
 	Phone             string `json:"phone"`
-	Email    string `json:"email"`
-	Website  string `json:"website"`
-	City     string `json:"city"`
-	State    string `json:"state"`
-	Country  string `json:"country"`
-	Timezone string `json:"timezone"`
-	Currency string `json:"currency"`
-	Locale   string `json:"locale"`
+	Email             string `json:"email"`
+	Website           string `json:"website"`
+	City              string `json:"city"`
+	State             string `json:"state"`
+	Country           string `json:"country"`
+	Timezone          string `json:"timezone"`
+	Currency          string `json:"currency"`
+	Locale            string `json:"locale"`
 	// ListingID links one of the person's own directory listings as the business's public profile.
 	ListingID string `json:"listingId"`
 	// Tenant is ignored since D-158: every business gets its own address. Old clients still send it.
@@ -532,11 +532,24 @@ func tradeAccessDefaults(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, industr
 	if !strings.EqualFold(strings.TrimSpace(industry), "insurance") {
 		return nil
 	}
-	_, err := tx.Exec(ctx, `
+	// Sales staff: no commission records, statements or commission invoices; commission and
+	// profit hidden on policies, quotes, calculations and policy years.
+	if _, err := tx.Exec(ctx, `
 		UPDATE crm.permission_sets
-		SET rules = ((rules #- '{objects,commissions}') #- '{rows,commissions}') || jsonb_build_object('fields',
-		            COALESCE(rules->'fields', '{}'::jsonb) || '{"insurance_policies":{"commissionRate":"hidden","commissionAmount":"hidden","profit":"hidden","directCosts":"hidden"}}'::jsonb),
+		SET rules = ((((((rules #- '{objects,commissions}') #- '{rows,commissions}') #- '{objects,statement_lines}') #- '{objects,commission_invoices}')
+		            #- '{objects,sales_plans}') ) || jsonb_build_object('fields', COALESCE(rules->'fields', '{}'::jsonb) || $2::jsonb),
 		    updated_at = now()
-		WHERE workspace_id = $1 AND system_key = 'SALES_STAFF'`, wsID)
+		WHERE workspace_id = $1 AND system_key = 'SALES_STAFF'`, wsID, `{
+		"insurance_policies":{"commissionRate":"hidden","commissionAmount":"hidden","profit":"hidden","directCosts":"hidden","subAgentShare":"hidden"},
+		"quotes":{"commissionYear1":"hidden","commissionRateYear1":"hidden","commissionRenewal":"hidden","commissionRateRenewal":"hidden"},
+		"premium_calcs":{"commissionYear1":"hidden","commissionRateYear1":"hidden","commissionRenewal":"hidden","commissionRateRenewal":"hidden"},
+		"policy_years":{"commissionRate":"hidden","expectedCommission":"hidden","actualCommission":"hidden","effectiveRate":"hidden","variance":"hidden"},
+		"fact_finds":{"healthConditions":"hidden","annualIncome":"hidden"}}`); err != nil {
+		return err
+	}
+	// Staff (telecallers): health and income details stay hidden too (I7).
+	_, err := tx.Exec(ctx, `
+		UPDATE crm.permission_sets SET rules = rules || jsonb_build_object('fields', COALESCE(rules->'fields', '{}'::jsonb) || $2::jsonb), updated_at = now()
+		WHERE workspace_id = $1 AND system_key = 'STAFF'`, wsID, `{"fact_finds":{"healthConditions":"hidden","annualIncome":"hidden"}}`)
 	return err
 }

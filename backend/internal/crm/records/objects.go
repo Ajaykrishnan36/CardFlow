@@ -231,6 +231,11 @@ func standardObjects() []ObjectDefinition {
 				st("draft", "Draft", "neutral"), st("sent", "Sent", "primary"), st("accepted", "Accepted", "success"),
 				st("declined", "Declined", "danger"), st("expired", "Expired", "neutral")},
 				Fields: []ObjectField{
+					// Insurance agents (catalogue J6): the agent's commission on each quote; never on the customer's copy.
+					{Key: "commissionYear1", Label: "Your commission, year 1", Type: "currency", Only: "insurance"},
+					{Key: "commissionRateYear1", Label: "Commission rate, year 1", Type: "percent", Only: "insurance"},
+					{Key: "commissionRenewal", Label: "Your commission, each renewal year", Type: "currency", Only: "insurance"},
+					{Key: "commissionRateRenewal", Label: "Commission rate, renewal years", Type: "percent", Only: "insurance"},
 					ofLookup("accountId", "Account", "accounts"), ofLookup("contactId", "Contact", "contacts"), ofLookup("opportunityId", "Opportunity", "opportunities"),
 					ofLookup("priceBookId", "Price book", "price_books"), of("quoteDate", "Quote date", "date"), of("validUntil", "Valid until", "date"),
 					of("subtotal", "Subtotal", "currency"), of("discount", "Discount", "currency"), of("tax", "Tax", "currency"), of("total", "Total", "currency"),
@@ -530,6 +535,9 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	if err := applyObjectUpgrades(ctx, tx, "objects:stock-link-v1", stockLinkUpgrades()); err != nil {
+		return err
+	}
+	if err := applyObjectUpgrades(ctx, tx, "objects:insurance-v2", insuranceUpgrades()); err != nil {
 		return err
 	}
 	if err := markTradeOnly(ctx, tx); err != nil {
@@ -985,6 +993,13 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 		slog.Error("crm: real-estate objects not moved to their new names; they keep the old ones", "error", err)
 	}
 	if err := h.grantPackAccess(ctx, "access:packs-v4", []string{"property_units", "property_visits"}); err != nil {
+		return err
+	}
+	insMore := []string{}
+	for _, d := range insuranceMoreObjects() {
+		insMore = append(insMore, d.Key)
+	}
+	if err := h.grantPackAccess(ctx, "access:insurance-v2", insMore); err != nil {
 		return err
 	}
 	common := []string{}

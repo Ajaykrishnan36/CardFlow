@@ -78,6 +78,8 @@ const LayoutEditorPage = lazy(() => import('@crm/features/records/layout-editor-
 const UsersPage = lazy(() => import('@crm/features/users/users-page').then((m) => ({ default: m.UsersPage })));
 const UserDetailPage = lazy(() => import('@crm/features/users/user-detail-page').then((m) => ({ default: m.UserDetailPage })));
 const AuditPage = lazy(() => import('@crm/features/audit/audit-page').then((m) => ({ default: m.AuditPage })));
+const InsuranceReportPage = lazy(() => import('@crm/features/insurance/insurance-report-page').then((m) => ({ default: m.InsuranceReportPage })));
+const SharedQuotePage = lazy(() => import('@crm/features/insurance/shared-quote-page').then((m) => ({ default: m.SharedQuotePage })));
 const IntegrationsPage = lazy(() => import('@crm/features/integrations/integrations-page').then((m) => ({ default: m.IntegrationsPage })));
 
 const queryClient = new QueryClient({
@@ -149,6 +151,7 @@ function AppRoutes() {
         {/* "/" is the website (D-181): its Sign up button opens the sign-in at "/signup". */}
         <Route path="/" element={<HomePage />} />
         <Route path="/signup" element={<RootLoginPage />} />
+        <Route path="/q/:token" element={<SharedQuotePage />} />
         <Route path="/:tenant/login" element={<TenantLoginPage />} />
         <Route path="/crm/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/crm/reset-password" element={<ResetPasswordPage />} />
@@ -254,6 +257,7 @@ function workspaceRoutes(prefix: string) {
               <Route path="settings/developer" element={<DeveloperPage />} />
               <Route path="settings/web-forms" element={<WebFormsPage />} />
               <Route path="upcoming" element={<UpcomingPage />} />
+              <Route path="insurance/report" element={<InsuranceReportPage />} />
               <Route path="settings/objects" element={<ProductObjectsPage />} />
               <Route path="settings/objects/:key" element={<ProductObjectDetailPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [

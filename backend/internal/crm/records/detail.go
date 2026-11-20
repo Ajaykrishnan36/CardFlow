@@ -327,5 +327,9 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d, err := h.detail(r.Context(), scopeFrom(r.Context()), actor(r), spec, id)
+	if err == nil {
+		meta := identity.Meta(r)
+		h.logSensitiveView(r.Context(), scopeFrom(r.Context()).WS, spec.Key, id, actor(r), meta.IP, meta.RequestID)
+	}
 	respond(w, r, http.StatusOK, d, err)
 }

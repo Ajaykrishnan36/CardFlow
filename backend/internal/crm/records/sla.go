@@ -665,6 +665,7 @@ func (h *Handler) Sweep(ctx context.Context) {
 	defer func() { _, _ = conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(7203121)`) }()
 	h.sweepServiceDues(ctx)
 	h.sweepInsurance(ctx)
+	h.sweepInsuranceMore(ctx)
 	h.sweepPacks(ctx)
 	h.sweepCare(ctx)
 	h.sweepOps(ctx)

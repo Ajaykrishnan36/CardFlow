@@ -28,6 +28,7 @@ import { FieldLabel, FieldValue } from './field-value';
 import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys, sameValue, statusOption, useObjectMeta } from './use-object-meta';
 import { layoutHref, listHref, recordHref, scopedLookupHref, useRecordScope } from './record-scope';
 import { RunWorkflowButton } from './run-workflow';
+import { ShareQuoteButton } from '@crm/features/insurance/share-quote-button';
 import { isForbidden, RecordNoAccess } from './record-states';
 import { ChecklistCard } from './checklist-card';
 import {
@@ -427,6 +428,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
             ) : null}
             <RunWorkflowButton object={object} id={id} disabled={editing} />
             {object === 'contracts' ? <RenewContractButton record={record} disabled={editing} /> : null}
+            {inWorkspace && object === 'quotes' ? <ShareQuoteButton record={record} disabled={editing} /> : null}
             {inWorkspace && object === 'cases' ? <CaseWorkOrderButton record={record} disabled={editing} /> : null}
             {inWorkspace && (object === 'work_orders' || object === 'appointments' || object === 'cases') ? <BookAppointmentButton record={record} object={object as 'work_orders' | 'appointments' | 'cases'} disabled={editing} /> : null}
             {canConvert && platformLead ? (

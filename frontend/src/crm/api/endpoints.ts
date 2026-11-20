@@ -1747,3 +1747,47 @@ export const ownerBillingApi = {
   renew: (workspaceId: string, body: { plan: BillingPeriod; method: 'cash' | 'upi' | 'bank' | 'cheque'; amount?: number; reference?: string; membershipIds: string[] }) =>
     api<{ members: { membershipId: string; paidUntil?: string }[] }>(`/platform/workspaces/${encodeURIComponent(workspaceId)}/renew`, { method: 'POST', body })
 };
+
+// ---- Insurance agent (D-184): the report, and quotes shared with customers ----
+export interface InsuranceReport {
+  financialYear: string;
+  cash: { collectedToday: number; remittedToday: number; heldForInsurers: number; incomeToday: number };
+  months: Array<{ month: string; commission: number; fees: number; costs: number; profit: number; policies: number }>;
+  monthsTotal: { month: string; commission: number; fees: number; costs: number; profit: number; policies: number };
+  insurers: Array<{ name: string; expected: number; received: number; profit: number }>;
+  classes: Array<{ name: string; expected: number; received: number; profit: number }>;
+  years: Array<{ year: number; label: string; newPolicies: number; renewals: number; premiumFirm: number; premiumEstimated: number;
+    commissionFirm: number; commissionEstimated: number; commissionActual: number; commissionPercent: number; planCommission?: number }>;
+  commissionByYear: Array<{ insurer: string; policyYear: number; expectedPercent: number; actualPercent?: number; estimated: boolean }>;
+  draft: boolean;
+  unreconciled: { shortPaidCommissions: number; unmatchedStatementLines: number };
+  assumptions: string[];
+}
+
+export interface SharedQuote {
+  business: string;
+  name: string;
+  status: string;
+  quoteDate?: string;
+  validUntil?: string;
+  subtotal?: number;
+  discount?: number;
+  tax?: number;
+  total?: number;
+  terms?: string;
+  description?: string;
+  currency?: string;
+  lines: Array<{ name: string; quantity?: number; unitPrice?: number; taxAmount?: number; total?: number }>;
+}
+
+export function insuranceApi(code: string) {
+  const base = `/w/${enc(code)}`;
+  return {
+    report: () => api<InsuranceReport>(`${base}/insurance/report`),
+    shareQuote: (id: string) => api<{ token: string; url: string; expiresAt: string }>(`${base}/quotes/${enc(id)}/share`, { method: 'POST', body: {} })
+  };
+}
+
+export const sharedDocApi = {
+  quote: (token: string) => api<SharedQuote>(`/public/shared/${enc(token)}`)
+};

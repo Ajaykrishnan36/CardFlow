@@ -57,6 +57,10 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 		nav = append(nav, NavItem{Key: "pipeline", Label: "Pipeline", Path: base + "/pipeline", Icon: "funnel", Available: true},
 			NavItem{Key: "forecasts", Label: "Forecast", Path: base + "/forecasts", Icon: "trending-up", Group: "Sales", Available: true})
 	}
+	// An insurance agent's money: cash today, the year by month, five years by policy year (D-184).
+	if e.Objects["commissions"].ModuleEnabled && e.Can("commissions", "read") && e.Can("insurance_policies", "read") {
+		nav = append(nav, NavItem{Key: "insurance_report", Label: "Insurance report", Path: base + "/insurance/report", Icon: "bar-chart-3", Group: "Insurance", Available: true})
+	}
 	// Requests waiting for a decision: discounts, refunds, credit notes, write-offs (D-121).
 	if e.Can("quotes", "read") || e.Can("invoices", "read") || e.HasCapability(CapApprovals) {
 		nav = append(nav, NavItem{Key: "approvals", Label: "Approvals", Path: base + "/approvals", Icon: "badge-check", Group: "Sales operations", Available: true})
@@ -202,6 +206,9 @@ var navGroups = map[string]string{
 	"checklist_items": "Operations", "doc_revisions": "Operations", "business_branches": "Operations",
 	"instalments": "Sales operations", "payout_entries": "Sales operations",
 	"insurance_policies": "Insurance", "premium_dues": "Insurance", "commissions": "Insurance",
+	"policy_years": "Insurance", "fact_finds": "Insurance", "premium_rates": "Insurance", "premium_calcs": "Insurance", "statement_lines": "Insurance",
+	"commission_invoices": "Insurance", "sales_plans": "Insurance", "agent_licences": "Insurance", "consent_requests": "Insurance",
+	"book_batches": "Insurance", "book_rows": "Insurance",
 	"territories": "Sales operations", "work_orders": "Service", "service_resources": "Service", "resource_absences": "Service",
 }
 

@@ -1980,6 +1980,47 @@ Found while running the Insurance Agent use-case catalogue end to end (2026-11-1
 - **A renewal takes the rate card's rate for the next policy year** (J9: 25% → 7.5%); the old
   term's rate is kept only when the card has no rule for that year.
 
+## D-184 — The rest of the Insurance Agent catalogue
+
+Built after the catalogue run of 2026-11-19, on the insurance pack (D-148, D-183):
+
+- **Policy years (J3, J4, J8–J11, J15):** a policy has a premium type (fixed, stepped, variable
+  with a yearly increase), a policy term and a premium-paying term. Issuing the first term
+  writes a Policy-year row per year — premium, firm or Estimated, commission % from the rate
+  card, expected commission. A renewal's real premium and commission replace that year's
+  estimate; commission that arrives is written against its year with the effective %.
+  A changed premium rewrites the years not yet issued and the commission still expected.
+- **Needs and pricing (B1, B2, B6, B7, J5, J6):** Fact-finds work out the life and health gap;
+  a rate table by age feeds the Premium calculator, which shows the commission for year 1 and
+  renewals. Insurance quotes carry the agent's commission; a quote shared by link
+  (`/q/<token>`, 30 days, every open logged and notified) never shows it.
+- **Money (C7–C9, C16, C20, G5, G12–G18):** insurer statement lines match policies and pay their
+  commission (short payments flagged); a commission-invoice run bills an insurer once per
+  commission with GST and TDS; a sub-agent's share is a direct cost and becomes a payout when
+  the commission arrives. The dashboard shows commission received, due and clawed back and
+  premium held for insurers; the Insurance report has cash today, the year by month, five
+  years firm/Estimated with the plan beside it, commission % by year, and is Draft while
+  anything is unreconciled.
+- **Annual plan (J16–J24):** customers or a commission goal, product mix, premiums and rates →
+  year-1 and year-2 (Estimated) commission, quotes and leads needed, monthly working; actuals
+  by issue date, a monthly alert when behind; a re-plan supersedes the old version.
+- **Compliance (F7, F8, I2–I4, I7, I11):** licences block sales after expiry and with insurers the
+  seller isn't appointed with; consent requests by WhatsApp or voice allow two attempts and
+  stop on a wrong number (sending through a provider is not connected yet); fact-finds and
+  claims log every view; health and income are hidden from sales and calling staff in a new
+  insurance business.
+- **Claims and dates (D13, D15, D16, E4, E5, E10):** checklist templates can apply to some
+  records only (a claim type, a plan); cashless claims have a 2-hour first-response clock and
+  a missed one raises a task; escalations get a response date; maturity, payer and birthday
+  (with marketing consent) reminders run once.
+- **Existing book (H1–H21):** a template; rows loaded into a batch; a check that writes nothing
+  (mobile, duplicate and unknown policy numbers and insurers, dates, status, sensitive data
+  stripped); then an import that matches customers and leads by mobile, builds households,
+  creates policies (transfers from another agent wait as Transfer pending until the insurer
+  confirms) and reports what happened; a re-run creates nothing twice; a batch can be archived.
+- The CRM's own work (imports, automation) is not held back by stage checklists, and writes
+  every field even when the person whose save started it can't see some.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

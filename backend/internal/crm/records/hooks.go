@@ -27,7 +27,8 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		return nil, err
 	}
 	// A checklist set up for the stage this record is entering must be done first (D-152).
-	if op == "create" || op == "update" {
+	// Work the CRM does on its own (an import of an existing book, a workflow) isn't held back.
+	if (op == "create" || op == "update") && a.Kind != "system" {
 		if err := h.checklistGate(ctx, tx, ws, spec, op, before, after); err != nil {
 			return nil, err
 		}
@@ -40,6 +41,12 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 	// A new quote or contract starts with the products of what it was made from (D-154).
 	if op == "create" && a.Source != sourcePricing && (spec.Key == "quotes" || spec.Key == "contracts") {
 		if after, err = h.inheritLines(ctx, tx, ws, spec, after); err != nil {
+			return nil, err
+		}
+	}
+	// An insurance agent's quote shows the commission on it (catalogue J6).
+	if spec.Key == "quotes" && op != "delete" && a.Source != sourceInsurance && h.insuranceTrade(ctx, tx, ws) {
+		if after, err = h.quoteCommission(ctx, tx, ws, after); err != nil {
 			return nil, err
 		}
 	}
@@ -174,7 +181,9 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 	case "commission_rules", "insurance_claims", "salon_products", "product_usage", "makeup_kits", "kit_bookings", "client_packages",
 		"property_units", "property_bookings", "property_visits", "privacy_requests", "insurance_policies", "premium_dues", "commissions",
 		"vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings",
-		"vehicle_exchanges", "finance_applications", "stock_transfers", "legal_matters", "court_hearings":
+		"vehicle_exchanges", "finance_applications", "stock_transfers", "legal_matters", "court_hearings",
+		"policy_years", "fact_finds", "premium_rates", "premium_calcs", "statement_lines", "commission_invoices", "sales_plans", "agent_licences",
+		"consent_requests", "book_batches", "book_rows":
 		// A business that made its own object under one of these names before the pack
 		// existed keeps it as it is: the pack's rules are for the built-in object only.
 		if !standardObject(spec.Key) || op == "delete" {
@@ -198,12 +207,22 @@ func (h *Handler) packRouter(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec 
 		if op == "delete" {
 			return after, nil
 		}
-		return h.packSaved(ctx, tx, ws, spec, a, op, before, after)
+		out, err := h.packSaved(ctx, tx, ws, spec, a, op, before, after)
+		if err == nil && spec.Key == "insurance_claims" && a.Source != sourceInsurance {
+			out, err = h.claimClock(ctx, tx, ws, op, before, out)
+		}
+		return out, err
 	case "insurance_policies", "premium_dues", "commissions":
 		if op == "delete" {
 			return after, nil
 		}
 		return h.insuranceSaved(ctx, tx, ws, spec, a, op, before, after)
+	case "policy_years", "fact_finds", "premium_rates", "premium_calcs", "statement_lines", "commission_invoices", "sales_plans", "agent_licences",
+		"consent_requests", "book_batches", "book_rows":
+		if op == "delete" {
+			return after, nil
+		}
+		return h.insuranceMoreSaved(ctx, tx, ws, spec, a, op, before, after)
 	case "vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings",
 		"vehicle_exchanges", "finance_applications", "stock_transfers":
 		if op == "delete" {

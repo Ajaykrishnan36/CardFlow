@@ -29,12 +29,17 @@ import (
 const sourceInsurance = "insurance"
 
 func insuranceObjects() []ObjectDefinition {
+	return append(insuranceCoreObjects(), insuranceMoreObjects()...)
+}
+
+func insuranceCoreObjects() []ObjectDefinition {
 	return []ObjectDefinition{
 		{Key: "insurance_policies", Module: "insurance", Singular: "Policy", Plural: "Policies", Icon: "file-text", Prefix: "POL",
 			Description: "Each policy term: who is covered, insurer and plan, premium, commission, dates and how the premium is collected.",
 			ObjectBody: ObjectBody{NameLabel: "Policy", StatusLabel: "Status", Statuses: []StatusOption{
 				st("proposal", "Proposal", "neutral"), st("in_force", "In force", "success"), st("lapsed", "Lapsed", "danger"),
-				st("renewed", "Renewed", "primary"), st("cancelled", "Cancelled", "danger"), st("matured", "Matured / expired", "neutral")},
+				st("renewed", "Renewed", "primary"), st("cancelled", "Cancelled", "danger"), st("matured", "Matured / expired", "neutral"),
+				st("transfer_pending", "Transfer pending", "warning")},
 				Fields: []ObjectField{
 					ofReq(ofLookup("contactId", "Policyholder", "contacts")), ofLookup("accountId", "Household / company", "accounts"),
 					ofReq(ofLookup("insurerId", "Insurer", "accounts")), ofLookup("itemId", "Plan", "catalog_items"),
@@ -53,7 +58,16 @@ func insuranceObjects() []ObjectDefinition {
 					ofLookup("previousPolicyId", "Renewal of", "insurance_policies"),
 					ofSelect("cancellationReason", "Why it was cancelled", opts("free_look", "Free-look cancellation", "customer", "Customer's request", "non_payment", "Premium not paid",
 						"switched", "Moved to another insurer", "other", "Other")),
-					of("renewalRung", "Last renewal reminder (days before)", "number"), of("notes", "Notes", "textarea")}}},
+					of("renewalRung", "Last renewal reminder (days before)", "number"), of("notes", "Notes", "textarea"),
+					// Policy years (catalogue J2–J4, J8): how the premium runs over the whole term.
+					ofSelect("premiumType", "Premium type", opts("fixed", "Fixed every year", "stepped", "Stepped (set schedule)", "variable", "Variable (changes at renewal)")),
+					of("policyTerm", "Policy term (years)", "number"), of("premiumPayingTerm", "Premium-paying term (years)", "number"),
+					ObjectField{Key: "yearlyIncrease", Label: "Estimated yearly increase", Type: "percent", HelpText: "Variable premiums: e.g. 8% a year for health"},
+					ObjectField{Key: "stepSchedule", Label: "Stepped premiums", Type: "text", HelpText: "Year:premium pairs, e.g. 1:15000, 6:18000"},
+					of("maturityDate", "Maturity date", "date"), ofLookup("payerContactId", "Premium paid by", "contacts"),
+					ofLookup("subAgentId", "Sub-agent / POSP", "users"), of("subAgentShare", "Sub-agent share of commission", "percent"),
+					ofSelect("agentOfRecord", "Agent of record", opts("self", "Us", "other_agent", "Another agent (transfer)", "insurer_direct", "Insurer direct (transfer)")),
+					of("transferConfirmedOn", "Transfer confirmed by insurer on", "date")}}},
 		{Key: "premium_dues", Module: "insurance", Singular: "Premium due", Plural: "Premium schedule", Icon: "calendar", Prefix: "PRM",
 			Description: "Every premium instalment: when it is due, whether it was paid, and — when you collect it — when it was remitted.",
 			ObjectBody: ObjectBody{NameLabel: "Premium", StatusLabel: "Status", Statuses: []StatusOption{
@@ -79,6 +93,7 @@ func insuranceObjects() []ObjectDefinition {
 					of("expectedOn", "Expected by", "date"), of("expectedAmount", "Expected", "currency"),
 					of("receivedAmount", "Received", "currency"), of("receivedOn", "Received on", "date"), of("tdsDeducted", "TDS deducted", "currency"),
 					of("statementReference", "Insurer statement reference", "text"), of("variance", "Difference", "currency"),
+					ofLookup("invoiceId", "Billed on invoice", "invoices"), of("payoutCreated", "Sub-agent payout made", "boolean"),
 					of("notes", "Notes", "textarea")}}},
 	}
 }
@@ -138,8 +153,16 @@ func (h *Handler) policySaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op s
 	if after.has("commissionRate") && (rateChanged || !after.has("commissionAmount")) {
 		commission = round2(premium * after.num("commissionRate") / 100)
 	}
+	costs := after.num("directCosts")
+	// The sub-agent's share is a direct cost of the sale (catalogue G worked example, C16).
+	if share := after.num("subAgentShare"); share > 0 && !after.has("directCosts") {
+		costs = round2(commission * share / 100)
+	}
 	want := map[string]float64{"totalToCollect": round2(premium + tax + fee), "commissionAmount": commission,
-		"profit": round2(commission + fee - after.num("directCosts")), "amountToRemit": 0}
+		"profit": round2(commission + fee - costs), "amountToRemit": 0}
+	if costs != after.num("directCosts") {
+		want["directCosts"] = costs
+	}
 	if after.text("collectionMode") == "agent" {
 		want["amountToRemit"] = round2(premium + tax)
 	}
@@ -151,7 +174,16 @@ func (h *Handler) policySaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op s
 	if status == "cancelled" && !after.has("cancellationReason") {
 		return nil, refuse("cancellationReason", "Say why the policy was cancelled.")
 	}
-	issuing := status == "in_force" && (op == "create" || was == "proposal" || was == "")
+	issuing := status == "in_force" && (op == "create" || was == "proposal" || was == "" || was == "transfer_pending")
+	// A book bought over from another agent counts only once the insurer confirms (H16).
+	if issuing && was == "transfer_pending" && !after.has("transferConfirmedOn") {
+		return nil, refuse("transferConfirmedOn", "Enter the date the insurer confirmed the transfer.")
+	}
+	if issuing {
+		if err := h.licenceGate(ctx, tx, ws, after); err != nil {
+			return nil, err
+		}
+	}
 	if status == "in_force" || status == "renewed" {
 		fe := map[string]string{}
 		if !after.has("policyNumber") {
@@ -186,6 +218,23 @@ func (h *Handler) policySaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op s
 	switch {
 	case issuing:
 		if err := h.issuePolicy(ctx, tx, ws, after); err != nil {
+			return nil, err
+		}
+		if err := h.buildPolicyYears(ctx, tx, ws, after); err != nil {
+			return nil, err
+		}
+		if err := h.renewalIssued(ctx, tx, ws, after); err != nil {
+			return nil, err
+		}
+	case status == "in_force" && op == "update" && was == "in_force" && !after.has("previousPolicyId") && policyShapeChanged(before, after):
+		// A changed premium or term rewrites the years not yet issued; the old figures stay in the history (G10, J7).
+		if err := h.buildPolicyYears(ctx, tx, ws, after); err != nil {
+			return nil, err
+		}
+		// …and the commission still expected for this term follows the new amount.
+		if _, err := tx.Exec(ctx, `UPDATE crm.object_records SET custom = custom || jsonb_build_object('expectedAmount', $3::numeric), updated_at = now()
+			WHERE workspace_id = $1 AND object_key = 'commissions' AND deleted_at IS NULL AND custom->>'policyId' = $2 AND status = 'expected'
+			AND COALESCE(custom->>'kind', '') <> 'clawback'`, ws, after.ID, after.num("commissionAmount")); err != nil {
 			return nil, err
 		}
 	case status == "cancelled" && was != "cancelled":
@@ -396,10 +445,31 @@ func (h *Handler) commissionSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, 
 	} else if (status == "received" || status == "short_paid") && !after.has("receivedAmount") {
 		return nil, refuse("receivedAmount", "Enter how much the insurer paid.")
 	}
-	if len(set) == 0 {
-		return after, nil
+	if len(set) > 0 {
+		var err error
+		if after, err = h.updateValues(ctx, tx, ws, specFor("commissions"), after.uuid(), systemActor(sourceInsurance), set, nil, nil); err != nil {
+			return nil, err
+		}
 	}
-	return h.updateValues(ctx, tx, ws, specFor("commissions"), after.uuid(), systemActor(sourceInsurance), set, nil, nil)
+	if op == "create" || before.num("receivedAmount") != after.num("receivedAmount") || before.num("tdsDeducted") != after.num("tdsDeducted") {
+		if err := h.yearCommission(ctx, tx, ws, after); err != nil {
+			return nil, err
+		}
+		if err := h.subAgentPayout(ctx, tx, ws, after); err != nil {
+			return nil, err
+		}
+	}
+	return after, nil
+}
+
+// policyShapeChanged: the fields the year table is built from.
+func policyShapeChanged(before, after *Row) bool {
+	for _, k := range []string{"premium", "premiumType", "policyTerm", "premiumPayingTerm", "yearlyIncrease", "stepSchedule", "commissionRate", "sumAssured"} {
+		if fmt.Sprint(before.Values[k]) != fmt.Sprint(after.Values[k]) {
+			return true
+		}
+	}
+	return false
 }
 
 // renewalRungs are the days before a policy ends at which its owner is reminded.
