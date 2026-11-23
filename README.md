@@ -1,3 +1,8 @@
+# CognizCRM
+New Gen CRM Product - Agentic Driven
+
+---
+
 # Cogniz CRM
 
 CardFlow is an integrated platform combining verified local business discovery with AI-powered physical business card digitization and lifelong digital card storage.
