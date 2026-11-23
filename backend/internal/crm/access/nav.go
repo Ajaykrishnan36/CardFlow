@@ -61,6 +61,13 @@ func WorkspaceNav(code string, e *Effective, hasSupport bool) []NavItem {
 	if e.Objects["commissions"].ModuleEnabled && e.Can("commissions", "read") && e.Can("insurance_policies", "read") {
 		nav = append(nav, NavItem{Key: "insurance_report", Label: "Insurance report", Path: base + "/insurance/report", Icon: "bar-chart-3", Group: "Insurance", Available: true})
 	}
+	// An advocate's day: hearings, what wasn't updated, missing documents, deadlines (D-185).
+	if e.Objects["court_hearings"].ModuleEnabled && e.Can("court_hearings", "read") {
+		nav = append(nav, NavItem{Key: "court_diary", Label: "Court diary", Path: base + "/legal/diary", Icon: "calendar", Group: "Legal", Available: true})
+		if e.Can("lead", "read") && !e.OwnOnly("lead") {
+			nav = append(nav, NavItem{Key: "unassigned_leads", Label: "Unassigned leads", Path: base + "/leads?queue=unassigned", Icon: "inbox", Group: "Legal", Available: true})
+		}
+	}
 	// Requests waiting for a decision: discounts, refunds, credit notes, write-offs (D-121).
 	if e.Can("quotes", "read") || e.Can("invoices", "read") || e.HasCapability(CapApprovals) {
 		nav = append(nav, NavItem{Key: "approvals", Label: "Approvals", Path: base + "/approvals", Icon: "badge-check", Group: "Sales operations", Available: true})
@@ -198,7 +205,10 @@ var navGroups = map[string]string{
 	"vehicle_exchanges": "Dealership", "finance_applications": "Dealership", "stock_transfers": "Dealership",
 	"commission_rules": "Insurance", "insurance_claims": "Insurance",
 	"salon_products": "Salon", "product_usage": "Salon", "makeup_kits": "Salon", "kit_bookings": "Salon", "client_packages": "Salon",
-	"legal_matters": "Legal", "court_hearings": "Legal",
+	"legal_matters": "Legal", "court_hearings": "Legal", "case_intakes": "Legal", "conflict_checks": "Legal", "client_requirements": "Legal", "legal_documents": "Legal",
+	"advocate_assignments": "Legal", "legal_deadlines": "Legal", "legal_notices": "Legal", "case_updates": "Legal", "case_parties": "Legal", "accident_details": "Legal", "property_details": "Legal",
+	"family_details": "Legal", "criminal_details": "Legal", "contract_details": "Legal", "service_scopes": "Legal setup", "service_requirements": "Legal setup", "courts": "Legal setup", "advocate_profiles": "Legal setup",
+	"payment_milestones": "Legal money", "legal_invoices": "Legal money", "legal_payments": "Legal money", "case_expenses": "Legal money",
 	"property_units": "Real estate", "property_bookings": "Real estate", "property_visits": "Real estate",
 	"privacy_requests": "Sales",
 	"care_schedules":   "Customer care", "due_items": "Customer care", "call_logs": "Customer care", "memberships": "Customer care",
@@ -224,7 +234,7 @@ func navGroup(key string) string {
 // may hide those; settings and analytics always stay).
 func IsRecordGroup(g string) bool {
 	switch g {
-	case "CRM", "App", "Sales", "Customer journey", "Products & stock", "Follow-ups", "Customer care", "Operations", "Dealership", "Insurance", "Salon", "Real estate", "Products", "Sales operations", "Service", "Purchasing", "Finance":
+	case "CRM", "App", "Sales", "Customer journey", "Products & stock", "Follow-ups", "Customer care", "Operations", "Dealership", "Insurance", "Legal", "Legal setup", "Legal money", "Salon", "Real estate", "Products", "Sales operations", "Service", "Purchasing", "Finance":
 		return true
 	}
 	return false

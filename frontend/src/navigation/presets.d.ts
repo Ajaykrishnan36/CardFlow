@@ -5,8 +5,10 @@ export interface ListPreset {
   value: string;
   query: string;
   in: string[];
-  filter: { field: string; op: 'in'; value: string[] };
+  filter: { field: string; op: 'in' | 'empty'; value?: string[] };
   create: Record<string, unknown>;
+  /** Names of lookups given in `create`. */
+  createLabels?: Record<string, string>;
   /** The list's columns while the preset is on (else the object's own). */
   columns?: string[];
 }

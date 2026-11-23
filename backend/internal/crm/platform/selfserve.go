@@ -529,6 +529,9 @@ var AfterBusinessCreated func(ctx context.Context, creator, workspaceID uuid.UUI
 // (POSP, sub-agents) never sees commission (catalogue F13): the Sales staff set leaves out
 // commission records and hides the commission and profit of a policy.
 func tradeAccessDefaults(ctx context.Context, tx pgx.Tx, wsID uuid.UUID, industry string) error {
+	if strings.Contains(strings.ToLower(industry), "legal") {
+		return legalFirmDefaults(ctx, tx, wsID)
+	}
 	if !strings.EqualFold(strings.TrimSpace(industry), "insurance") {
 		return nil
 	}

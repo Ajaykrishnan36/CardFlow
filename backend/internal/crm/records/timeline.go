@@ -598,6 +598,12 @@ func (h *Handler) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
 	sc := scopeFrom(r.Context())
 	a := actorFromRequest(r, "ui")
 	err = h.store.WithTx(r.Context(), func(tx pgx.Tx) error {
+		// A law firm's file on hold or in retention keeps its attachments too (D-185).
+		if rec, _, err := h.getRow(r.Context(), tx, sc.WS, spec, recordID, nil); err == nil {
+			if err := h.legalDeleteGate(r.Context(), tx, sc.WS, spec.Key, rec); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(r.Context(), `UPDATE crm.files SET deleted_at = now() WHERE id = $1`, f.ID); err != nil {
 			return err
 		}

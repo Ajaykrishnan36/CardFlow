@@ -1788,6 +1788,20 @@ export function insuranceApi(code: string) {
   };
 }
 
+export interface DiaryRow { id: string; at: string; status: string; court: string; hall: string; matterId: string; matterCode: string; matter: string; caseNumber: string; client: string; caseType: string; purpose: string; advocateId: string; advocate: string; lastOutcome: string; notUpdated: boolean }
+export interface CourtDiary { tiles: Record<'today' | 'next7' | 'notUpdated' | 'overdue' | 'missingDocs' | 'deadlines', number> & { unassigned?: number }; rows: DiaryRow[]; from: string; to: string }
+export interface LegalService { name: string; price: number | null; priceBook: string; scope: Array<{ name: string; kind: string; note: string }>; documents: Array<{ name: string; kind: string; note: string }> }
+
+export function legalApi(code: string) {
+  const base = `/w/${enc(code)}`;
+  return {
+    diary: (p: Record<string, string>) => api<CourtDiary>(`${base}/legal/diary?${new URLSearchParams(Object.entries(p).filter(([, v]) => v)).toString()}`),
+    service: (id: string) => api<LegalService>(`${base}/legal/services/${enc(id)}`),
+    notify: (id: string) => api<{ notified: boolean }>(`${base}/legal/hearings/${enc(id)}/notify`, { method: 'POST', body: {} }),
+    requestDocuments: (id: string) => api<{ requested: string[]; message: string }>(`${base}/legal_matters/${enc(id)}/request-documents`, { method: 'POST', body: {} })
+  };
+}
+
 export const sharedDocApi = {
   quote: (token: string) => api<SharedQuote>(`/public/shared/${enc(token)}`)
 };

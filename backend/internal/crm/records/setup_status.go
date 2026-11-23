@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"cardflow-backend/internal/crm/access"
 	"cardflow-backend/internal/crm/platform"
 	"github.com/google/uuid"
 )
@@ -52,6 +53,19 @@ var leadTones = map[string]string{"new": "primary", "working": "warning", "conta
 // statusesFor is an object's status options in a workspace: the setup's list for leads
 // and opportunities, otherwise the object's own.
 func statusesFor(ctx context.Context, q querier, ws uuid.UUID, spec *objectSpec) []StatusOption {
+	if spec.Key == "quotes" && ws != uuid.Nil {
+		// In review, Viewed and Superseded are a law firm's quote steps (D-185).
+		if mods, err := access.WorkspaceModules(ctx, q, ws); err != nil || !mods["legal"] {
+			out := make([]StatusOption, 0, len(spec.Statuses))
+			for _, s := range spec.Statuses {
+				if s.Value != "in_review" && s.Value != "viewed" && s.Value != "superseded" {
+					out = append(out, s)
+				}
+			}
+			return out
+		}
+		return spec.Statuses
+	}
 	if spec.StatusField == "" || (spec.Key != "leads" && spec.Key != "opportunities") || ws == uuid.Nil {
 		return spec.Statuses
 	}

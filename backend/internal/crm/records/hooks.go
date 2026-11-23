@@ -17,6 +17,11 @@ import (
 //
 // op: create | update | delete | restore. before is nil on create.
 func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *objectSpec, a actorInfo, op string, before, after *Row) (*Row, error) {
+	if op == "delete" {
+		if err := h.legalDeleteGate(ctx, tx, ws, spec.Key, before); err != nil {
+			return nil, err
+		}
+	}
 	// The currency step's own write comes back here: nothing more to do for it.
 	if a.Source == sourceCurrency {
 		return after, nil
@@ -41,6 +46,11 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 	// A new quote or contract starts with the products of what it was made from (D-154).
 	if op == "create" && a.Source != sourcePricing && (spec.Key == "quotes" || spec.Key == "contracts") {
 		if after, err = h.inheritLines(ctx, tx, ws, spec, after); err != nil {
+			return nil, err
+		}
+	}
+	if spec.Key == "leads" || spec.Key == "opportunities" || spec.Key == "quotes" {
+		if after, err = h.legalCoreSaved(ctx, tx, ws, spec, a, op, before, after); err != nil {
 			return nil, err
 		}
 	}
@@ -183,7 +193,8 @@ func (h *Handler) afterSave(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec *
 		"vehicle_stock", "vehicle_bookings", "test_rides", "vehicle_registrations", "service_dues", "odometer_readings",
 		"vehicle_exchanges", "finance_applications", "stock_transfers", "legal_matters", "court_hearings",
 		"policy_years", "fact_finds", "premium_rates", "premium_calcs", "statement_lines", "commission_invoices", "sales_plans", "agent_licences",
-		"consent_requests", "book_batches", "book_rows":
+		"consent_requests", "book_batches", "book_rows",
+		"case_intakes", "service_scopes", "service_requirements", "courts", "advocate_profiles", "conflict_checks", "accident_details", "property_details", "family_details", "criminal_details", "contract_details", "case_parties", "client_requirements", "legal_documents", "advocate_assignments", "legal_deadlines", "legal_notices", "case_updates", "payment_milestones", "legal_invoices", "legal_payments", "case_expenses":
 		// A business that made its own object under one of these names before the pack
 		// existed keeps it as it is: the pack's rules are for the built-in object only.
 		if !standardObject(spec.Key) || op == "delete" {
@@ -234,6 +245,11 @@ func (h *Handler) packRouter(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec 
 			return after, nil
 		}
 		return h.legalSaved(ctx, tx, ws, spec, a, op, before, after)
+	case "case_intakes", "service_scopes", "service_requirements", "courts", "advocate_profiles", "conflict_checks", "accident_details", "property_details", "family_details", "criminal_details", "contract_details", "case_parties", "client_requirements", "legal_documents", "advocate_assignments", "legal_deadlines", "legal_notices", "case_updates", "payment_milestones", "legal_invoices", "legal_payments", "case_expenses":
+		if op == "delete" {
+			return after, nil
+		}
+		return h.legalMoreSaved(ctx, tx, ws, spec, a, op, before, after)
 	}
 	return after, nil
 }

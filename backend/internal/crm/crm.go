@@ -186,6 +186,11 @@ func New(ctx context.Context, pool *pgxpool.Pool, cardflowEnv string) *Module {
 	if err != nil {
 		return m.disable("role hierarchy migration failed: " + err.Error())
 	}
+	firmCtx, cancelFirm := context.WithTimeout(context.Background(), startupTimeout)
+	if err := platform.MigrateLegalFirms(firmCtx, st.Pool); err != nil {
+		slog.Warn("crm: law firms not given their roles", "error", err)
+	}
+	cancelFirm()
 	// Every business its own generated address (D-158), its six digits keyed with the server's
 	// secret (D-165); a problem here never stops the CRM.
 	platform.SetCodeKey(m.cfg.EncryptionKey)

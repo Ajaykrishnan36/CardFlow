@@ -1803,7 +1803,7 @@ func (h *Handler) handleConvertDocument(from, to string) http.HandlerFunc {
 			}
 			extra := map[string]any{link: doc.ID, "status": "draft"}
 			if from == "quotes" {
-				if status == "declined" || status == "expired" {
+				if status == "declined" || status == "expired" || status == "superseded" {
 					return shared.NewError(http.StatusUnprocessableEntity, "not_convertible", "A declined or expired quote can't become an order. Revise it first.")
 				}
 				if st := doc.text("approvalStatus"); st == "pending" || st == "rejected" {
@@ -1876,8 +1876,11 @@ func (h *Handler) handleReviseQuote(w http.ResponseWriter, r *http.Request) {
 		if doc.Values["quoteVersion"] == nil {
 			set["quoteVersion"] = float64(version)
 		}
-		if st := doc.text("status"); st == "draft" || st == "sent" || st == "" {
+		if st := doc.text("status"); st == "draft" || st == "sent" || st == "" || st == "in_review" || st == "viewed" {
 			set["status"] = "expired"
+			if h.legalTrade(ctx, tx, sc.WS) {
+				set["status"] = "superseded"
+			}
 		}
 		if len(set) > 0 {
 			if _, err := h.updateValues(ctx, tx, sc.WS, specFor("quotes"), doc.uuid(), systemActor(sourcePricing), set, nil, nil); err != nil {

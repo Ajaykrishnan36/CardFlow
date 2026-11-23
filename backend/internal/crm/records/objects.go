@@ -537,6 +537,12 @@ func upgradeStandardObjects(ctx context.Context, tx pgx.Tx) error {
 	if err := applyObjectUpgrades(ctx, tx, "objects:stock-link-v1", stockLinkUpgrades()); err != nil {
 		return err
 	}
+	if err := applyObjectUpgrades(ctx, tx, "objects:legal-v2", legalUpgrades()); err != nil {
+		return err
+	}
+	if err := applyObjectUpgrades(ctx, tx, "objects:legal-v3", legalAcceptUpgrades()); err != nil {
+		return err
+	}
 	if err := applyObjectUpgrades(ctx, tx, "objects:insurance-v2", insuranceUpgrades()); err != nil {
 		return err
 	}
@@ -1000,6 +1006,13 @@ func (h *Handler) LoadObjects(ctx context.Context) error {
 		insMore = append(insMore, d.Key)
 	}
 	if err := h.grantPackAccess(ctx, "access:insurance-v2", insMore); err != nil {
+		return err
+	}
+	legMore := []string{}
+	for _, d := range legalMoreObjects() {
+		legMore = append(legMore, d.Key)
+	}
+	if err := h.grantPackAccess(ctx, "access:legal-v2", legMore); err != nil {
 		return err
 	}
 	common := []string{}

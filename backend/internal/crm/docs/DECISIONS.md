@@ -2021,6 +2021,29 @@ Built after the catalogue run of 2026-11-19, on the insurance pack (D-148, D-183
 - The CRM's own work (imports, automation) is not held back by stage checklists, and writes
   every field even when the person whose save started it can't see some.
 
+### D-185: The Lawyer CRM
+
+- **Separate records:** Lead (person), Case intake (one issue), Client, Opportunity (fee deal),
+  Quote (versions), Legal matter (the real case), Hearing (one date). Closed Won creates the
+  matter, its case-type detail and its document checklist; it never closes the matter.
+- **People decide:** the conflict check flags names and blocks conversion until an advocate
+  records a decision. Statutory periods and tax treatment are starting rules the firm confirms.
+- **Access follows assignment:** active advocates get the matter, its children and read on the
+  client; ending an assignment removes it and keeps the history. Seniors see their juniors'
+  work through the hierarchy. A clerk sees no fees; Accounts sees no case notes or documents.
+- **New law firms** get the nine-stage pipeline, lead statuses and firm roles at creation.
+  Existing law firms get the roles once at start-up, and the stages only if they set none of
+  their own and no record sits on a step the new list lacks.
+- **Accepting a quote** records the date, method, engagement letter, payment terms and advance;
+  the advance becomes the matter's first payment milestone.
+- **Unassigned leads** have no owner until someone is chosen.
+- **Retention:** closing sets a retention date 8 years out (the firm can change it). A file on
+  legal hold or in retention can't be deleted, nor can its attachments; nothing auto-deletes.
+- **Money:** TDS counts as settled, so it never shows as outstanding. Closing needs no balance
+  (or a write-off), no scheduled hearing, and the final order or settlement when in court.
+- **Not built:** client portal, eCourts sync, e-signature, external storage, real WhatsApp/SMS.
+  "Request missing documents" marks items requested and copies the message for a person to send.
+
 ## Seed
 
 - Local/dev: platform workspace `platform`, system roles, owner `ajay@gmail.com` / `Ajay1234`.

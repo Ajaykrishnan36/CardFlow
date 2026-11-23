@@ -186,6 +186,10 @@ func (h *Handler) mountRecords(r chi.Router, prefix string) {
 func (h *Handler) workspaceRoutes(r chi.Router) {
 	r.Get("/insurance/book-template.csv", h.handleBookTemplate)
 	r.Get("/insurance/report", h.handleInsuranceReport)
+	r.Get("/legal/diary", h.handleLegalDiary)
+	r.Get("/legal/services/{id}", h.handleLegalService)
+	r.Post("/legal/hearings/{id}/notify", h.handleNotifyAdvocate)
+	r.Post("/legal_matters/{id}/request-documents", h.handleRequestDocuments)
 	r.Post("/quotes/{id}/share", h.handleShareQuote)
 	r.Get("/developer/api-keys", h.handleListAPIKeys)
 	r.Post("/developer/api-keys", h.handleCreateAPIKey)

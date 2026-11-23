@@ -1257,7 +1257,7 @@ func (h *Handler) claimClock(ctx context.Context, tx pgx.Tx, ws uuid.UUID, op st
 }
 
 // sensitiveObjects are logged each time someone opens a record of theirs (I7, I11).
-var sensitiveObjects = map[string]bool{"fact_finds": true, "insurance_claims": true}
+var sensitiveObjects = map[string]bool{"fact_finds": true, "insurance_claims": true, "legal_matters": true, "legal_documents": true, "case_updates": true, "conflict_checks": true}
 
 func (h *Handler) logSensitiveView(ctx context.Context, ws uuid.UUID, object string, id uuid.UUID, who uuid.UUID, ip, reqID string) {
 	if !sensitiveObjects[object] {

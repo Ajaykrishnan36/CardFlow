@@ -40,7 +40,7 @@ func (h *Handler) settleQuote(ctx context.Context, tx pgx.Tx, ws uuid.UUID, a ac
 		return shared.Validation(map[string]string{"quoteId": "That quote can't be found."})
 	}
 	switch quote.text("status") {
-	case "declined", "expired":
+	case "declined", "expired", "superseded":
 		return shared.Validation(map[string]string{"quoteId": "This quote was declined or has expired: take the money against its latest version."})
 	}
 	if st := quote.text("approvalStatus"); st == "pending" || st == "rejected" {
@@ -222,7 +222,7 @@ func (h *Handler) handlePaymentPlan(w http.ResponseWriter, r *http.Request) {
 		fe["everyDays"] = "Instalments are 1 to 366 days apart."
 	}
 	switch quote.text("status") {
-	case "declined", "expired":
+	case "declined", "expired", "superseded":
 		fe["quote"] = "This quote was declined or has expired."
 	}
 	if st := quote.text("approvalStatus"); st == "pending" || st == "rejected" {

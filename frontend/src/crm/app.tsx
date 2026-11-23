@@ -78,6 +78,7 @@ const LayoutEditorPage = lazy(() => import('@crm/features/records/layout-editor-
 const UsersPage = lazy(() => import('@crm/features/users/users-page').then((m) => ({ default: m.UsersPage })));
 const UserDetailPage = lazy(() => import('@crm/features/users/user-detail-page').then((m) => ({ default: m.UserDetailPage })));
 const AuditPage = lazy(() => import('@crm/features/audit/audit-page').then((m) => ({ default: m.AuditPage })));
+const CourtDiaryPage = lazy(() => import('@crm/features/legal/court-diary-page').then((m) => ({ default: m.CourtDiaryPage })));
 const InsuranceReportPage = lazy(() => import('@crm/features/insurance/insurance-report-page').then((m) => ({ default: m.InsuranceReportPage })));
 const SharedQuotePage = lazy(() => import('@crm/features/insurance/shared-quote-page').then((m) => ({ default: m.SharedQuotePage })));
 const IntegrationsPage = lazy(() => import('@crm/features/integrations/integrations-page').then((m) => ({ default: m.IntegrationsPage })));
@@ -258,6 +259,7 @@ function workspaceRoutes(prefix: string) {
               <Route path="settings/web-forms" element={<WebFormsPage />} />
               <Route path="upcoming" element={<UpcomingPage />} />
               <Route path="insurance/report" element={<InsuranceReportPage />} />
+              <Route path="legal/diary" element={<CourtDiaryPage />} />
               <Route path="settings/objects" element={<ProductObjectsPage />} />
               <Route path="settings/objects/:key" element={<ProductObjectDetailPage />} />
               {(['leads', 'accounts', 'contacts'] as const).map((object) => [

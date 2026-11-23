@@ -36,9 +36,19 @@ const PRESETS = {
 
 /** The preset a list URL asks for, or null. `search` is the query string or URLSearchParams. */
 export function listPreset(object, search) {
+  const q = typeof search === 'string' ? new URLSearchParams(search) : search;
+  // A law firm's leads waiting for an owner, and one matter's documents or tasks (D-185).
+  if (object === 'leads' && q.get('queue') === 'unassigned') {
+    return { label: 'Unassigned leads', singular: 'lead', field: 'ownerId', value: 'unassigned', query: 'queue=unassigned', in: [], filter: { field: 'ownerId', op: 'empty' }, create: { sendToQueue: true } };
+  }
+  if ((object === 'legal_documents' || object === 'tasks') && q.get('matterId')) {
+    const id = q.get('matterId');
+    const category = q.get('category');
+    return { label: object === 'tasks' ? 'Tasks of this matter' : 'Documents of this matter', singular: object === 'tasks' ? 'task' : 'document', field: 'matterId', value: id,
+      query: `matterId=${encodeURIComponent(id)}`, in: [id], filter: { field: 'matterId', op: 'in', value: [id] }, create: { matterId: id, ...(category ? { category } : {}) }, createLabels: q.get('matterName') ? { matterId: q.get('matterName') } : undefined };
+  }
   const def = PRESETS[object];
   if (!def) return null;
-  const q = typeof search === 'string' ? new URLSearchParams(search) : search;
   const value = q.get(def.param);
   const preset = value ? def.values[value] : null;
   if (!preset) return null;

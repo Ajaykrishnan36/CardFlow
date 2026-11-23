@@ -222,6 +222,13 @@ var leadSpec = objectSpec{
 		only(sel("matterCategory", "Matter category", "", legalCategories), "legal"),
 		only(typed("consultationAt", "Consultation date", "datetime", ""), "legal"),
 		only(typed("matterDescription", "About the matter", "textarea", ""), "legal"),
+		only(help(typed("sendToQueue", "Put in Unassigned leads", "boolean", ""), "Leaves this lead without an owner until the main advocate assigns it."), "legal"),
+		only(text("preferredLanguage", "Preferred language", ""), "legal"),
+		only(sel("priority", "Priority", "", opts("high", "High", "medium", "Medium", "low", "Low")), "legal"),
+		only(typed("consultationFee", "Consultation fee", "currency", ""), "legal"),
+		only(typed("consultationPaid", "Consultation fee paid", "boolean", ""), "legal"),
+		only(text("noticeVersion", "Privacy notice version", ""), "legal"),
+		only(typed("consentAt", "Consent taken at", "datetime", ""), "legal"),
 		only(sel("propertyPurpose", "Wants to", "", opts("buy", "Buy", "rent", "Rent", "sell", "Sell", "lease_out", "Lease out")), "real_estate"),
 		only(text("preferredLocality", "Preferred locality", ""), "real_estate"),
 		only(typed("budget", "Budget", "currency", ""), "dealership,real_estate"),
@@ -243,7 +250,7 @@ var leadSpec = objectSpec{
 			{ID: "requirement", Title: "Requirement", Columns: 2, Fields: []string{
 				"vehicleType", "preferredBrand", "preferredItemId", "preferredVariant", "fuelType", "transmission", "exchange",
 				"insuranceType", "policyType", "coverageNeeded", "expectedPremium", "renewalDate",
-				"legalServiceType", "matterCategory", "consultationAt", "matterDescription",
+				"legalServiceType", "matterCategory", "consultationAt", "matterDescription", "sendToQueue", "preferredLanguage", "priority", "consultationFee", "consultationPaid", "noticeVersion", "consentAt",
 				"propertyPurpose", "preferredLocality", "budget", "buyingWhen"}},
 			{ID: "qualification", Title: "Qualification", Columns: 2, Fields: []string{
 				"annualRevenue", "employees", "score", "nextFollowUpAt", "userType", "intendedRoleKey", "tags"}},
@@ -285,6 +292,9 @@ var accountSpec = objectSpec{
 		text("shippingPostalCode", "Shipping postal code", "shipping_postal_code"),
 		text("shippingCountry", "Shipping country", "shipping_country"),
 		typed("description", "Description", "textarea", "description"),
+		only(sel("clientTaxCategory", "Client tax category", "", opts("individual", "Individual", "exempt_business", "Business under GST threshold", "gst_business", "GST-registered business", "government", "Government", "advocate", "Advocate / firm")), "legal"),
+		only(text("gstin", "GSTIN", ""), "legal"),
+		only(text("pan", "PAN", ""), "legal"),
 		ro(lookup("customerWorkspaceId", "Customer product", "customer_workspace_id", "workspaces")),
 		ro(lookup("identityId", "Primary login", "identity_id", "users")),
 	),
@@ -296,7 +306,7 @@ var accountSpec = objectSpec{
 		Sections: []Section{
 			{ID: "account_info", Title: "Account information", Columns: 2, Fields: []string{
 				"name", "rating", "kind", "phone", "type", "email", "lifecycle", "website", "industry", "parentAccountId",
-				"ownership", "employees", "annualRevenue"}},
+				"ownership", "employees", "annualRevenue", "clientTaxCategory", "gstin", "pan"}},
 			{ID: "address", Title: "Address information", Columns: 2, Fields: []string{
 				"billingStreet", "shippingStreet", "billingCity", "shippingCity", "billingState", "shippingState",
 				"billingPostalCode", "shippingPostalCode", "billingCountry", "shippingCountry"}},

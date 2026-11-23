@@ -191,6 +191,9 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			return out
 		}
 
+		if err := h.legalConvertGate(ctx, tx, ws, leadID); err != nil {
+			return err
+		}
 		// 1. Account
 		var newAccount uuid.UUID
 		switch in.Account.Mode {
@@ -496,6 +499,9 @@ func (h *Handler) convert(r *http.Request, ws, leadID uuid.UUID, in convertInput
 			}
 		}
 
+		if err := h.legalAfterConvert(ctx, tx, actorFromRequest(r, "convert"), scopeFrom(r.Context()), ws, leadID, res, firstNonEmpty(l.organization, fullName)); err != nil {
+			return err
+		}
 		// 4. Lead → converted, with the conversion record.
 		if _, err := tx.Exec(ctx, `
 			UPDATE crm.leads SET status = 'converted', converted_at = now(), converted_account_id = $2, converted_contact_id = $3,

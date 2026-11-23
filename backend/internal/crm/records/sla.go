@@ -671,6 +671,7 @@ func (h *Handler) Sweep(ctx context.Context) {
 	h.sweepOps(ctx)
 	h.sweepBilling(ctx)
 	h.sweepLegal(ctx)
+	h.sweepLegalMore(ctx)
 	for name, fn := range map[string]func(context.Context) error{
 		"sla": h.sweepSLA, "contracts": h.sweepContracts, "invoices": h.sweepInvoices,
 	} {

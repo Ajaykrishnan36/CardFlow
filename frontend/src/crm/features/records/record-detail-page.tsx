@@ -29,6 +29,7 @@ import { fieldIndex, guessTone, humanize, normalizeValue, objectIcon, recordKeys
 import { layoutHref, listHref, recordHref, scopedLookupHref, useRecordScope } from './record-scope';
 import { RunWorkflowButton } from './run-workflow';
 import { ShareQuoteButton } from '@crm/features/insurance/share-quote-button';
+import { RequestDocumentsButton, ServicePanel } from '@crm/features/legal/legal-actions';
 import { isForbidden, RecordNoAccess } from './record-states';
 import { ChecklistCard } from './checklist-card';
 import {
@@ -429,6 +430,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
             <RunWorkflowButton object={object} id={id} disabled={editing} />
             {object === 'contracts' ? <RenewContractButton record={record} disabled={editing} /> : null}
             {inWorkspace && object === 'quotes' ? <ShareQuoteButton record={record} disabled={editing} /> : null}
+            {inWorkspace && object === 'legal_matters' ? <RequestDocumentsButton record={record} disabled={editing} /> : null}
             {inWorkspace && object === 'cases' ? <CaseWorkOrderButton record={record} disabled={editing} /> : null}
             {inWorkspace && (object === 'work_orders' || object === 'appointments' || object === 'cases') ? <BookAppointmentButton record={record} object={object as 'work_orders' | 'appointments' | 'cases'} disabled={editing} /> : null}
             {canConvert && platformLead ? (
@@ -503,6 +505,7 @@ function RecordDetailView({ object, id }: { object: ObjectKey; id: string }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div ref={mainRef} className="min-w-0 lg:col-span-2">
+          {inWorkspace && object === 'case_intakes' ? <ServicePanel record={record} /> : null}
           {inWorkspace ? <ChecklistCard object={object} record={record} /> : null}
           {inWorkspace && hasLines(object) ? <DocumentLinesCard object={object} record={record} /> : null}
           {ticketId ? <TicketConversation code={workspaceCode} ticketId={ticketId} canReply={canEdit} /> : null}

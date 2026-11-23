@@ -128,7 +128,7 @@ func allFieldsRaw(ctx context.Context, q querier, wsID uuid.UUID, spec *objectSp
 func forTrade(ctx context.Context, q querier, wsID uuid.UUID, fields []Field) []Field {
 	need := false
 	for _, f := range fields {
-		need = need || f.Only != ""
+		need = need || f.Only != "" || f.Key == "leadSource"
 	}
 	if !need {
 		return fields
@@ -144,11 +144,17 @@ func forTrade(ctx context.Context, q querier, wsID uuid.UUID, fields []Field) []
 	out := fields[:0:0]
 	for _, f := range fields {
 		if f.Only == "" || tradeFits(f.Only, mods, bike, car) {
+			// A law firm's sources (D-185): no Advertisement (Bar Council Rule 36).
+			if mods["legal"] && (f.Key == "source" || f.Key == "leadSource") && f.Label == "Lead source" {
+				f.Options = legalSources
+			}
 			out = append(out, f)
 		}
 	}
 	return out
 }
+
+var legalSources = opts("phone", "Phone", "walk_in", "Walk-in", "referral", "Referral", "web", "Website", "existing_client", "Existing client")
 
 func tradeFits(only string, mods map[string]bool, bike, car bool) bool {
 	for _, part := range strings.Split(only, ",") {

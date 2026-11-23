@@ -29,6 +29,10 @@ var legalCategories = opts("civil", "Civil", "criminal", "Criminal", "family", "
 var matterClosed = map[string]bool{"won": true, "lost": true, "settled": true, "withdrawn": true, "closed": true}
 
 func legalObjects() []ObjectDefinition {
+	return append(legalCoreObjects(), legalMoreObjects()...)
+}
+
+func legalCoreObjects() []ObjectDefinition {
 	return []ObjectDefinition{
 		{Key: "legal_matters", Module: "legal", Singular: "Client matter", Plural: "Client matters", Icon: "scale", Prefix: "MAT",
 			Description: "A client's legal matter: what it is about, the court and case number, the other side, the advocate in charge and the next hearing.",
@@ -73,8 +77,16 @@ func (h *Handler) legalSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec 
 
 	switch spec.Key {
 	case "legal_matters":
+		if err := h.matterGate(ctx, tx, ws, op, before, after); err != nil {
+			return nil, err
+		}
 		if matterClosed[status] && changed && !after.has("closedOn") {
-			return h.updateValues(ctx, tx, ws, spec, after.uuid(), sys, map[string]any{"closedOn": today(), "nextHearingAt": nil}, nil, nil)
+			set := map[string]any{"closedOn": today(), "nextHearingAt": nil}
+			// The firm can change this date; nothing is ever deleted automatically.
+			if status == "closed" && !after.has("retentionUntil") {
+				set["retentionUntil"] = time.Now().In(ist).AddDate(legalRetentionYears, 0, 0).Format("2006-01-02")
+			}
+			return h.updateValues(ctx, tx, ws, spec, after.uuid(), sys, set, nil, nil)
 		}
 
 	case "court_hearings":
@@ -91,11 +103,11 @@ func (h *Handler) legalSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec 
 		if hasNext && ok && !next.After(hearingAt) {
 			return nil, refuse("nextHearingAt", "The next date is after this hearing.")
 		}
-		if status == "adjourned" && changed && !hasNext {
+		if (status == "adjourned" || status == "not_reached") && changed && !hasNext {
 			return nil, refuse("nextHearingAt", "An adjourned hearing needs the next date.")
 		}
 		// The next date is the next hearing: book it once.
-		if hasNext && (status == "attended" || status == "adjourned") && (changed || after.text("nextHearingAt") != before.text("nextHearingAt")) {
+		if hasNext && (status == "attended" || status == "adjourned" || status == "not_reached") && (changed || after.text("nextHearingAt") != before.text("nextHearingAt")) {
 			var exists bool
 			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM crm.object_records WHERE workspace_id = $1 AND object_key = 'court_hearings' AND deleted_at IS NULL
 				AND custom->>'matterId' = $2 AND NULLIF(custom->>'hearingAt', '')::timestamptz = $3)`, ws, after.text("matterId"), next).Scan(&exists); err != nil {
@@ -103,12 +115,29 @@ func (h *Handler) legalSaved(ctx context.Context, tx pgx.Tx, ws uuid.UUID, spec 
 			}
 			if !exists {
 				n := map[string]any{"matterId": after.text("matterId"), "hearingAt": next.Format(time.RFC3339), "status": "scheduled",
-					"courtName": after.text("courtName"), "courtRoom": after.text("courtRoom"), "judge": after.text("judge"), "ownerId": after.text("ownerId")}
+					"courtName": after.text("courtName"), "courtRoom": after.text("courtRoom"), "judge": after.text("judge"), "ownerId": after.text("ownerId"),
+					"courtId": after.text("courtId"), "assignedAdvocateId": after.text("assignedAdvocateId"), "purpose": after.text("nextPurpose")}
 				clean(n)
 				if _, err := h.createRecord(ctx, tx, ws, spec, sys, n); err != nil {
 					return nil, err
 				}
 			}
+		}
+		// Follow-up actions become a task due before the next date.
+		if after.has("followUp") && after.text("followUp") != before.text("followUp") {
+			due := today()
+			if hasNext {
+				due = next.AddDate(0, 0, -1).In(ist).Format("2006-01-02")
+			}
+			t := map[string]any{"name": "Before next hearing: " + after.text("followUp"), "matterId": after.text("matterId"), "contactId": m.text("contactId"), "status": "not_started", "priority": "high", "dueDate": due,
+				"ownerId": firstNonEmpty(after.text("assignedAdvocateId"), after.text("ownerId"))}
+			clean(t)
+			if _, err := h.createRecord(ctx, tx, ws, specFor("tasks"), sys, t); err != nil {
+				return nil, err
+			}
+		}
+		if err := h.syncMatterTeam(ctx, tx, ws, after.text("matterId")); err != nil {
+			return nil, err
 		}
 		set := map[string]any{}
 		nearest, found, err := nearestHearing(ctx, tx, ws, m.uuid())

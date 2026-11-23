@@ -163,14 +163,17 @@ function RecordListView({ object }: { object: ObjectKey }) {
   // ?new=1 (dashboard quick actions) opens the create dialog once.
   useEffect(() => {
     if (sp.get('new') !== '1') return;
-    if (canCreate) setNewOpen(true);
+    if (canCreate) {
+      setNewDefaults(listPreset(object, sp)?.create);
+      setNewOpen(true);
+    }
     patchParams({ new: null });
   }, [sp, canCreate, patchParams]);
 
   const byKey = useMemo(() => fieldIndex(meta), [meta]);
   const ownFilter = useMemo(() => cleanFilter(draft.filter, byKey), [draft.filter, byKey]);
   // A menu entry such as Vendors is this list through a fixed filter carried in the address (D-117).
-  const presetQuery = sp.get('type') ?? sp.get('itemType') ?? sp.get('requestType') ?? '';
+  const presetQuery = sp.get('type') ?? sp.get('itemType') ?? sp.get('requestType') ?? sp.get('queue') ?? `${sp.get('matterId') ?? ''}:${sp.get('category') ?? ''}`;
   const preset = useMemo(() => listPreset(object, sp), [object, presetQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const filter = useMemo<FilterGroup | undefined>(
     () => (preset ? { op: 'and', filters: [preset.filter as unknown as FilterCondition, ...(ownFilter ? [ownFilter] : [])] } : ownFilter),
@@ -603,7 +606,7 @@ function RecordListView({ object }: { object: ObjectKey }) {
       </Card>
 
       {meta && canCreate ? (
-        <NewRecordDialog object={object} meta={meta} open={newOpen} onOpenChange={setNewOpen} defaults={newDefaults}
+        <NewRecordDialog object={object} meta={meta} open={newOpen} onOpenChange={setNewOpen} defaults={newDefaults} defaultLabels={preset?.createLabels}
           note={isOwner && ws !== PLATFORM_WS ? t('records.new.platformNote') : undefined} />
       ) : null}
       {meta ? <ImportDialog object={object} meta={meta} open={importOpen} onOpenChange={setImportOpen} /> : null}
