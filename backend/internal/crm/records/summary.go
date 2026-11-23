@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/access"
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/access"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/google/uuid"
 )
 

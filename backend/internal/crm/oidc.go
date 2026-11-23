@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"cardflow-backend/internal/crm/records"
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/records"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
 )
 

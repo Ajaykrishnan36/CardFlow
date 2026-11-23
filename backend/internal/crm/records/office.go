@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/access"
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/access"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // GET /w/{code}/dashboard/office (D-170): what the owner needs to know without asking

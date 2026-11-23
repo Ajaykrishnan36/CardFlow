@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/access"
-	"cardflow-backend/internal/crm/billing"
+	"cogniz-crm-backend/internal/crm/access"
+	"cogniz-crm-backend/internal/crm/billing"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

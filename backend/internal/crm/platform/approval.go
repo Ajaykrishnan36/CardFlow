@@ -1,7 +1,7 @@
 package platform
 
 import (
-	"cardflow-backend/internal/crm/billing"
+	"cogniz-crm-backend/internal/crm/billing"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

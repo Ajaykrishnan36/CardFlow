@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 
-	"cardflow-backend/internal/config"
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/crm/shared"
-	"cardflow-backend/internal/database"
-	"cardflow-backend/internal/domain"
+	"cogniz-crm-backend/internal/config"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/database"
+	"cogniz-crm-backend/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

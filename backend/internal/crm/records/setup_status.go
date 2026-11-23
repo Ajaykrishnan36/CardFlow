@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"cardflow-backend/internal/crm/access"
-	"cardflow-backend/internal/crm/platform"
+	"cogniz-crm-backend/internal/crm/access"
+	"cogniz-crm-backend/internal/crm/platform"
 	"github.com/google/uuid"
 )
 

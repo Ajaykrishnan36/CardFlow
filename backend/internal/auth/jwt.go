@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"time"
 
-	"cardflow-backend/internal/config"
-	"cardflow-backend/internal/domain"
+	"cogniz-crm-backend/internal/config"
+	"cogniz-crm-backend/internal/domain"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )

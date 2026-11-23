@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/config"
+	"cogniz-crm-backend/internal/config"
 )
 
 type ExtractedCardData struct {

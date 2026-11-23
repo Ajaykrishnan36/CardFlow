@@ -1,4 +1,4 @@
-module cardflow-backend
+module cogniz-crm-backend
 
 go 1.26.5
 

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"cardflow-backend/internal/domain"
-	"cardflow-backend/internal/middleware"
-	"cardflow-backend/pkg/response"
+	"cogniz-crm-backend/internal/domain"
+	"cogniz-crm-backend/internal/middleware"
+	"cogniz-crm-backend/pkg/response"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )

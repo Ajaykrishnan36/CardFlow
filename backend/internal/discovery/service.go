@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync"
 
-	"cardflow-backend/internal/database"
-	"cardflow-backend/internal/domain"
+	"cogniz-crm-backend/internal/database"
+	"cogniz-crm-backend/internal/domain"
 	"github.com/google/uuid"
 )
 

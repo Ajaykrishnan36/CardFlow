@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/config"
+	"cogniz-crm-backend/internal/config"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

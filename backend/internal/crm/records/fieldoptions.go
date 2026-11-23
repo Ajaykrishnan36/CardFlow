@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // Values a business adds to built-in dropdowns (D-154). A built-in select field keeps its

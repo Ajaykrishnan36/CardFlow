@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"cardflow-backend/internal/config"
-	"cardflow-backend/internal/database"
-	"cardflow-backend/internal/server"
+	"cogniz-crm-backend/internal/config"
+	"cogniz-crm-backend/internal/database"
+	"cogniz-crm-backend/internal/server"
 )
 
 //go:embed dist/*

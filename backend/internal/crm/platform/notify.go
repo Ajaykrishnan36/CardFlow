@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/mail"
-	"cardflow-backend/internal/crm/sms"
-	"cardflow-backend/internal/crm/whatsapp"
+	"cogniz-crm-backend/internal/crm/mail"
+	"cogniz-crm-backend/internal/crm/sms"
+	"cogniz-crm-backend/internal/crm/whatsapp"
 	"github.com/google/uuid"
 )
 

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"cardflow-backend/internal/config"
+	"cogniz-crm-backend/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 

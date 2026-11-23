@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/crm/shared"
-	"cardflow-backend/internal/crm/store"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

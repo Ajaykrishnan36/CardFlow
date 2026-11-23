@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // Sign-in methods per product (D-64). A product's setup lists how its users may sign in:

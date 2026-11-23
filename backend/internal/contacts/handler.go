@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"cardflow-backend/internal/database"
-	"cardflow-backend/internal/domain"
-	"cardflow-backend/internal/middleware"
-	"cardflow-backend/pkg/response"
+	"cogniz-crm-backend/internal/database"
+	"cogniz-crm-backend/internal/domain"
+	"cogniz-crm-backend/internal/middleware"
+	"cogniz-crm-backend/pkg/response"
 )
 
 type ContactsHandler struct {

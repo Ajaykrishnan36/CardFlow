@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"cardflow-backend/internal/crm/billing"
+	"cogniz-crm-backend/internal/crm/billing"
 )
 
 // fakeRazorpay answers POST /v1/orders like Razorpay does and remembers the amounts.

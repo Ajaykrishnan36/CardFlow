@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/jackc/pgx/v5"
 )
 

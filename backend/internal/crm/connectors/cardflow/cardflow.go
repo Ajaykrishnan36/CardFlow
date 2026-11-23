@@ -23,11 +23,11 @@ import (
 	"sync"
 	"time"
 
-	"cardflow-backend/internal/crm/access"
-	"cardflow-backend/internal/crm/platform"
-	"cardflow-backend/internal/crm/records"
-	"cardflow-backend/internal/crm/shared"
-	"cardflow-backend/internal/crm/store"
+	"cogniz-crm-backend/internal/crm/access"
+	"cogniz-crm-backend/internal/crm/platform"
+	"cogniz-crm-backend/internal/crm/records"
+	"cogniz-crm-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

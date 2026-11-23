@@ -3,19 +3,19 @@
 package platform
 
 import (
-	"cardflow-backend/internal/crm/billing"
+	"cogniz-crm-backend/internal/crm/billing"
 	"context"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/crm/mail"
-	"cardflow-backend/internal/crm/shared"
-	"cardflow-backend/internal/crm/sms"
-	"cardflow-backend/internal/crm/store"
-	"cardflow-backend/internal/crm/whatsapp"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/crm/mail"
+	"cogniz-crm-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/sms"
+	"cogniz-crm-backend/internal/crm/store"
+	"cogniz-crm-backend/internal/crm/whatsapp"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

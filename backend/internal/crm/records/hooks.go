@@ -1,7 +1,7 @@
 package records
 
 import (
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 	"context"
 	"time"
 

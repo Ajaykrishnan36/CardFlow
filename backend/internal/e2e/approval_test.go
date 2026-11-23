@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // setReview switches the owner's review of new businesses (D-161) on or off.

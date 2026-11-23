@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"cardflow-backend/internal/config"
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/domain"
+	"cogniz-crm-backend/internal/config"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/domain"
 	"github.com/google/uuid"
 )
 

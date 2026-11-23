@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/records"
+	"cogniz-crm-backend/internal/crm/records"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

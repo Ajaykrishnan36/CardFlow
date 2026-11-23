@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/google/uuid"
 )
 

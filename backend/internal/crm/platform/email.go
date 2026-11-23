@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/crm/mail"
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/crm/mail"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // Email status and a test send for the owner (so a live SMTP setup can be checked

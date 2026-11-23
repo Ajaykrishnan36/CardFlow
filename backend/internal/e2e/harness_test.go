@@ -9,7 +9,7 @@ package e2e
 
 import (
 	"bytes"
-	"cardflow-backend/internal/crm/billing"
+	"cogniz-crm-backend/internal/crm/billing"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,10 +23,10 @@ import (
 	"testing"
 	"time"
 
-	"cardflow-backend/internal/config"
-	"cardflow-backend/internal/crm"
-	"cardflow-backend/internal/database"
-	"cardflow-backend/internal/server"
+	"cogniz-crm-backend/internal/config"
+	"cogniz-crm-backend/internal/crm"
+	"cogniz-crm-backend/internal/database"
+	"cogniz-crm-backend/internal/server"
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 )

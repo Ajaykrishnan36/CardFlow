@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"cardflow-backend/internal/crm/billing"
+	"cogniz-crm-backend/internal/crm/billing"
 )
 
 // inbox reads someone's bell in a business, waiting a little for the relay to deliver

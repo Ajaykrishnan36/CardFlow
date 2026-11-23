@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 func TestHTMLEmailRendersAllParts(t *testing.T) {

@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"cardflow-backend/internal/domain"
-	"cardflow-backend/internal/middleware"
-	"cardflow-backend/internal/storage"
-	"cardflow-backend/pkg/response"
-	"cardflow-backend/pkg/validator"
+	"cogniz-crm-backend/internal/domain"
+	"cogniz-crm-backend/internal/middleware"
+	"cogniz-crm-backend/internal/storage"
+	"cogniz-crm-backend/pkg/response"
+	"cogniz-crm-backend/pkg/validator"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cardflow-backend/internal/crm/billing"
+	"cogniz-crm-backend/internal/crm/billing"
 )
 
 // A plan on the application (D-172): the applicant picks a plan and pays nothing; the owner

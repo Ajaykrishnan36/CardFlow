@@ -3,7 +3,7 @@ package card
 import (
 	"testing"
 
-	"cardflow-backend/internal/domain"
+	"cogniz-crm-backend/internal/domain"
 )
 
 func TestNormalizeGSTIN(t *testing.T) {

@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"cardflow-backend/internal/database"
-	"cardflow-backend/internal/domain"
-	"cardflow-backend/internal/extractor"
-	"cardflow-backend/internal/storage"
+	"cogniz-crm-backend/internal/database"
+	"cogniz-crm-backend/internal/domain"
+	"cogniz-crm-backend/internal/extractor"
+	"cogniz-crm-backend/internal/storage"
 	"github.com/google/uuid"
 )
 

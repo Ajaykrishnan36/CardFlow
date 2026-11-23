@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"cardflow-backend/internal/crm/oauth"
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/oauth"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/go-chi/chi/v5"
 )
 

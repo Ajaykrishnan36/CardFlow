@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode"
 
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/google/uuid"
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/graphql/language/ast"

@@ -10,7 +10,7 @@ import (
 	netmail "net/mail"
 	"time"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // brevoMailer sends through Brevo's HTTPS API (port 443). Hosts that block outbound SMTP,

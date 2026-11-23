@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/access"
-	"cardflow-backend/internal/crm/mail"
-	"cardflow-backend/internal/crm/shared"
-	"cardflow-backend/internal/crm/sms"
-	"cardflow-backend/internal/crm/store"
+	"cogniz-crm-backend/internal/crm/access"
+	"cogniz-crm-backend/internal/crm/mail"
+	"cogniz-crm-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/sms"
+	"cogniz-crm-backend/internal/crm/store"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/crm/shared"
-	"cardflow-backend/internal/domain"
-	"cardflow-backend/pkg/response"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/domain"
+	"cogniz-crm-backend/pkg/response"
 	"github.com/google/uuid"
 )
 

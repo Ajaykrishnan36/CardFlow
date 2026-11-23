@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // Message is one transactional email. Text is the plain-text body; when Heading is

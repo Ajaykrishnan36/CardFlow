@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"cardflow-backend/pkg/response"
+	"cogniz-crm-backend/pkg/response"
 	"github.com/go-chi/chi/v5"
 )
 

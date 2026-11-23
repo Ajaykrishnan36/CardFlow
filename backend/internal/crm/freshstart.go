@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"cardflow-backend/internal/crm/connectors/cardflow"
-	"cardflow-backend/internal/crm/identity"
-	"cardflow-backend/internal/crm/platform"
+	"cogniz-crm-backend/internal/crm/connectors/cardflow"
+	"cogniz-crm-backend/internal/crm/identity"
+	"cogniz-crm-backend/internal/crm/platform"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

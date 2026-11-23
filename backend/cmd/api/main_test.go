@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"cardflow-backend/internal/discovery"
+	"cogniz-crm-backend/internal/discovery"
 	"github.com/go-chi/chi/v5"
 )
 

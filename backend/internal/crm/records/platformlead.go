@@ -3,7 +3,7 @@ package records
 import (
 	"context"
 
-	"cardflow-backend/internal/crm/access"
+	"cogniz-crm-backend/internal/crm/access"
 	"github.com/google/uuid"
 )
 

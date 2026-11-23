@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 )
 
 // Runs last (file name). Ajay's plan of 2026-10-28 from end to end, on a database that

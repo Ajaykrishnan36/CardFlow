@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/dop251/goja"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

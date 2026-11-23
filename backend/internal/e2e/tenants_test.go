@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"cardflow-backend/internal/crm/platform"
+	"cogniz-crm-backend/internal/crm/platform"
 )
 
 var codeShape = regexp.MustCompile(`^[0-9]{8}[0-9a-z]{4}[0-9]{6}$`)

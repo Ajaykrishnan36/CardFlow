@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"cardflow-backend/internal/domain"
-	"cardflow-backend/pkg/validator"
+	"cogniz-crm-backend/internal/domain"
+	"cogniz-crm-backend/pkg/validator"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

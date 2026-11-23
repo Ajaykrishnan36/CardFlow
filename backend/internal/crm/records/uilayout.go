@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"cardflow-backend/internal/crm/shared"
+	"cogniz-crm-backend/internal/crm/shared"
 	"github.com/jackc/pgx/v5"
 )
 
